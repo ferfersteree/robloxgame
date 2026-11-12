@@ -126,9 +126,10 @@ local PRESETS: { [string]: { any } } = {
 	select = { "click", 1.25, 0.34, 0.05 },
 	back = { "swoosh", 0.9, 0.3, 0.05 },
 	blip = { "ping", 1.5, 0.12, 0.05 },
-	rep = { "click", 1.8, 0.5, 0.1 },
+	rep = { "click", 1.8, 0.5, 0.1 }, -- как "pop"
+	throw = { "swoosh", 0.7, 0.8, 0.05 }, -- как "whoosh" (бросок копья)
 	miss = { "swoosh", 1.1, 0.4, 0.05 },
-	hit_ground = { "collide", 0.8, 0.7, 0.05 },
+	hit_ground = { "hit", 0.7, 0.7, 0 }, -- копьё врезалось в землю (как раньше)
 	hit_wood = { "hit", 1.3, 0.6, 0.05 },
 	pickup = { "ping", 2.0, 0.35, 0.08 },
 	coin_burst = { "ping", 2.2, 0.3, 0.15 },
@@ -180,9 +181,19 @@ local function bankSound(name: string): Sound?
 	return base
 end
 
+-- Высоту, подобранную вызывающим кодом под старый встроенный звук, пересчитываем относительно его «нормы»:
+-- свои файлы уже сыграны в нужной тональности, поэтому норма = 1
+local function customPitch(name: string, pitch: number?): number?
+	if not pitch then
+		return nil
+	end
+	local pr = PRESETS[name]
+	return math.clamp(pitch / ((pr and pr[2]) or 1), 0.6, 1.7)
+end
+
 local function playBank(base: Sound, name: string, pitch: number?, volume: number?, parent: Instance?): Sound
 	local s = base:Clone()
-	s.PlaybackSpeed = pitch or (1 + (math.random() * 2 - 1) * (if name:sub(1, 4) == "step" then 0.06 else 0.03))
+	s.PlaybackSpeed = customPitch(name, pitch) or (1 + (math.random() * 2 - 1) * (if name:sub(1, 4) == "step" then 0.06 else 0.03))
 	s.Volume = volume or BANK_VOL[name] or 0.4
 	s.Parent = parent or folder
 	s:Play()
@@ -210,6 +221,10 @@ function Sfx.play(name: string, pitch: number?, volume: number?): Sound?
 	end
 	local custom = bankSound(name)
 	if custom then
+		-- щелчок заряда играет зацикленный звук натяжения, второй раз поверх него не нужен
+		if name == "creak" then
+			return nil
+		end
 		return playBank(custom, name, pitch, volume)
 	end
 	local pr = PRESETS[name]
@@ -270,7 +285,7 @@ function Sfx.at(pos: Vector3, name: string, pitch: number?, volume: number?)
 	a.Parent = workspace.Terrain
 	local s = base:Clone()
 	if custom then
-		s.PlaybackSpeed = pitch or (1 + (math.random() * 2 - 1) * 0.03)
+		s.PlaybackSpeed = customPitch(name, pitch) or (1 + (math.random() * 2 - 1) * 0.03)
 		s.Volume = volume or BANK_VOL[name] or 0.7
 	else
 		s.PlaybackSpeed = pitch or (pr and pr[2]) or 1
@@ -323,7 +338,7 @@ function Sfx.loop(name: string, pitch: number?, volume: number?): Sound?
 	end
 	local s = base:Clone()
 	s.Looped = true
-	s.PlaybackSpeed = pitch or (if custom then 1 else (pr and pr[2])) or 1
+	s.PlaybackSpeed = (if custom then customPitch(name, pitch) else pitch) or (if custom then 1 else (pr and pr[2])) or 1
 	s.Volume = volume or (if custom then BANK_VOL[name] else (pr and pr[3])) or 0.4
 	s.Parent = folder
 	s:Play()
@@ -378,15 +393,23 @@ local TRACKS: { [string]: { string } } = {
 	hunt = { "music_hunt" },
 }
 
+-- Только "hunt" и "normal" меняют музыку; "cinematic"/"busy" (показ добычи, окна) оставляют текущую,
+-- иначе каждый бросок переключал бы трек туда и обратно
 local function musicGroup(): string
-	return if musicMood == "hunt" then "hunt" else "normal"
+	if musicMood == "hunt" then
+		return "hunt"
+	elseif musicMood == "normal" then
+		return "normal"
+	end
+	return musicGroupNow
 end
+local badTracks: { [string]: boolean } = {}
 
 local function customTrackIds(group: string): { string }
 	local ids = {}
 	for _, f in TRACKS[group] do
 		local id = audioId(f)
-		if id then
+		if id and not badTracks[id] then
 			table.insert(ids, id)
 		end
 	end
@@ -486,13 +509,18 @@ function Sfx.startMusic()
 				ended = true
 			end)
 			local elapsed = 0
+			local failed = false
 			while Sfx.music and generation == musicGeneration and not ended and not musicSkip do
 				task.wait(0.5)
 				elapsed += 0.5
 				-- Ассет недоступен/не загрузился: пробуем следующий трек.
 				if elapsed >= 8 and s.TimeLength == 0 then
+					failed = true
 					break
 				end
+			end
+			if failed and #custom > 0 then
+				badTracks[trackId] = true -- этот свой трек не загрузился: дальше играем остальные или библиотеку
 			end
 			if musicSound == s then
 				musicSound = nil

@@ -15,7 +15,11 @@ local KIND: { [string]: string } = {
 }
 
 local function kindOf(material: Enum.Material): string
-	return KIND[material.Name] or "stone"
+	local kind = KIND[material.Name] or "stone"
+	if not Sfx.has("step_" .. kind) then
+		kind = if Sfx.has("step_stone") then "stone" else "grass"
+	end
+	return kind
 end
 
 function Footsteps.init()

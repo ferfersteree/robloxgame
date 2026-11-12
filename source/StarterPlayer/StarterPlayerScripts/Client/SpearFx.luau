@@ -199,7 +199,7 @@ function SpearFx.launch(o: LaunchOpts): Flight
 	if f.crashed then
 		Sfx.at(o.from, "crash", 1, 0.8)
 	else
-		Sfx.at(o.from, "throw", 1.12 - 0.05 * tierIdx, 0.55 + 0.07 * tierIdx)
+		Sfx.at(o.from, "throw", 1.15 - 0.06 * tierIdx, 0.6 + 0.08 * tierIdx)
 		if not f.v15 and tierIdx >= 2 then
 			Fx.ring(o.from - Vector3.new(0, 1.6, 0), tier.color, 3 + tierIdx * 1.5, 0.45)
 		end

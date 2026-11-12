@@ -55,7 +55,11 @@ local function typeText(label: TextLabel, text: string)
 			end
 			label.MaxVisibleGraphemes = i
 			if i % 3 == 0 then
-				Sfx.play("blip", nil, 0.16)
+				if Sfx.has("blip") then
+					Sfx.play("blip", nil, 0.16)
+				else
+					Sfx.play("hover", 1.4 + (i % 5) * 0.05, 0.12)
+				end
 			end
 			task.wait(0.018)
 		end

@@ -197,7 +197,7 @@ local function awardRep(repSession: number)
 		local at = head and head.Position or camera.Focus.Position
 		local k = math.min(combo, 15)
 		UI.popAt(at + Vector3.new((math.random() - 0.5) * 1.2, 1.4, 0), "+" .. Num.short(gain) .. " 💪", C.green, 28 + math.min(k, 5))
-		Sfx.play("rep", 0.94 + k * 0.025, 0.45)
+		Sfx.play("rep", 0.9 + k * 0.03, 0.35)
 		local cl = comboLbl
 		if cl then
 			cl.Visible = combo >= 3
