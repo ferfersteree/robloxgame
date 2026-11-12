@@ -914,7 +914,7 @@ local function renderBanner(o: Open, parent: Instance, item: any, order: number)
 	local pitch = PITCH[item.key] or { "", "" }
 	UI.label({ Text = pitch[1], TextSize = 25, Color = K.goldText, StrokeColor = line, Stroke = 4, Size = UDim2.new(1, -350, 0, 30), Position = UDim2.fromOffset(124, 46), XAlign = Enum.TextXAlignment.Left, ZIndex = 3, Parent = f })
 	UI.label({ Text = pitch[2], TextSize = 16, Color = K.white, StrokeColor = line, Stroke = 3, Size = UDim2.new(1, -350, 0, 20), Position = UDim2.fromOffset(124, 80), XAlign = Enum.TextXAlignment.Left, ZIndex = 3, Parent = f })
-	o.status[item.key] = UI.label({ Text = "", TextSize = 16, Color = K.goldText, Stroke = 3, StrokeColor = line, Size = UDim2.fromOffset(220, 20), Position = UDim2.fromOffset(124, 98), XAlign = Enum.TextXAlignment.Left, ZIndex = 3, Parent = f })
+	o.status[item.key] = UI.label({ Text = "", TextSize = 16, Color = K.goldText, Stroke = 3, StrokeColor = line, Size = UDim2.fromOffset(220, 20), Position = UDim2.fromOffset(124, 100), XAlign = Enum.TextXAlignment.Left, ZIndex = 3, Parent = f })
 	buyButton(item, UDim2.fromOffset(190, 44), UDim2.new(1, -204, 0.5, -24), 22, f).ZIndex = 4
 	table.insert(o.shiny, f)
 	introPop(o, f)
@@ -1130,7 +1130,7 @@ function Shop.open()
 
 	-- Зверьки выглядывают из-за баннера (стоят позади него, видны только головы и уши)
 	local peekers = {}
-	for _, p in { { "squirrel", 318 }, { "moonrabbit", BW - 128 } } do
+	for _, p in { { "squirrel", 270 }, { "moonrabbit", BW - 128 } } do
 		local a = animalView(head, p[1], -18, 96, 96)
 		a.AnchorPoint = Vector2.new(0.5, 1)
 		a.Position = UDim2.fromOffset(p[2] + 48, 32)
