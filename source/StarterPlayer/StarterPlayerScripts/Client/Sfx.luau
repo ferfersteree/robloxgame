@@ -183,9 +183,18 @@ end
 
 -- Высоту, подобранную вызывающим кодом под старый встроенный звук, пересчитываем относительно его «нормы»:
 -- свои файлы уже сыграны в нужной тональности, поэтому норма = 1
+-- События, у которых «старой нормы» нет (встроенный звук лишь запасной): высота передаётся как написана
+local ASWRITTEN: { [string]: boolean } = {
+	select = true, back = true, blip = true, rep = true, throw = true, miss = true,
+	hit_ground = true, hit_wood = true, pickup = true, coin_burst = true,
+}
+
 local function customPitch(name: string, pitch: number?): number?
 	if not pitch then
 		return nil
+	end
+	if ASWRITTEN[name] then
+		return math.clamp(pitch, 0.5, 1.8)
 	end
 	local pr = PRESETS[name]
 	return math.clamp(pitch / ((pr and pr[2]) or 1), 0.6, 1.7)
