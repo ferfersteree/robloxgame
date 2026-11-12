@@ -74,7 +74,7 @@ local function part(name: string, size: Vector3, cf: CFrame, visible: boolean): 
 	p.Anchored = false
 	p.CanCollide = false
 	p.CanTouch = false
-	p.CanQuery = visible
+	p.CanQuery = false -- звери не мешают лучам (выстрелы, брызги от копья)
 	p.Massless = true
 	p.CastShadow = visible
 	if not visible then
@@ -104,7 +104,7 @@ function Fauna.Create(id: string): Model?
 	model.Name = id
 	local attrs: { [string]: any } = {
 		SpeciesId = id, AssetId = id, AssetKind = "animal", DisplayName = data.displayName, BiomeId = data.zone,
-		NativeV16 = true, Fauna150 = true, GeometryVersion = 17, LocomotionProfile = data.animation.profile,
+		NativeV16 = true, NativeV15 = true, Fauna150 = true, GeometryVersion = 17, LocomotionProfile = data.animation.profile,
 		SourcePartCount = #data.parts / 11, Height = data.h, Width = data.w, Len = data.len,
 		BoundsX = data.w, BoundsY = data.h, BoundsZ = data.len, MinY = data.bounds[1][2],
 		GroundOffsetY = 0, Rig = data.rig,

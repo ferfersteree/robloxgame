@@ -528,6 +528,10 @@ function Config.flightTime(d: number): number
 end
 
 function Config.zoneFor(d: number): number
+	-- Зоны 20-25 откроются, когда поднимут MAX_THROW_DISTANCE (и появятся копья нужных ступеней и местность)
+	if Config.MAX_THROW_DISTANCE and d >= Config.MAX_THROW_DISTANCE then
+		d = Config.MAX_THROW_DISTANCE - 0.001
+	end
 	for i = #Config.ZONES, 1, -1 do
 		if d >= Config.ZONES[i].from then
 			return i
