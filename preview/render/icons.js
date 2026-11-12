@@ -101,8 +101,10 @@ function frame(group,yawDeg,w,h,pre){
   const cam=new THREE.PerspectiveCamera(30,w/h,.1,1000);cam.position.set(0,r*.35,-dist);cam.lookAt(0,0,0);
   return {scene,cam};
 }
-window.renderItem=function(name,w,h,geo){
-  let g,yaw=-28,pre=null;
+window.renderItem=function(name,w,h,geo,opt){
+  opt=opt||{};let g,yaw=-28,pre=null;
+  if(opt.geo){g=fromGeo(geo[opt.geo],opt.rainbow);yaw=opt.yaw;if(opt.rz!==undefined)pre=new THREE.Matrix4().makeRotationZ(opt.rz*D);
+  } else
   if(name==='spear'){g=fromGeo(geo.spear);pre=new THREE.Matrix4().makeRotationZ(-42*D);yaw=20}
   else if(name==='charm'){g=fromGeo(geo.rabbit,true)}
   else g=buildIcon(name);

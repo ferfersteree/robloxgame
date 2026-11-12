@@ -19,9 +19,13 @@ Economy still runs on the client (`Config.BACKEND = "Demo"`); moving it to the s
 ## V18 — Sky Shop (new look)
 Open `SpearHunt V18 - Sky Shop.rbxl`. Only `StarterPlayerScripts/Client/Shop` changed; prices, purchases, saving and boosts are untouched. The plain source is in `source/StarterPlayer/StarterPlayerScripts/Client/Shop.luau`.
 
-Style (from the reference video): sky-blue window with drifting clouds and twinkles, cyan banner with a moving jet pattern, red basket icon and cloud corners, gold-lined section bars (Game Passes / Boosts / Coins), colored product tiles with shine sweeps and bobbing 3D icons, wide purple Starter Pack banner and green Server Luck banner.
+Style (reference video, adapted to the game): a sunny Forest Edge meadow (hills, trees, flowers, sun) inside the window, a cyan banner with a moving pattern, a red basket on a round badge at top left, gold-lined section bars (Game Passes / Boosts / Coins), colored product tiles with shine sweeps and bobbing 3D icons, wide purple Starter Pack and green Server Luck banners.
 
-Motion: a jet tows the "Shop" banner across the window, the sky unrolls, clouds / basket / close button and tiles pop in one by one. Closing folds the sky up and shrinks the banner away. Opening animation plays once; content refreshes do not replay it.
+Game assets used: the flying spear is the real starter spear model, the animals (rabbit, squirrel, hedgehog, fox, dodo, moon rabbit) are the real models from `ReplicatedStorage/Animals`, shown in viewports. Small animals peek out from behind the banner and walk across the meadow.
+
+Motion: the spear tows the "Shop" banner across the window, the meadow unrolls, badge / animals / close button and tiles pop in one by one. Closing folds the meadow up and shrinks the banner away. The opening animation plays once; content refreshes do not replay it.
+
+`preview/shop-preview.html` is an HTML mock of this window; `preview/render/` has the tools that render the game's models to the preview images.
 
 Status: syntax-checked and the file decodes with `rbx_binary`, but it has not been run in Studio. If V18 fails to open, paste `source/.../Shop.luau` into `Client/Shop` of V17.
 

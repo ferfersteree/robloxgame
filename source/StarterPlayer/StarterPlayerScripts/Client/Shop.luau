@@ -33,7 +33,8 @@ local Theme = require(script.Parent.Theme)
 -- Палитра окна: «небо» — голубой градиент, облака, циановая шапка-баннер.
 -- Ключи winLine/winGlow/deepRed/cream/... нужны экрану «получено» (unlock).
 local K = {
-	skyTop = rgb(132, 214, 255), skyMid = rgb(74, 166, 248), skyBot = rgb(38, 108, 218),
+	skyTop = rgb(104, 196, 255), skyMid = rgb(190, 234, 255), skyBot = rgb(104, 188, 78), -- луг Forest Edge: небо над зелёными холмами
+	hill1 = rgb(132, 210, 92), hill2 = rgb(100, 186, 76), hill3 = rgb(78, 160, 62), trunk = rgb(122, 78, 40), leaf = rgb(58, 142, 70),
 	frame = rgb(12, 36, 104), frameGlow = rgb(176, 232, 255),
 	headTop = rgb(96, 228, 255), headBot = rgb(24, 132, 236), headPat = rgb(205, 246, 255),
 	cloud = rgb(255, 255, 255), cloudEdge = rgb(150, 208, 250),
@@ -518,33 +519,78 @@ local function sparkle(list: { Anim }, parent: Instance, x: number, y: number, s
 	end)
 end
 
--- Облачко из кругов с голубой обводкой
-local function cloudShape(parent: Instance, w: number, z: number): Frame
+-- Зверёк из игры (настоящая модель из ReplicatedStorage.Animals) во вьюпорте; yaw: 90 — смотрит вправо, -18 — анфас
+local function animalView(parent: Instance, id: string, yawDeg: number, w: number, h: number): Frame
 	local f = Instance.new("Frame")
+	f.Name = "Animal_" .. id
 	f.BackgroundTransparency = 1
-	f.Size = UDim2.fromOffset(w, w * 0.58)
-	f.ZIndex = z
-	local function blob(xf: number, yf: number, wf: number, hf: number, col: Color3, grow: number, zz: number)
-		local c = Instance.new("Frame")
-		c.BorderSizePixel = 0
-		c.BackgroundColor3 = col
-		c.Size = UDim2.fromOffset(wf * w + grow * 2, hf * w + grow * 2)
-		c.Position = UDim2.fromOffset(xf * w - grow, yf * w - grow)
-		c.ZIndex = zz
-		UI.corner(0.5, true).Parent = c
-		c.Parent = f
-	end
-	local specs = { { 0.02, 0.3, 0.36 }, { 0.17, 0.08, 0.46 }, { 0.44, 0.0, 0.52 }, { 0.66, 0.24, 0.34 } }
-	for pass = 1, 2 do
-		local col = pass == 1 and K.cloudEdge or K.cloud
-		local grow = pass == 1 and 3 or 0
-		for _, s in specs do
-			blob(s[1], s[2], s[3], s[3], col, grow, z + pass - 1)
-		end
-		blob(0.05, 0.3, 0.88, 0.26, col, grow, z + pass - 1)
-	end
+	f.Size = UDim2.fromOffset(w, h)
 	f.Parent = parent
+	local ok, err = pcall(function()
+		local m = Card.model(id)
+		if m then
+			UI.viewport(m, nil, math.rad(yawDeg), 0).Parent = f
+		end
+	end)
+	if not ok then
+		warn("[Shop] animal " .. id .. ": " .. tostring(err))
+	end
 	return f
+end
+
+-- Луг Forest Edge: солнце, холмы, деревья, цветы и зверьки, неспешно идущие вдоль холмов
+local function buildMeadow(o: Open, sky: Frame)
+	local function blob(pos: Vector2, size: Vector2, col: Color3, z: number): Frame
+		local b = Instance.new("Frame")
+		b.BorderSizePixel = 0
+		b.BackgroundColor3 = col
+		b.Position = UDim2.fromOffset(pos.X, pos.Y)
+		b.Size = UDim2.fromOffset(size.X, size.Y)
+		b.ZIndex = z
+		UI.corner(0.5, true).Parent = b
+		b.Parent = sky
+		return b
+	end
+	local sun = UI.glow(sky, rgb(255, 246, 176), 300, 0.3)
+	sun.Position = UDim2.fromOffset(BW - 120, 70)
+	sun.ZIndex = 1
+	blob(Vector2.new(-140, 300), Vector2.new(880, 520), K.hill1, 1)
+	blob(Vector2.new(360, 350), Vector2.new(700, 460), K.hill2, 1)
+	blob(Vector2.new(-320, 420), Vector2.new(900, 400), K.hill3, 1)
+	-- деревья: ствол и круглая крона
+	for i, t in { { 60, 292 }, { 150, 318 }, { 560, 330 }, { 680, 298 }, { 430, 346 } } do
+		local s = 0.8 + (i % 3) * 0.18
+		local trunk = Instance.new("Frame")
+		trunk.BorderSizePixel = 0
+		trunk.BackgroundColor3 = K.trunk
+		trunk.Size = UDim2.fromOffset(8 * s, 26 * s)
+		trunk.Position = UDim2.fromOffset(t[1] + 18 * s, t[2] + 30 * s)
+		trunk.ZIndex = 1
+		trunk.Parent = sky
+		blob(Vector2.new(t[1], t[2]), Vector2.new(46 * s, 46 * s), K.leaf, 1)
+		blob(Vector2.new(t[1] + 14 * s, t[2] - 12 * s), Vector2.new(34 * s, 34 * s), K.leaf, 1)
+	end
+	-- цветы
+	local flowers = { rgb(255, 255, 255), rgb(255, 226, 90), rgb(255, 150, 190) }
+	for i = 1, 16 do
+		blob(Vector2.new((i * 53) % (BW - 10), 380 + (i * 37) % 150), Vector2.new(7, 7), flowers[i % 3 + 1], 1)
+	end
+	-- зверьки идут по лугу вправо, подпрыгивая
+	local walkers = { { "rabbit", 54 }, { "squirrel", 62 }, { "hedgehog", 56 }, { "fox", 66 }, { "dodo", 60 }, { "moonrabbit", 58 } }
+	for i, w in walkers do
+		local f = animalView(sky, w[1], 90, w[2] + 26, w[2])
+		f.ZIndex = 2
+		local span = BW + 260
+		local off = i * 131
+		local base = 330 + (i % 3) * 58
+		reg(o.anim, f, function(t)
+			local x = (off + t * (14 + i * 3)) % span - 130
+			f.Position = UDim2.fromOffset(x, base - math.abs(math.sin(t * 4 + i * 1.7)) * 6)
+		end)
+	end
+	for i = 1, 9 do
+		sparkle(o.anim, sky, (i * 0.137) % 1, 0.08 + ((i * 0.31) % 0.4), 10 + (i % 3) * 4, i * 1.9, 1)
+	end
 end
 
 -- Красная корзинка (значок магазина)
@@ -576,55 +622,63 @@ local function basketIcon(parent: Instance, z: number): Frame
 	return h
 end
 
--- Истребитель с языком пламени и тросом для баннера
-local function jet(parent: Instance, o: Open): Frame
+-- Летящее копьё (настоящая модель из игры) тянет баннер: острие вправо, позади искры и верёвка
+local function flySpear(parent: Instance, o: Open): Frame
 	local j = Instance.new("Frame")
-	j.Name = "Jet"
+	j.Name = "FlyingSpear"
 	j.BackgroundTransparency = 1
-	j.Size = UDim2.fromOffset(128, 44)
+	j.Size = UDim2.fromOffset(150, 150)
 	j.AnchorPoint = Vector2.new(0, 0.5)
 	j.ZIndex = 20
 	local rope = Instance.new("Frame")
 	rope.BorderSizePixel = 0
 	rope.BackgroundColor3 = K.white
 	rope.Size = UDim2.fromOffset(34, 3)
-	rope.Position = UDim2.fromOffset(-30, 20)
+	rope.Position = UDim2.fromOffset(-26, 73)
 	rope.ZIndex = 20
 	rope.Parent = j
-	local flame = Instance.new("Frame")
-	flame.BorderSizePixel = 0
-	flame.BackgroundColor3 = rgb(255, 170, 40)
-	flame.Size = UDim2.fromOffset(34, 9)
-	flame.Position = UDim2.fromOffset(2, 18)
-	flame.ZIndex = 20
-	UI.corner(0.5, true).Parent = flame
-	local fg = Instance.new("UIGradient")
-	fg.Color = ColorSequence.new(rgb(255, 244, 170), rgb(255, 120, 30))
-	fg.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.5, 0.15), NumberSequenceKeypoint.new(1, 0) })
-	fg.Parent = flame
-	flame.Parent = j
-	local function piece(size: Vector2, pos: Vector2, rot: number, top: Color3, bot: Color3, z: number, round: boolean): Frame
-		local p = box({ Top = top, Bottom = bot, Line = rgb(44, 66, 104), LineThick = 2, Radius = round and 20 or 3, Size = UDim2.fromOffset(size.X, size.Y), Position = UDim2.fromOffset(pos.X, pos.Y), Rotation = rot, ZIndex = z, Parent = j })
-		return p
+	for i, y in { 58, 90 } do
+		local l = Instance.new("Frame")
+		l.BorderSizePixel = 0
+		l.BackgroundColor3 = K.white
+		l.BackgroundTransparency = 0.45
+		l.Size = UDim2.fromOffset(46 - i * 10, 3)
+		l.Position = UDim2.fromOffset(-60 + i * 10, y)
+		l.ZIndex = 20
+		UI.corner(2).Parent = l
+		l.Parent = j
 	end
-	piece(Vector2.new(18, 22), Vector2.new(28, 2), -22, rgb(150, 178, 214), rgb(98, 124, 168), 20, false) -- хвост
-	piece(Vector2.new(46, 10), Vector2.new(44, 24), 24, rgb(150, 178, 214), rgb(98, 124, 168), 20, false) -- дальнее крыло
-	piece(Vector2.new(92, 17), Vector2.new(30, 14), 0, rgb(246, 250, 255), rgb(150, 176, 210), 21, true) -- фюзеляж
-	piece(Vector2.new(20, 8), Vector2.new(84, 16), 0, rgb(40, 96, 190), rgb(14, 40, 110), 22, true) -- кабина
-	piece(Vector2.new(48, 11), Vector2.new(50, 22), 28, rgb(226, 238, 252), rgb(120, 148, 190), 22, false) -- ближнее крыло
-	reg(o.anim, flame, function(t)
-		flame.Size = UDim2.fromOffset(28 + math.sin(t * 60) * 7, 8 + math.sin(t * 47) * 2)
+	local ok, err = pcall(function()
+		local tpl = RS.Assets.Spears:FindFirstChild(SHOP.STARTER.spear)
+		if not tpl or not tpl:IsA("Model") then
+			return
+		end
+		local holder = Instance.new("Model")
+		holder.WorldPivot = CFrame.new()
+		local s = tpl:Clone()
+		s:PivotTo(CFrame.Angles(0, 0, math.rad(90)))
+		s.Parent = holder
+		local vp = UI.viewport(holder, nil, 0, 0)
+		vp.ZIndex = 21
+		vp.Parent = j
+		holder:Destroy()
 	end)
+	if not ok then
+		warn("[Shop] flying spear: " .. tostring(err))
+	end
+	sparkle(o.anim, j, -0.05, 0.5, 16, 0.4, 22)
+	sparkle(o.anim, j, -0.2, 0.4, 12, 1.9, 22)
+	sparkle(o.anim, j, -0.14, 0.62, 12, 3.1, 22)
 	j.Parent = parent
 	return j
 end
 
--- Анимация открытия: самолёт тянет баннер «Shop», потом разворачивается небо и выпрыгивают плитки
+-- Анимация открытия: копьё тянет баннер «Shop», потом разворачивается небо и выпрыгивают плитки
 local function playIntro(o: Open, body: Frame, mask: Frame, ribbon: Frame, popTargets: { { any } })
 	local function alive(): boolean
 		return open == o and body.Parent ~= nil
 	end
-	local j = jet(body, o)
+	local j = flySpear(body, o)
 	j.Position = UDim2.fromOffset(-150, 33)
 	local lin = Enum.EasingStyle.Linear
 	UI.tween(j, 0.14, { Position = UDim2.fromOffset(34, 33) }, lin)
@@ -1013,21 +1067,31 @@ function Shop.open()
 		end
 	end
 
-	UI.label({ Text = "Shop", TextSize = 42, Color = K.white, StrokeColor = K.titleLine, Stroke = 4, Size = UDim2.fromOffset(200, HEAD_H), Position = UDim2.fromOffset(78, 0), XAlign = Enum.TextXAlignment.Left, ZIndex = 3, Parent = ribbon })
+	UI.label({ Text = "Shop", TextSize = 42, Color = K.white, StrokeColor = K.titleLine, Stroke = 4, Size = UDim2.fromOffset(200, HEAD_H), Position = UDim2.fromOffset(88, 0), XAlign = Enum.TextXAlignment.Left, ZIndex = 3, Parent = ribbon })
 	local pillBox = box({ Top = rgb(12, 52, 130), Bottom = rgb(20, 78, 170), Line = K.frame, LineThick = 2, Radius = 9, Size = UDim2.fromOffset(170, 38), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -66, 0.5, 0), ZIndex = 3, Parent = ribbon })
 	local coin = box({ Top = rgb(255, 233, 138), Bottom = rgb(240, 168, 0), Line = rgb(107, 61, 0), LineThick = 2, Radius = 13, Size = UDim2.fromOffset(26, 26), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 8, 0.5, 0), ZIndex = 4, Parent = pillBox })
 	UI.label({ Text = "$", TextSize = 17, Stroke = 2, StrokeColor = rgb(107, 61, 0), Size = UDim2.fromScale(1, 1), ZIndex = 5, Parent = coin })
 	o.pill = UI.label({ Text = "0", TextSize = 22, Stroke = 2, StrokeColor = K.frame, Size = UDim2.new(1, -46, 1, 0), Position = UDim2.fromOffset(40, 0), ZIndex = 4, Parent = pillBox })
 
-	local cloudL = holder(head, UDim2.fromOffset(100, 58), UDim2.fromOffset(20, 15), 2)
-	cloudL.AnchorPoint = Vector2.new(0.5, 0.5)
-	cloudShape(cloudL, 100, 2)
-	local cloudR = holder(head, UDim2.fromOffset(100, 58), UDim2.fromOffset(BW - 24, 15), 2)
-	cloudR.AnchorPoint = Vector2.new(0.5, 0.5)
-	cloudShape(cloudR, 100, 2)
-	local basket = basketIcon(head, 4)
+	-- Зверьки выглядывают из-за баннера (стоят позади него, видны только головы и уши)
+	local peekers = {}
+	for _, p in { { "squirrel", 318 }, { "moonrabbit", BW - 128 } } do
+		local a = animalView(head, p[1], -18, 96, 96)
+		a.AnchorPoint = Vector2.new(0.5, 1)
+		a.Position = UDim2.fromOffset(p[2] + 48, 32)
+		a.ZIndex = 0
+		table.insert(peekers, a)
+		local base = a.Position
+		reg(o.anim, a, function(t)
+			a.Position = UDim2.fromOffset(base.X.Offset, base.Y.Offset + math.sin(t * 1.8 + p[2]) * 3)
+		end)
+	end
+	-- Корзинка на круглой плашке слева сверху: ничем не перекрыта
+	local badgeRim = box({ Top = K.frame, Bottom = K.frame, Radius = 34, Size = UDim2.fromOffset(68, 68), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(38, 33), ZIndex = 5, Parent = head })
+	local badge = box({ Top = rgb(130, 236, 255), Bottom = rgb(30, 140, 240), Line = K.white, LineThick = 3, Radius = 30, Size = UDim2.fromOffset(60, 60), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), ZIndex = 1, Parent = badgeRim })
+	local basket = basketIcon(badge, 3)
 	basket.AnchorPoint = Vector2.new(0.5, 0.5)
-	basket.Position = UDim2.fromOffset(40, 31)
+	basket.Position = UDim2.fromScale(0.5, 0.52)
 	-- Кнопка закрытия лежит в обёртке: у самой кнопки уже есть свой UIScale (наведение), второй на неё не вешаем
 	local closeHold = holder(head, UDim2.fromOffset(40, 40), UDim2.fromOffset(BW - 34, 26), 5)
 	closeHold.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -1035,34 +1099,16 @@ function Shop.open()
 		closeAnimated(o)
 	end)
 	close.Parent = closeHold
-	reg(o.anim, cloudL, function(t)
-		cloudL.Position = UDim2.fromOffset(20, 15 + math.sin(t * 1.3) * 2.5)
-	end)
-	reg(o.anim, cloudR, function(t)
-		cloudR.Position = UDim2.fromOffset(BW - 24, 15 + math.sin(t * 1.3 + 2) * 2.5)
-	end)
 	reg(o.anim, basket, function(t)
 		basket.Rotation = -8 + math.sin(t * 2) * 4
 	end)
 
-	-- Облака дрейфуют по небу, искорки мерцают
-	local drift = { { 120, 0.5, 0.78 }, { 300, 0.35, 0.88 }, { 150, 0.7, 0.68 }, { 220, 0.45, 0.93 }, { 100, 0.6, 0.55 } }
-	for i, d in drift do
-		local c = cloudShape(sky, d[1], 1)
-		local span = BW + d[1] + 80
-		local off = i * 173
-		reg(o.anim, c, function(t)
-			c.Position = UDim2.fromOffset((off + t * (6 + i * 2.5)) % span - d[1] - 40, 20 + (i - 1) * 86)
-		end)
-	end
-	for i = 1, 9 do
-		sparkle(o.anim, sky, (i * 0.137) % 1, 0.1 + ((i * 0.31) % 0.8), 10 + (i % 3) * 4, i * 1.9, 1)
-	end
+	buildMeadow(o, sky)
 
 	open = o
 	renderBody(o)
 	refreshLive(o)
-	playIntro(o, body, mask, ribbon, { { cloudL, 0.55 }, { cloudR, 0.6 }, { basket, 0.68 }, { closeHold, 0.75 } })
+	playIntro(o, body, mask, ribbon, { { badgeRim, 0.5 }, { peekers[1], 0.62 }, { peekers[2], 0.68 }, { closeHold, 0.75 } })
 
 	-- Единый цикл анимации; живёт, пока окно открыто
 	local conn: RBXScriptConnection? = nil
