@@ -59,6 +59,41 @@ local TILE = {
 	coins1 = rgb(132, 214, 36), coins2 = rgb(132, 214, 36), coins3 = rgb(40, 190, 140), coins4 = rgb(80, 130, 255),
 }
 
+-- Подписи под товаром читаются за секунду: крупно выгода, мелко срок или условие.
+local PITCH: { [string]: { string } } = {
+	charm = { "LUCK ×2", "forever" },
+	purse = { "COINS ×2", "every sale, forever" },
+	wrap = { "WRAP ALL", "one bow, whole bag" },
+	bag = { "+60 SLOTS", "sell from anywhere" },
+	titan = { "STRENGTH ×2", "every rep" },
+	vip = { "+20% COINS", "+25% XP · gold tag" },
+	luck30 = { "LUCK ×2", "30 min" },
+	coins30 = { "COINS ×2", "30 min" },
+	brew30 = { "4 BOOSTS", "30 min" },
+	server15 = { "LUCK ×2 FOR EVERYONE", "15 min · whole server" },
+}
+
+-- Мультяшные иллюстрации магазина (папка shop-art/ в репозитории). Загрузите PNG в Creator Hub как Image
+-- и вставьте номер: "rbxassetid://123456789". Пока пусто — вместо картинки показывается 3D-модель.
+-- Ключи: id товара, "spear" (Starter Pack), "flyspear", "animal_<id>_R" (идёт вправо), "animal_<id>_F" (анфас).
+local ART: { [string]: string } = {
+	-- charm = "rbxassetid://0",
+}
+local function artImage(parent: Instance, key: string): ImageLabel?
+	local id = ART[key]
+	if not id or id == "" then
+		return nil
+	end
+	local img = Instance.new("ImageLabel")
+	img.BackgroundTransparency = 1
+	img.Image = id
+	img.ScaleType = Enum.ScaleType.Fit
+	img.Size = UDim2.fromScale(1, 1)
+	img.ZIndex = 2
+	img.Parent = parent
+	return img
+end
+
 ---------------------------------------------------------------------
 -- 3D-иконки
 ---------------------------------------------------------------------
@@ -205,6 +240,10 @@ end
 
 -- Ставит иконку товара в parent. Копья и звери берутся из самой игры.
 local function icon(parent: Instance, kind: string, spin: number?)
+	-- нарисованная иллюстрация (ART) важнее 3D-модели
+	if artImage(parent, kind:sub(1, 6) == "spear:" and "spear" or kind) then
+		return
+	end
 	local ok, err = pcall(function()
 		if kind:sub(1, 6) == "spear:" then
 			local Menus = require(script.Parent.Menus) :: any
@@ -526,6 +565,9 @@ local function animalView(parent: Instance, id: string, yawDeg: number, w: numbe
 	f.BackgroundTransparency = 1
 	f.Size = UDim2.fromOffset(w, h)
 	f.Parent = parent
+	if artImage(f, "animal_" .. id .. (yawDeg > 0 and "_R" or "_F")) then
+		return f
+	end
 	local ok, err = pcall(function()
 		local m = Card.model(id)
 		if m then
@@ -648,7 +690,16 @@ local function flySpear(parent: Instance, o: Open): Frame
 		UI.corner(2).Parent = l
 		l.Parent = j
 	end
+	local flat = artImage(j, "flyspear")
+	if flat then
+		flat.Size = UDim2.fromScale(1, 0.5)
+		flat.Position = UDim2.fromScale(0, 0.25)
+		flat.ZIndex = 21
+	end
 	local ok, err = pcall(function()
+		if flat then
+			return
+		end
 		local tpl = RS.Assets.Spears:FindFirstChild(SHOP.STARTER.spear)
 		if not tpl or not tpl:IsA("Model") then
 			return
@@ -840,7 +891,7 @@ local function renderHero(o: Open, parent: Instance, order: number)
 		icon(holder(tile, UDim2.fromOffset(52, 52), UDim2.fromOffset(4, 8), 2), t[1], 0)
 		UI.label({ Text = t[2], TextSize = 15, Stroke = 2, Wrap = true, Size = UDim2.new(1, -62, 1, -8), Position = UDim2.fromOffset(58, 4), XAlign = Enum.TextXAlignment.Left, ZIndex = 3, Parent = tile })
 	end
-	UI.label({ Text = "One per hunter. Leaves the shop at level " .. tostring(SHOP.STARTER_MAX_LEVEL) .. ".", TextSize = 15, Color = K.white, StrokeColor = K.heroLine, Stroke = 2, Wrap = true, Size = UDim2.new(1, -400, 0, 40), Position = UDim2.fromOffset(170, 128), XAlign = Enum.TextXAlignment.Left, ZIndex = 3, Parent = f })
+	UI.label({ Text = "One per hunter. Leaves the shop at level " .. tostring(SHOP.STARTER_MAX_LEVEL) .. ".", TextSize = 17, Color = K.white, StrokeColor = K.heroLine, Stroke = 2, Wrap = true, Size = UDim2.new(1, -400, 0, 40), Position = UDim2.fromOffset(170, 128), XAlign = Enum.TextXAlignment.Left, ZIndex = 3, Parent = f })
 	buyButton(item, UDim2.fromOffset(200, 42), UDim2.new(1, -212, 0, 126), 22, f).ZIndex = 4
 	table.insert(o.shiny, f)
 	introPop(o, f)
@@ -860,8 +911,10 @@ local function renderBanner(o: Open, parent: Instance, item: any, order: number)
 	icon(art, item.key, 0)
 	bob(o, art, UDim2.fromOffset(12, 10), 3, 1)
 	UI.label({ Text = string.upper(item.name) .. "!", TextSize = 30, Color = K.white, StrokeColor = line, Stroke = 4, Size = UDim2.new(1, -350, 0, 34), Position = UDim2.fromOffset(124, 10), XAlign = Enum.TextXAlignment.Left, ZIndex = 3, Parent = f })
-	UI.label({ Text = item.desc or "", TextSize = 15, Stroke = 2, StrokeColor = line, Wrap = true, Size = UDim2.new(1, -350, 0, 40), Position = UDim2.fromOffset(124, 46), XAlign = Enum.TextXAlignment.Left, YAlign = Enum.TextYAlignment.Top, ZIndex = 3, Parent = f })
-	o.status[item.key] = UI.label({ Text = "", TextSize = 16, Color = K.goldText, Stroke = 2, StrokeColor = line, Size = UDim2.fromOffset(220, 22), Position = UDim2.fromOffset(124, 90), XAlign = Enum.TextXAlignment.Left, ZIndex = 3, Parent = f })
+	local pitch = PITCH[item.key] or { "", "" }
+	UI.label({ Text = pitch[1], TextSize = 25, Color = K.goldText, StrokeColor = line, Stroke = 4, Size = UDim2.new(1, -350, 0, 30), Position = UDim2.fromOffset(124, 46), XAlign = Enum.TextXAlignment.Left, ZIndex = 3, Parent = f })
+	UI.label({ Text = pitch[2], TextSize = 16, Color = K.white, StrokeColor = line, Stroke = 3, Size = UDim2.new(1, -350, 0, 20), Position = UDim2.fromOffset(124, 80), XAlign = Enum.TextXAlignment.Left, ZIndex = 3, Parent = f })
+	o.status[item.key] = UI.label({ Text = "", TextSize = 16, Color = K.goldText, Stroke = 3, StrokeColor = line, Size = UDim2.fromOffset(220, 20), Position = UDim2.fromOffset(124, 98), XAlign = Enum.TextXAlignment.Left, ZIndex = 3, Parent = f })
 	buyButton(item, UDim2.fromOffset(190, 44), UDim2.new(1, -204, 0.5, -24), 22, f).ZIndex = 4
 	table.insert(o.shiny, f)
 	introPop(o, f)
@@ -886,23 +939,25 @@ local function renderTile(o: Open, parent: Instance, item: any, order: number, k
 	UI.corner(8).Parent = plate
 	plate.Parent = f
 	UI.label({ Text = string.upper(item.name), TextSize = 19, Scaled = true, MaxSize = 19, Color = K.white, StrokeColor = line, Size = UDim2.new(1, -16, 0, 24), Position = UDim2.fromOffset(8, 6), ZIndex = 3, Parent = f })
-	local art = holder(f, UDim2.fromOffset(96, 90), UDim2.new(0.5, -48, 0, 34), 2)
+	local art = holder(f, UDim2.fromOffset(112, 92), UDim2.new(0.5, -56, 0, 32), 2)
 	icon(art, item.key, 0)
-	bob(o, art, UDim2.new(0.5, -48, 0, 34), 3, order * 0.9)
+	bob(o, art, UDim2.new(0.5, -56, 0, 32), 3, order * 0.9)
 	if kind == "pack" then
-		UI.label({ Text = "+" .. Num.short(Config.shopCoins(Backend.data, item.k)) .. " Coins", TextSize = 22, Color = K.goldText, StrokeColor = line, Stroke = 3, Size = UDim2.new(1, -14, 0, 28), Position = UDim2.fromOffset(7, 126), ZIndex = 3, Parent = f })
+		UI.label({ Text = "+" .. Num.short(Config.shopCoins(Backend.data, item.k)) .. " COINS", TextSize = 24, Scaled = true, MaxSize = 24, Color = K.goldText, StrokeColor = line, Stroke = 4, Size = UDim2.new(1, -12, 0, 28), Position = UDim2.fromOffset(6, 128), ZIndex = 3, Parent = f })
 		if item.best then
 			local rib = box({ Top = rgb(255, 80, 88), Bottom = rgb(204, 22, 36), Line = rgb(84, 6, 22), LineThick = 2, Radius = 6, Size = UDim2.fromOffset(86, 18), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -8, 0, 36), ZIndex = 5, Parent = f })
 			UI.label({ Text = "BEST VALUE", TextSize = 12, Stroke = 2, Size = UDim2.fromScale(1, 1), ZIndex = 6, Parent = rib })
 		end
 	else
-		UI.label({ Text = item.desc or "", TextSize = 13, Stroke = 2, StrokeColor = line, Wrap = true, Size = UDim2.new(1, -14, 0, 30), Position = UDim2.fromOffset(7, 126), YAlign = Enum.TextYAlignment.Top, ZIndex = 3, Parent = f })
+		local pitch = PITCH[item.key] or { string.upper(item.name), "" }
+		UI.label({ Text = pitch[1], TextSize = 24, Scaled = true, MaxSize = 24, Color = K.goldText, StrokeColor = line, Stroke = 4, Size = UDim2.new(1, -12, 0, 28), Position = UDim2.fromOffset(6, 124), ZIndex = 3, Parent = f })
+		UI.label({ Text = pitch[2], TextSize = 14, Scaled = true, MaxSize = 14, Color = K.white, StrokeColor = line, Stroke = 3, Size = UDim2.new(1, -12, 0, 18), Position = UDim2.fromOffset(6, 152), ZIndex = 3, Parent = f })
 	end
 	if item.pass and Perks.has(item.key) then
-		local owned = box({ Top = rgb(255, 224, 102), Bottom = rgb(245, 163, 0), Line = rgb(74, 38, 0), LineThick = 2, Radius = 8, Size = UDim2.new(1, -20, 0, 34), Position = UDim2.fromOffset(10, 160), ZIndex = 3, Parent = f })
+		local owned = box({ Top = rgb(255, 224, 102), Bottom = rgb(245, 163, 0), Line = rgb(74, 38, 0), LineThick = 2, Radius = 8, Size = UDim2.new(1, -20, 0, 34), Position = UDim2.fromOffset(10, 172), ZIndex = 3, Parent = f })
 		UI.label({ Text = "OWNED", TextSize = 19, StrokeColor = rgb(107, 61, 0), Size = UDim2.fromScale(1, 1), Parent = owned })
 	else
-		buyButton(item, UDim2.new(1, -20, 0, 34), UDim2.fromOffset(10, 158), 19, f).ZIndex = 4
+		buyButton(item, UDim2.new(1, -20, 0, 34), UDim2.fromOffset(10, 172), 19, f).ZIndex = 4
 	end
 	if kind == "boost" then
 		o.status[item.key] = UI.label({ Text = "", TextSize = 13, Color = K.goldText, Stroke = 2, StrokeColor = line, Size = UDim2.new(1, -12, 0, 16), Position = UDim2.fromOffset(6, 34), XAlign = Enum.TextXAlignment.Left, ZIndex = 4, Parent = f })
@@ -931,7 +986,7 @@ local function renderBody(o: Open)
 		renderHero(o, scroll, nextOrder())
 	end
 	sectionBar(o, scroll, "Game Passes", nextOrder())
-	local passes = grid(scroll, 3, 200, nextOrder())
+	local passes = grid(scroll, 3, 212, nextOrder())
 	for i, it in SHOP.PASSES do
 		renderTile(o, passes, it, i, "pass")
 	end
@@ -951,12 +1006,12 @@ local function renderBody(o: Open)
 	if server then
 		renderBanner(o, scroll, server, nextOrder())
 	end
-	local boosts = grid(scroll, 3, 200, nextOrder())
+	local boosts = grid(scroll, 3, 212, nextOrder())
 	for i, it in brews do
 		renderTile(o, boosts, it, i, "boost")
 	end
 	sectionBar(o, scroll, "Coins", nextOrder())
-	local coins = grid(scroll, 4, 200, nextOrder())
+	local coins = grid(scroll, 4, 212, nextOrder())
 	for i, it in packs do
 		renderTile(o, coins, it, i, "pack")
 	end
