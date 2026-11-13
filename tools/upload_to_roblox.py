@@ -102,12 +102,15 @@ def wait_asset(key, op_id, timeout=300):
                 state = (r.get("moderationResult") or {}).get("moderationState", "")
                 if "REJECTED" in state:
                     raise RuntimeError("moderation rejected the asset")
-                return str(r.get("assetId"))
+                asset_id = r.get("assetId")
+                if not asset_id:
+                    raise RuntimeError("Roblox finished but returned no asset id")
+                return str(asset_id)
         time.sleep(2)
     raise RuntimeError("timed out waiting for Roblox")
 
 
-def decal_to_image(decal_id, tries=6):
+def decal_to_image(decal_id, tries=3):
     """ImageLabel needs the image id, not the decal id. The public asset delivery answer contains it."""
     for _ in range(tries):
         req = urllib.request.Request(f"{DELIVERY}/v1/asset/?id={decal_id}", headers={"User-Agent": "spearhunt-upload"})
@@ -116,7 +119,7 @@ def decal_to_image(decal_id, tries=6):
             m = re.search(rb"id=(\d+)", resp)
             if m:
                 return m.group(1).decode()
-        time.sleep(4)
+        time.sleep(3)
     return None
 
 
@@ -149,24 +152,45 @@ def main():
 
     os.makedirs(OUT, exist_ok=True)
     cache_path = os.path.join(OUT, "uploaded.json")
-    done = json.load(open(cache_path)) if os.path.exists(cache_path) else {}
+    done, decals = {}, {}
+    if os.path.exists(cache_path):
+        try:
+            cache = json.load(open(cache_path, encoding="utf-8"))
+            done, decals = dict(cache.get("ids", {})), dict(cache.get("decals", {}))
+        except (ValueError, OSError):
+            print("out/uploaded.json is unreadable; starting the list again (already uploaded files will be uploaded twice)")
+
+    def save():
+        tmp = cache_path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump({"ids": done, "decals": decals}, f, indent=1)
+        os.replace(tmp, cache_path)
+
     failed = []
     for i, (kind, name, path) in enumerate(items, 1):
         if name in done:
             print(f"[{i}/{len(items)}] {name}: already uploaded ({done[name]})")
             continue
         try:
-            print(f"[{i}/{len(items)}] {name}: uploading")
-            op = upload(key, creator, kind, path, "SpearHunt " + name)
-            asset_id = wait_asset(key, op)
+            if name in decals:
+                print(f"[{i}/{len(items)}] {name}: uploaded earlier, looking up its image id again")
+                asset_id = decals[name]
+            else:
+                print(f"[{i}/{len(items)}] {name}: uploading")
+                op = upload(key, creator, kind, path, "SpearHunt " + name)
+                asset_id = wait_asset(key, op)
             if kind == "art":
+                decals[name] = asset_id
+                save()
                 image = decal_to_image(asset_id)
-                if image:
-                    asset_id = image
-                else:
-                    print("    could not resolve the image id yet; kept the decal id (it may need a re-run later)")
+                if not image:
+                    print("    the image id is not available yet (Roblox may still be checking the picture). Run the same command again in a few minutes.")
+                    failed.append(name)
+                    continue
+                asset_id = image
+                decals.pop(name, None)
             done[name] = asset_id
-            json.dump(done, open(cache_path, "w"), indent=1)
+            save()
             print(f"    ok -> rbxassetid://{asset_id}")
         except Exception as e:  # keep going, report at the end
             print(f"    FAILED: {e}")

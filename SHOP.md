@@ -25,7 +25,7 @@ Labels: every product has a one-glance label. The big gold line is the benefit (
 
 Art: `shop-art/` holds cartoon illustrations (thick outline, toon shading, glints) redrawn from the game's own models: the starter spear, the zone-1 animals and the items the shop code builds. Roblox cannot load them from the repo, so they have to be uploaded once:
 1. Creator Hub > Assets (Creations) > upload every PNG from `shop-art/` as an **Image**.
-2. Copy each asset id into the `ART` table at the top of `Shop.luau`, for example `charm = "rbxassetid://123456789"`. Keys are the file names without `.png`; animals use `animal_rabbit_R`, `animal_squirrel_F` and so on.
+2. Put each asset id into `Client/AudioIds` under the key `art_<file name without .png>`, for example `art_charm = "rbxassetid://123456789"` (`tools/upload_to_roblox.py` does steps 1 and 2 for you).
 3. Until an id is set, that item falls back to the live 3D model, so nothing breaks.
 
 Motion: the spear tows the "Shop" banner across the window, the meadow unrolls, badge / animals / close button and tiles pop in one by one. Closing folds the meadow up and shrinks the banner away. The opening animation plays once; content refreshes do not replay it.
