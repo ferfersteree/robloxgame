@@ -18,5 +18,7 @@ python tools\upload_to_roblox.py --user-id ВАШ_ID
 4. Скрипт загрузит 72 звука и 24 картинки (минуты; Roblox проверяет аудио) и создаст `out\AudioIds.luau`.
 5. В Studio откройте `StarterPlayer → StarterPlayerScripts → Client → AudioIds`, замените весь текст на содержимое `out\AudioIds.luau`, сохраните игру (Ctrl+S).
 
+6. Если скрипт написал, что картинки ждут шага в Studio, откройте в Studio **View → Command Bar**, вставьте туда содержимое `out\resolve_art_in_studio.lua` и нажмите Enter (один раз): оно заменит номера картинок в `AudioIds`. Снова сохраните игру (Ctrl+S).
+
 Если скрипт написал `FAILED` для какого-то файла, запустите ту же команду ещё раз: готовое он пропускает.
 Описания: `MERGE.md` (существа), `SOUND.md` (звук, таблички, коллизии), `SHOP.md` (магазин).

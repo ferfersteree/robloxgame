@@ -123,6 +123,41 @@ def decal_to_image(decal_id, tries=3):
     return None
 
 
+RESOLVER = """-- Вставьте в Studio: View > Command Bar, Enter. Один раз, после вставки AudioIds.
+-- Превращает номера загруженных картинок (декалей) в номера изображений, которые нужны ImageLabel.
+local DECALS = {
+__ROWS__}
+local InsertService = game:GetService("InsertService")
+local mod = game:GetService("StarterPlayer").StarterPlayerScripts.Client.AudioIds
+local src = mod.Source
+local fixed, failed = 0, {}
+for key, decalId in DECALS do
+	local image = nil
+	local ok, model = pcall(function()
+		return InsertService:LoadAsset(decalId)
+	end)
+	if ok and model then
+		local decal = model:FindFirstChildWhichIsA("Decal", true)
+		if decal then
+			local tex = tostring(decal.Texture)
+			image = tex:match("id=(%d+)") or tex:match("rbxassetid://(%d+)")
+		end
+		model:Destroy()
+	end
+	local old = key .. ' = ""'
+	local a, b = src:find(old, 1, true)
+	if image and a then
+		src = src:sub(1, a - 1) .. key .. ' = "rbxassetid://' .. image .. '"' .. src:sub(b + 1)
+		fixed += 1
+	else
+		table.insert(failed, key)
+	end
+end
+mod.Source = src
+print(string.format("Картинок исправлено: %d. Не вышло: %s", fixed, #failed > 0 and table.concat(failed, ", ") or "нет"))
+"""
+
+
 def main():
     ap = argparse.ArgumentParser()
     who = ap.add_mutually_exclusive_group(required=True)
@@ -156,7 +191,12 @@ def main():
     if os.path.exists(cache_path):
         try:
             cache = json.load(open(cache_path, encoding="utf-8"))
-            done, decals = dict(cache.get("ids", {})), dict(cache.get("decals", {}))
+            if "ids" in cache or "decals" in cache:
+                done, decals = dict(cache.get("ids", {})), dict(cache.get("decals", {}))
+            else:
+                # старый формат: {имя: номер}. Картинки там записаны номерами декалей, их нужно пересчитать
+                done = {k: v for k, v in cache.items() if not k.startswith("art_")}
+                decals = {k: v for k, v in cache.items() if k.startswith("art_")}
         except (ValueError, OSError):
             print("out/uploaded.json is unreadable; starting the list again (already uploaded files will be uploaded twice)")
 
@@ -167,6 +207,7 @@ def main():
         os.replace(tmp, cache_path)
 
     failed = []
+    pending = []
     for i, (kind, name, path) in enumerate(items, 1):
         if name in done:
             print(f"[{i}/{len(items)}] {name}: already uploaded ({done[name]})")
@@ -184,8 +225,8 @@ def main():
                 save()
                 image = decal_to_image(asset_id)
                 if not image:
-                    print("    the image id is not available yet (Roblox may still be checking the picture). Run the same command again in a few minutes.")
-                    failed.append(name)
+                    print("    image id not available from here; it will be resolved inside Studio (see the end of this run)")
+                    pending.append(name)
                     continue
                 asset_id = image
                 decals.pop(name, None)
@@ -210,9 +251,17 @@ def main():
     lua = os.path.join(OUT, "AudioIds.luau")
     open(lua, "w", encoding="utf-8").write("\n".join(lines) + "\n")
     print(f"\nWrote {lua}  ({len([k for k in keys if k in done])} of {len(keys)} ids)")
+    if decals:
+        resolver = os.path.join(OUT, "resolve_art_in_studio.lua")
+        rows = "".join(f"\t{k} = {v},\n" for k, v in sorted(decals.items()))
+        open(resolver, "w", encoding="utf-8").write(RESOLVER.replace("__ROWS__", rows))
+        print(f"{len(decals)} pictures are uploaded but their image ids could not be read from here.")
+        print(f"After you paste AudioIds.luau into Studio, paste {resolver} into View > Command Bar and press Enter (once).")
     if failed:
         print("Failed (run the same command again to retry them):", ", ".join(failed))
         sys.exit(1)
+    if pending:
+        print(f"{len(pending)} pictures wait for the Studio step above.")
 
 
 if __name__ == "__main__":
