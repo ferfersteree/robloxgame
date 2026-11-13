@@ -12,7 +12,7 @@ Config.MAX_PLAYERS = 6
 Config.WALK_SPEED = 20
 Config.GROUND_Y = 0.1
 Config.FOREST_ORIGIN_Z = -3
-Config.MAX_THROW_DISTANCE = 5800
+Config.MAX_THROW_DISTANCE = 12700
 -- Caps keep the new long-range progression from guaranteeing rare catches.
 Config.RARITY_CHANCE_CAPS = { [2] = 0.35, [3] = 0.22, [4] = 0.12, [5] = 0.025, [6] = 0.002 }
 
@@ -48,7 +48,7 @@ Config.TIERS = {
 
 Config.THROW = {
 	rangeK = 8, -- дальность = rangeK·√Сила (в студах)
-	maxRange = 5800,
+	maxRange = 12700,
 	maxFlightTime = 6.5,
 	minFrac = 0.3, -- при ×1 летит на 30% дальности, при ×100 — на 100%
 	flightBase = 0.7,
