@@ -73,12 +73,24 @@ local PITCH: { [string]: { string } } = {
 	server15 = { "LUCK ×2 FOR EVERYONE", "15 min · whole server" },
 }
 
--- Мультяшные иллюстрации магазина (папка shop-art/ в репозитории). Загрузите PNG в Creator Hub как Image
--- и вставьте номер: "rbxassetid://123456789". Пока пусто — вместо картинки показывается 3D-модель.
+-- Мультяшные иллюстрации магазина (папка shop-art/ в репозитории). Номера берутся из Client/AudioIds (art_<имя>).
+-- Пока пусто — вместо картинки показывается 3D-модель.
 -- Ключи: id товара, "spear" (Starter Pack), "flyspear", "animal_<id>_R" (идёт вправо), "animal_<id>_F" (анфас).
-local ART: { [string]: string } = {
-	-- charm = "rbxassetid://0",
-}
+local ART: { [string]: string } = {}
+do
+	-- номера картинок лежат в Client/AudioIds под ключами art_<имя> (их пишет tools/upload_to_roblox.py)
+	local mod = script.Parent:FindFirstChild("AudioIds")
+	if mod and mod:IsA("ModuleScript") then
+		local ok, ids = pcall(require, mod)
+		if ok and type(ids) == "table" then
+			for k, v in ids do
+				if type(k) == "string" and k:sub(1, 4) == "art_" and type(v) == "string" and v ~= "" and v ~= "rbxassetid://0" then
+					ART[k:sub(5)] = v
+				end
+			end
+		end
+	end
+end
 local function artImage(parent: Instance, key: string): ImageLabel?
 	local id = ART[key]
 	if not id or id == "" then

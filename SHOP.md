@@ -35,3 +35,6 @@ Motion: the spear tows the "Shop" banner across the window, the meadow unrolls, 
 Status: syntax-checked and the file decodes with `rbx_binary`, but it has not been run in Studio. If V18 fails to open, paste `source/.../Shop.luau` into `Client/Shop` of V17.
 
 `tools/patch.py` swaps one script's source inside an `.rbxl` (`python3 tools/patch.py in.rbxl out.rbxl new.luau StarterPlayer/StarterPlayerScripts/Client/Shop`).
+
+## Art ids
+Shop art ids are now read from `Client/AudioIds` (keys `art_<name>`). `tools/upload_to_roblox.py` uploads the PNGs from `shop-art/` together with the sounds and writes the ids there.

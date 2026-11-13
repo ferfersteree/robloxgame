@@ -1,6 +1,6 @@
 -- Client/AudioIds
--- Номера звуков, загруженных в Roblox (файлы лежат в audio/ репозитория).
--- "" = ещё не загружен: для этого события играет встроенный звук движка, ничего не ломается.
+-- Номера звуков и картинок, загруженных в Roblox (их записывает tools/upload_to_roblox.py).
+-- "" = ещё не загружен: играет встроенный звук / показывается 3D-модель.
 return {
 	ui_hover_1 = "",
 	ui_hover_2 = "",
@@ -74,4 +74,28 @@ return {
 	music_hunt = "",
 	music_cozy = "",
 	amb_forest = "",
+	art_animal_dodo_R = "",
+	art_animal_fox_R = "",
+	art_animal_hedgehog_R = "",
+	art_animal_moonrabbit_F = "",
+	art_animal_moonrabbit_R = "",
+	art_animal_rabbit_R = "",
+	art_animal_squirrel_F = "",
+	art_animal_squirrel_R = "",
+	art_bag = "",
+	art_brew30 = "",
+	art_charm = "",
+	art_coins1 = "",
+	art_coins2 = "",
+	art_coins3 = "",
+	art_coins30 = "",
+	art_coins4 = "",
+	art_flyspear = "",
+	art_luck30 = "",
+	art_purse = "",
+	art_server15 = "",
+	art_spear = "",
+	art_titan = "",
+	art_vip = "",
+	art_wrap = "",
 }
