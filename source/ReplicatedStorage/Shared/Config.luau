@@ -653,6 +653,11 @@ Config.SHOP = {
 		{ key = "fair30", id = 0, price = 59, kind = "boost", boosts = { "fair" }, dur = 1800, name = "Trade Fair", desc = "No price drops from selling and no weak-demand hours for 30 min." },
 		-- Набор: 3 буста на 30 минут. По частям то же стоит 79 x1.5 + 99 x1.5 + 59 = 326 R$.
 		{ key = "hour_bundle", id = 0, price = 199, kind = "boost", boosts = { "fortune", "jackpot", "fair" }, dur = 1800, name = "Hunter's Bundle", desc = "Golden Hour, Jackpot Hour and Trade Fair together for 30 min of play." },
+		-- V28: яйца (бросок на сервере, шансы в Config.EGGS). id = 0: в Studio покупка имитируется.
+		{ key = "egg_mystic", id = 0, price = 99, kind = "egg", name = "Mystic Egg", desc = "Common and Rare exotic animals." },
+		{ key = "egg_royal", id = 0, price = 249, kind = "egg", name = "Royal Egg", desc = "Rare to Mythic exotic animals." },
+		{ key = "egg_cosmic", id = 0, price = 499, kind = "egg", name = "Cosmic Egg", desc = "Epic to Absolute exotic animals." },
+		{ key = "egg_absolute", id = 0, price = 999, kind = "egg", name = "Absolute Egg", desc = "Legendary to Absolute exotic animals." },
 		{ key = "server15", id = 0, price = 149, kind = "server", dur = 900, name = "Server Luck", desc = "Luck x2 and rare chances +25% for everyone on the server for 15 min." },
 		{ key = "coins1", id = 0, price = 49, kind = "coins", k = 0.3, name = "Coin Pouch" },
 		{ key = "coins2", id = 0, price = 99, kind = "coins", k = 0.8, name = "Coin Sack" },
@@ -893,5 +898,131 @@ function Config.marketQuote(items: { any }, d: any, now: number, flags: any?): (
 	end
 	return math.floor(total), #order, rows, counts
 end
+
+---------------------------------------------------------------------
+-- V28: ЭКЗОТИКА и ЯЙЦА (только за Robux).
+-- Экзотические животные лежат в Config.EXOTICS, а НЕ в Config.SPECIES: поэтому они не попадают ни в Roll,
+-- ни в Population, ни в Ambient, ни в Showroom, ни в коллекцию (все они читают Config.SPECIES).
+-- Модель берётся у обычного вида base (Fauna150) и перекрашивается/увеличивается по style и scale.
+-- fx - бонусы (доля, например 0.06 = +6%; bag - слоты). Минус - компромисс. Всё правится здесь.
+---------------------------------------------------------------------
+Config.EXOTIC = {
+	EQUIP_MAX = 3, -- сколько можно надеть одновременно
+	MAX_LEVEL = 5,
+	LEVEL_BONUS = 0.10, -- +10% к бонусам вида за уровень
+	-- Потолок суммы по характеристике (складываются: экзотика + пассы + бусты); минус не ниже FLOOR (bag: -FLOOR_BAG слотов)
+	CAP = { luck = 1.0, caps = 0.6, coins = 0.6, xp = 1.0, range = 0.3, grip = 0.3, bag = 40, train = 1.0, forge = 0.4 },
+	FLOOR = -0.4,
+	FLOOR_BAG = -40,
+	STATS = { luck = "Luck", caps = "Rare chance", coins = "Sale coins", xp = "XP", range = "Throw range", grip = "Steady grip", bag = "Bag slots", train = "Training power", forge = "Forge discount" },
+	RARITIES = {
+		{ id = "common", name = "Common", color = Color3.fromRGB(205, 210, 218) },
+		{ id = "rare", name = "Rare", color = Color3.fromRGB(64, 160, 255) },
+		{ id = "epic", name = "Epic", color = Color3.fromRGB(180, 86, 255) },
+		{ id = "legendary", name = "Legendary", color = Color3.fromRGB(255, 186, 30) },
+		{ id = "mythic", name = "Mythic", color = Color3.fromRGB(255, 80, 150) },
+		{ id = "absolute", name = "Absolute", color = Color3.fromRGB(90, 240, 255) },
+	},
+	SHARDS = { 5, 12, 30, 80, 200, 500 }, -- осколки за повтор, по редкости
+	UPGRADE = { 10, 25, 60, 160, 400, 1000 }, -- цена уровня N = UPGRADE[редкость] * N осколков
+}
+Config.EXOTICS = {
+	{ id = "candy_hopper", name = "Candy Hopper", base = "rabbit", rarity = 1, scale = 1.5, style = "rainbow", desc = "A bunny made of sprinkles. Hops out of nowhere.", fx = { luck = 0.06 } },
+	{ id = "neon_fox", name = "Neon Fox", base = "fox", rarity = 1, scale = 1.4, style = "neon_pink", desc = "Glows brighter when coins are near.", fx = { coins = 0.08 } },
+	{ id = "bubble_boar", name = "Bubble Boar", base = "boar", rarity = 1, scale = 1.5, style = "neon_cyan", desc = "Squeaks in bubbles. Learns fast.", fx = { xp = 0.10 } },
+	{ id = "glow_wolf", name = "Glowstripe Wolf", base = "wolf", rarity = 2, scale = 1.4, style = "neon_green", desc = "Runs so fast it leaves light behind.", fx = { range = 0.12, coins = -0.06 } },
+	{ id = "frost_bear", name = "Frostfur Bear", base = "bear", rarity = 2, scale = 1.5, style = "ice", desc = "Carries a whole glacier in its fur.", fx = { bag = 20, luck = -0.05 } },
+	{ id = "ruby_stag", name = "Ruby Antlerlord", base = "megadeer", rarity = 2, scale = 1.4, style = "neon_red", desc = "Antlers cut from living rubies.", fx = { caps = 0.10 } },
+	{ id = "prism_otter", name = "Prism Otter", base = "otter", rarity = 2, scale = 1.6, style = "rainbow", desc = "Splashes rainbows. Loves a workout.", fx = { train = 0.15 } },
+	{ id = "storm_kitsune", name = "Storm Kitsune", base = "comet_fox", rarity = 3, scale = 1.5, style = "galaxy", desc = "Nine tails of crackling starlight.", fx = { luck = 0.20, grip = -0.10 } },
+	{ id = "magma_titan", name = "Magma Titan", base = "lava_golem", rarity = 3, scale = 1.35, style = "magma", desc = "A walking volcano that pays well and throws badly.", fx = { coins = 0.20, range = -0.10 } },
+	{ id = "ghost_lynx", name = "Ghost Lynx", base = "lynx", rarity = 3, scale = 1.5, style = "ghost", desc = "You only see it when it wants you to.", fx = { caps = 0.14, xp = 0.10 } },
+	{ id = "solar_lion", name = "Solar Maned Lion", base = "sunlion", rarity = 4, scale = 1.5, style = "gold_neon", desc = "A mane of pure noon sunlight.", fx = { luck = 0.30, grip = -0.12 } },
+	{ id = "void_mammoth", name = "Void Mammoth", base = "mammoth", rarity = 4, scale = 1.6, style = "void", desc = "Eats light. Stores everything.", fx = { bag = 35, forge = 0.15, range = -0.08 } },
+	{ id = "aurora_phoenix", name = "Aurora Phoenix", base = "phoenix", rarity = 4, scale = 1.5, style = "rainbow", desc = "Burns in every color at once.", fx = { caps = 0.20, xp = 0.20 } },
+	{ id = "astral_wyrm", name = "Astral Wyrm", base = "astral_dragon", rarity = 5, scale = 1.7, style = "galaxy", desc = "A dragon that swallowed a galaxy.", fx = { luck = 0.45, caps = 0.25, coins = -0.15 } },
+	{ id = "leviathan_prime", name = "Leviathan Prime", base = "abyss_leviathan", rarity = 5, scale = 1.5, style = "neon_cyan", desc = "The deep, but glowing.", fx = { range = 0.25, grip = 0.15, luck = -0.10 } },
+	{ id = "prismatic_overlord", name = "Prismatic Overlord", base = "void_behemoth", rarity = 6, scale = 1.9, style = "rainbow_neon", desc = "The wildest creature in the game. Everything bends around it.", fx = { luck = 0.55, caps = 0.30, coins = 0.25, xp = 0.25, range = 0.15, bag = -20 } },
+}
+Config.EXOTIC_BY_ID = {} :: { [string]: any }
+for i, ex in Config.EXOTICS do
+	ex.index = i
+	Config.EXOTIC_BY_ID[ex.id] = ex
+end
+
+-- Яйца. weights - ОДНА таблица и для сервера (бросок), и для интерфейса (Config.eggOdds). Шансы = вес / сумма весов.
+-- ВАЖНО: изменение весов автоматически меняет и бросок, и проценты в окне яйца: ничего дублировать не нужно.
+-- Правила Roblox для платных случайных предметов требуют показывать шансы до покупки: окно яйца это делает.
+Config.EGGS = {
+	egg_mystic = { name = "Mystic Egg", color = Color3.fromRGB(120, 200, 255), weights = { { "candy_hopper", 26 }, { "neon_fox", 26 }, { "bubble_boar", 28 }, { "glow_wolf", 5 }, { "frost_bear", 5 }, { "ruby_stag", 5 }, { "prism_otter", 5 } } },
+	egg_royal = { name = "Royal Egg", color = Color3.fromRGB(190, 120, 255), weights = { { "candy_hopper", 8 }, { "neon_fox", 8 }, { "bubble_boar", 8 }, { "glow_wolf", 11 }, { "frost_bear", 11 }, { "ruby_stag", 11 }, { "prism_otter", 11 }, { "storm_kitsune", 6 }, { "magma_titan", 6 }, { "ghost_lynx", 6 }, { "solar_lion", 4 }, { "void_mammoth", 4 }, { "aurora_phoenix", 4 }, { "astral_wyrm", 1 }, { "leviathan_prime", 1 } } },
+	egg_cosmic = { name = "Cosmic Egg", color = Color3.fromRGB(255, 150, 60), weights = { { "glow_wolf", 6 }, { "frost_bear", 6 }, { "ruby_stag", 6 }, { "prism_otter", 6 }, { "storm_kitsune", 14 }, { "magma_titan", 14 }, { "ghost_lynx", 14 }, { "solar_lion", 8 }, { "void_mammoth", 8 }, { "aurora_phoenix", 8 }, { "astral_wyrm", 4 }, { "leviathan_prime", 4 }, { "prismatic_overlord", 2 } } },
+	egg_absolute = { name = "Absolute Egg", color = Color3.fromRGB(90, 240, 255), weights = { { "storm_kitsune", 5 }, { "magma_titan", 5 }, { "ghost_lynx", 5 }, { "solar_lion", 15 }, { "void_mammoth", 15 }, { "aurora_phoenix", 15 }, { "astral_wyrm", 15 }, { "leviathan_prime", 15 }, { "prismatic_overlord", 10 } } },
+}
+
+-- Шансы яйца в процентах (список в порядке weights). Из этой же таблицы бросает сервер.
+function Config.eggOdds(key: string): { { id: string, pct: number } }
+	local egg = Config.EGGS[key]
+	local out = {}
+	if not egg then
+		return out
+	end
+	local total = 0
+	for _, w in egg.weights do
+		total += w[2]
+	end
+	for _, w in egg.weights do
+		table.insert(out, { id = w[1], pct = w[2] / total * 100 })
+	end
+	return out
+end
+
+-- Бросок яйца (на сервере). rng: Random.
+function Config.eggRoll(key: string, rng: Random): string?
+	local egg = Config.EGGS[key]
+	if not egg then
+		return nil
+	end
+	local total = 0
+	for _, w in egg.weights do
+		total += w[2]
+	end
+	local draw = rng:NextNumber() * total
+	local acc = 0
+	for _, w in egg.weights do
+		acc += w[2]
+		if draw < acc then
+			return w[1]
+		end
+	end
+	return egg.weights[#egg.weights][1]
+end
+
+-- Сумма бонусов надетой экзотики по характеристикам (с уровнями и потолками). Считает и сервер, и клиент.
+function Config.exoticTotals(owned: any, equipped: any, levels: any): { [string]: number }
+	local E = Config.EXOTIC
+	local total: { [string]: number } = {}
+	local used = 0
+	for _, id in equipped or {} do
+		local ex = Config.EXOTIC_BY_ID[id]
+		if ex and (owned and (tonumber(owned[id]) or 0) > 0) and used < E.EQUIP_MAX then
+			used += 1
+			local k = 1 + E.LEVEL_BONUS * math.clamp(tonumber(levels and levels[id]) or 0, 0, E.MAX_LEVEL)
+			for stat, v in ex.fx do
+				total[stat] = (total[stat] or 0) + v * k
+			end
+		end
+	end
+	for stat, v in total do
+		local lo = stat == "bag" and E.FLOOR_BAG or E.FLOOR
+		total[stat] = math.clamp(v, lo, E.CAP[stat] or 1)
+	end
+	return total
+end
+
+function Config.exoticUpgradeCost(ex: any, level: number): number
+	return Config.EXOTIC.UPGRADE[ex.rarity] * (level + 1)
+end
+
 
 return Config
