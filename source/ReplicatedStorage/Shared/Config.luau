@@ -655,9 +655,9 @@ Config.SHOP = {
 		{ key = "hour_bundle", id = 0, price = 199, kind = "boost", boosts = { "fortune", "jackpot", "fair" }, dur = 1800, name = "Hunter's Bundle", desc = "Golden Hour, Jackpot Hour and Trade Fair together for 30 min of play." },
 		-- V28: яйца (бросок на сервере, шансы в Config.EGGS). id = 0: в Studio покупка имитируется.
 		{ key = "egg_mystic", id = 0, price = 99, kind = "egg", name = "Mystic Egg", desc = "Common and Rare exotic animals." },
-		{ key = "egg_royal", id = 0, price = 249, kind = "egg", name = "Royal Egg", desc = "Rare to Mythic exotic animals." },
-		{ key = "egg_cosmic", id = 0, price = 499, kind = "egg", name = "Cosmic Egg", desc = "Epic to Absolute exotic animals." },
-		{ key = "egg_absolute", id = 0, price = 999, kind = "egg", name = "Absolute Egg", desc = "Legendary to Absolute exotic animals." },
+		{ key = "egg_royal", id = 0, price = 249, kind = "egg", name = "Royal Egg", desc = "Common to Mythic exotic animals." },
+		{ key = "egg_cosmic", id = 0, price = 499, kind = "egg", name = "Cosmic Egg", desc = "Rare to Absolute exotic animals." },
+		{ key = "egg_absolute", id = 0, price = 999, kind = "egg", name = "Absolute Egg", desc = "Epic to Absolute exotic animals." },
 		{ key = "server15", id = 0, price = 149, kind = "server", dur = 900, name = "Server Luck", desc = "Luck x2 and rare chances +25% for everyone on the server for 15 min." },
 		{ key = "coins1", id = 0, price = 49, kind = "coins", k = 0.3, name = "Coin Pouch" },
 		{ key = "coins2", id = 0, price = 99, kind = "coins", k = 0.8, name = "Coin Sack" },

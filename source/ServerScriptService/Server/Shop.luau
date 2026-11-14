@@ -94,7 +94,7 @@ local function stateOf(prof: any): any
 		spent = spentOf(prof),
 		rank = rankOf(prof),
 		exotic = prof.shop.exotic,
-		eggsOff = prof.eggsOff == true,
+		eggsOff = prof.eggsOff ~= false, -- пока регион не узнан (nil), яйца закрыты
 		gift = math.max(0, (tonumber(prof.shop.lastGift) or 0) + SHOP.GIFT_HOURS * 3600 - os.time()),
 		pending = prof.shop.pending,
 		studio = IS_STUDIO,
@@ -114,6 +114,9 @@ local function push(player: Player)
 			end
 		end
 		player:SetAttribute("Exo", table.concat(ids, ","))
+		if prof.busy then
+			return -- идёт выдача и сохранение: неподтверждённое не показываем клиенту, после неё будет push
+		end
 		ShopEv:FireClient(player, "state", stateOf(prof))
 	end
 end
@@ -262,6 +265,22 @@ local function loadProfile(player: Player)
 	if profiles[player] ~= prof then
 		return -- игрок вышел, пока грузились
 	end
+	-- V28: правила Roblox для платных случайных предметов. В некоторых регионах их продавать нельзя. Спрашиваем PolicyService
+	-- ДО того, как профиль станет loaded, чтобы клиент не увидел яйца раньше проверки. Если спросить не вышло,
+	-- вне Studio считаем, что нельзя. Чек на яйцо, пришедший всё равно (игрок уже заплатил), выдаётся.
+	do
+		local okPol, pol = pcall(function()
+			return PolicyService:GetPolicyInfoForPlayerAsync(player)
+		end)
+		if okPol and type(pol) == "table" then
+			prof.eggsOff = pol.ArePaidRandomItemsRestricted == true
+		else
+			prof.eggsOff = not IS_STUDIO
+		end
+	end
+	if profiles[player] ~= prof then
+		return
+	end
 	if ok then
 		if type(data) == "table" then
 			if type(data.save) == "table" then
@@ -341,21 +360,6 @@ local function loadProfile(player: Player)
 	if profiles[player] ~= prof then
 		return
 	end
-	-- V28: правила Roblox для платных случайных предметов. В некоторых регионах их продавать нельзя:
-	-- спрашиваем PolicyService; если спросить не вышло, вне Studio считаем, что нельзя (яйца скрыты, тестовая покупка закрыта).
-	do
-		local okPol, pol = pcall(function()
-			return PolicyService:GetPolicyInfoForPlayerAsync(player)
-		end)
-		if okPol and type(pol) == "table" then
-			prof.eggsOff = pol.ArePaidRandomItemsRestricted == true
-		else
-			prof.eggsOff = not IS_STUDIO
-		end
-	end
-	if profiles[player] ~= prof then
-		return
-	end
 	refreshVip(player)
 	push(player)
 end
@@ -381,7 +385,7 @@ local function rollEgg(prof: any, item: any, purchaseId: string)
 		E.shards += shards
 	end
 	table.insert(E.hatch, { id = purchaseId, sp = id, dupe = dupe, shards = shards, egg = item.key })
-	while #E.hatch > 20 do
+	while #E.hatch > 100 do
 		table.remove(E.hatch, 1)
 	end
 end
@@ -419,7 +423,8 @@ end
 local function processReceipt(info: any): Enum.ProductPurchaseDecision
 	local player = Players:GetPlayerByUserId(info.PlayerId)
 	local prof = player and profiles[player]
-	if not player or not prof or not prof.loaded then
+	if not player or not prof or not prof.loaded or prof.busy then
+		-- busy: другой чек сейчас выдаётся и сохраняется; Roblox повторит этот чек позже (иначе откат одного затирал бы другой)
 		return Enum.ProductPurchaseDecision.NotProcessedYet
 	end
 	local item = PRODUCT_BY_ID[info.ProductId]
@@ -433,15 +438,19 @@ local function processReceipt(info: any): Enum.ProductPurchaseDecision
 	end
 	local backup = deepCopy(prof.shop)
 	local luckBackup = serverLuck
+	prof.busy = true
 	applyProduct(prof, item, pid)
 	prof.shop.spent = (tonumber(prof.shop.spent) or 0) + (tonumber(info.CurrencySpent) or item.price)
 	table.insert(prof.shop.receipts, pid)
 	while #prof.shop.receipts > 80 do
 		table.remove(prof.shop.receipts, 1)
 	end
-	if not saveProfile(player, prof) then
+	local saved = saveProfile(player, prof)
+	prof.busy = false
+	if not saved then
 		prof.shop = backup
 		serverLuck = luckBackup
+		push(player)
 		return Enum.ProductPurchaseDecision.NotProcessedYet
 	end
 	afterGrant(player, item)
@@ -469,8 +478,8 @@ local function onInvoke(player: Player, action: any, a: any, b: any): ...any
 		return true, prof.save, stateOf(prof)
 	end
 	local prof = profiles[player]
-	if not prof or not prof.loaded then
-		return false
+	if not prof or not prof.loaded or prof.busy then
+		return false -- busy: идёт выдача покупки, запросы ждут (клиент повторит)
 	end
 	if action == "save" then
 		local now = os.clock()
@@ -688,7 +697,7 @@ function Shop.start()
 				serverLuck = math.max(0, serverLuck - dt)
 			end
 			for player, prof in profiles do
-				if prof.loaded then
+				if prof.loaded and not prof.busy then
 					for id, left in prof.shop.boosts do
 						local v = left - dt
 						prof.shop.boosts[id] = if v > 0 then v else nil

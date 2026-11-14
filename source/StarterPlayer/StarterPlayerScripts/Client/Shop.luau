@@ -77,9 +77,9 @@ local PITCH: { [string]: { string } } = {
 	founder = { "FOUNDER TAG + AURA", "limited · bigger daily gift" },
 	hour_bundle = { "3 BOOSTS, SAVE 40%", "30 min · mutations, rare, fair" },
 	egg_mystic = { "EXOTIC PET", "Common · Rare" },
-	egg_royal = { "EXOTIC PET", "Rare up to Mythic" },
-	egg_cosmic = { "EXOTIC PET", "Epic up to Absolute" },
-	egg_absolute = { "EXOTIC PET", "Legendary up to Absolute" },
+	egg_royal = { "EXOTIC PET", "Common up to Mythic" },
+	egg_cosmic = { "EXOTIC PET", "Rare up to Absolute" },
+	egg_absolute = { "EXOTIC PET", "Epic up to Absolute" },
 }
 
 -- Мультяшные иллюстрации магазина (папка shop-art/ в репозитории). Номера берутся из Client/AudioIds (art_<имя>).
@@ -1462,6 +1462,16 @@ local function exoTick(dt: number)
 	end
 end
 
+-- Убрать из анимации уже уничтоженные модели (иначе они занимают место в лимите и новые радужные карточки стоят неподвижно). Возвращает число моделей.
+local function exoPrune(): number
+	for i = #exoAnim, 1, -1 do
+		if not exoAnim[i].model:IsDescendantOf(game) then
+			table.remove(exoAnim, i)
+		end
+	end
+	return #exoAnim
+end
+
 -- Портрет животного во ViewportFrame. locked = чёрный силуэт.
 local function exoticPortrait(parent: Instance, ex: any, locked: boolean?, spin: number?, z: number?): ViewportFrame?
 	local m = exoticModel(ex)
@@ -1480,7 +1490,7 @@ local function exoticPortrait(parent: Instance, ex: any, locked: boolean?, spin:
 				d.Material = Enum.Material.SmoothPlastic
 			end
 		end
-	elseif vm and st and st.hue and #exoAnim < 14 then
+	elseif vm and st and st.hue and exoPrune() < 14 then
 		local parts = {}
 		for _, d in vm:GetDescendants() do
 			if d:IsA('BasePart') and d:GetAttribute('Phase') and #parts < 50 then
@@ -1511,6 +1521,18 @@ local PET_RAINBOW = ColorSequence.new({
 	ColorSequenceKeypoint.new(0.8, Color3.fromRGB(110, 110, 255)),
 	ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 90, 230)),
 })
+
+-- Подпись состояния экзотики: окно Exotic перестраивается только если она изменилась (не каждые 30 с от pushAll)
+Pets.lastSig = ''
+function Pets.sig(): string
+	local E = Perks.state().exotic
+	local ids = {}
+	for id, n in E.owned do
+		table.insert(ids, id .. ':' .. tostring(n) .. ':' .. tostring(E.level[id] or 0))
+	end
+	table.sort(ids)
+	return tostring(E.shards or 0) .. '|' .. table.concat(E.equipped, ',') .. '|' .. table.concat(ids, ',')
+end
 
 function Pets.ids(p: Player): { string }
 	local out = {}
@@ -1579,7 +1601,7 @@ function Pets.build(ex: any, low: boolean): any?
 			newI('PointLight', { Color = c1, Brightness = 1.5, Range = 9, Shadows = false }, core)
 		end
 	end
-	if st and st.hue and #exoAnim < 14 then
+	if st and st.hue and exoPrune() < 14 then
 		local parts = {}
 		for _, d in m:GetDescendants() do
 			if d:IsA('BasePart') and d:GetAttribute('Phase') and #parts < 50 then
@@ -2212,7 +2234,7 @@ local function renderBody(o: Open)
 			renderTile(o, eggs, it, ei, "egg")
 		end
 	end
-	UI.label({ Text = if eggsOff then "Eggs are not available in your region. Your exotic animals still work." else "Eggs hatch exotic animals you cannot find while hunting. Tap SEE ODDS on any egg to see the exact chances.", TextSize = 14, Color = K.white, Stroke = 2, StrokeColor = K.navy, Wrap = true, Size = UDim2.new(1, 0, 0, 36), LayoutOrder = nextOrder(), Parent = scroll })
+	UI.label({ Text = if eggsOff then "Eggs are not available in your region. Your exotic animals still work." else "Eggs hatch exotic animals you cannot find while hunting. Tap ODDS on any egg to see the exact chances.", TextSize = 14, Color = K.white, Stroke = 2, StrokeColor = K.navy, Wrap = true, Size = UDim2.new(1, 0, 0, 36), LayoutOrder = nextOrder(), Parent = scroll })
 	sectionBar(o, scroll, "Coins", nextOrder())
 	local coins = grid(scroll, 4, 212, nextOrder())
 	for i, it in packs do
@@ -2514,9 +2536,11 @@ function Shop.init()
 	Perks.Changed.Event:Connect(function()
 		Backend.applyPerks()
 		Shop.refresh()
-		if exoticRefresh then
+		local sig = Pets.sig()
+		if exoticRefresh and sig ~= Pets.lastSig then
 			exoticRefresh()
 		end
+		Pets.lastSig = sig
 		updateExoHud()
 	end)
 	Backend.onChange(function()
