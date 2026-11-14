@@ -109,8 +109,11 @@ function Activities.range()
 	local cfg = Config.ACTIVITY.range
 	local shots, score = cfg.shots, 0
 	local done = false
-	local savedWS = h.WalkSpeed
+	local savedWS, savedJP, savedJH, savedAR = h.WalkSpeed, h.JumpPower, h.JumpHeight, h.AutoRotate
 	h.WalkSpeed = 0
+	h.JumpPower = 0 -- Space заряжает бросок, а не прыгает
+	h.JumpHeight = 0
+	h.AutoRotate = false
 	root.CFrame = CFrame.lookAt(stand.Position + Vector3.new(0, 3, 0), stand.Position + Vector3.new(0, 3, -10))
 	local base: { [Model]: CFrame } = {}
 	for _, t in targets:GetChildren() do
@@ -169,10 +172,10 @@ function Activities.range()
 	marker.BackgroundColor3 = Color3.new(1, 1, 1)
 	marker.AnchorPoint = Vector2.new(0.5, 0.5)
 	marker.Size = UDim2.fromOffset(6, 44)
-	marker.Position = UDim2.new(0, 0, 0.5, 0)
+	marker.Position = UDim2.fromOffset(20, 63)
 	marker.ZIndex = 34
 	UI.stroke(Color3.new(0, 0, 0), 2, 0, true).Parent = marker
-	marker.Parent = barBg
+	marker.Parent = panel -- не в barBg: там обрезка (ClipsDescendants) срезала бы край ползунка
 	local function setHint(text: string, color: Color3?)
 		hint.Text = text
 		hint.TextColor3 = color or Theme.C.text
@@ -193,6 +196,9 @@ function Activities.range()
 	end)
 
 	local busyShot = false
+	local glues: { RBXScriptConnection } = {}
+	local queuedStart: InputObject? = nil
+	local queued: InputObject? = nil -- нажали во время броска: начнём заряд, когда бросок закончится
 	local charging = false
 	local chargeT0 = 0
 	local chargeInput: InputObject? = nil
@@ -278,15 +284,26 @@ function Activities.range()
 			local tg, off = tgt :: Model, localOff :: Vector3
 			fl.to = to
 			local glue: RBXScriptConnection? = nil
+			local rel: CFrame? = nil
 			glue = RunService.Heartbeat:Connect(function()
-				if fl.done or not tg.Parent then
+				local m = fl.model
+				if not tg.Parent or (fl.done and (not m or not m.Parent)) then
 					if glue then
 						glue:Disconnect()
 					end
 					return
 				end
-				fl.to = tg:GetPivot():PointToWorldSpace(off)
+				if not fl.done then
+					fl.to = tg:GetPivot():PointToWorldSpace(off)
+				elseif m then
+					-- копьё уже воткнулось: оно должно ехать вместе с мишенью, а не висеть в воздухе
+					if not rel then
+						rel = tg:GetPivot():ToObjectSpace(m:GetPivot())
+					end
+					m:PivotTo(tg:GetPivot() * (rel :: CFrame))
+				end
 			end)
+			table.insert(glues, glue)
 		end
 		-- защита от вечного полёта: тир не должен зависнуть
 		local ft = os.clock()
@@ -315,22 +332,51 @@ function Activities.range()
 			done = true
 		else
 			setHint(IDLE_HINT)
+			local q = queued
+			queued = nil
+			if q and not done then
+				local still = (q.UserInputType == Enum.UserInputType.MouseButton1 and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1))
+					or (q.KeyCode == Enum.KeyCode.Space and UserInputService:IsKeyDown(Enum.KeyCode.Space))
+				if still then
+					task.defer(function()
+						if not charging and not busyShot and not done then
+							-- заряд с кнопкой, которую всё ещё держат (startCharge определён ниже, вызываем через событие)
+							queuedStart = q
+						end
+					end)
+				end
+			end
 		end
 	end
 
 	local function release()
-		if not charging then
+		if not charging or done then
 			return
 		end
 		charging = false
 		chargeInput = nil
 		fill.Size = UDim2.fromScale(0, 1)
-		marker.Position = UDim2.new(0, 0, 0.5, 0)
+		marker.Position = UDim2.fromOffset(20, 63)
 		local power = math.min(1, (os.clock() - chargeT0) / RANGE_CHARGE)
 		local at = aim
-		task.spawn(shoot, at, power)
-	end
+		task.spawn(function()
+			local ok, err = pcall(shoot, at, power)
+			if not ok then
+				warn("[Range] throw failed: " .. tostring(err))
+				Animator.stop()
+				busyShot = false
+				if shots <= 0 then
+					done = true
+				else
+					setHint(IDLE_HINT)
+				end
+			end
+		end)	end
 	local function startCharge(input: InputObject)
+		if busyShot and not charging and not done and shots > 0 then
+			queued = input -- запомним: если кнопка ещё зажата, когда бросок закончится, заряд начнётся сам
+			return
+		end
 		if charging or busyShot or shots <= 0 or done then
 			return
 		end
@@ -347,6 +393,11 @@ function Activities.range()
 	end
 
 	local chargeConn = RunService.RenderStepped:Connect(function()
+		if queuedStart and not charging and not busyShot and not done then
+			local q = queuedStart
+			queuedStart = nil
+			startCharge(q)
+		end
 		if not charging then
 			return
 		end
@@ -356,7 +407,7 @@ function Activities.range()
 		end
 		local p = math.min(1, (os.clock() - chargeT0) / RANGE_CHARGE)
 		fill.Size = UDim2.fromScale(p, 1)
-		marker.Position = UDim2.new(p, 0, 0.5, 0)
+		marker.Position = UDim2.fromOffset(20 + p * 540, 63)
 		if p < ZN.weak then
 			setHint("Keep holding...", Theme.C.text)
 		elseif p < ZN.good then
@@ -388,6 +439,9 @@ function Activities.range()
 		end
 	end)
 	local inputEnded = UserInputService.InputEnded:Connect(function(i)
+		if queued and i == queued then
+			queued = nil
+		end
 		if charging and (i == chargeInput or (i.UserInputType == Enum.UserInputType.MouseButton1 and chargeInput and chargeInput.UserInputType == Enum.UserInputType.MouseButton1) or (i.KeyCode == Enum.KeyCode.Space and chargeInput and chargeInput.KeyCode == Enum.KeyCode.Space)) then
 			release()
 		end
@@ -414,12 +468,28 @@ function Activities.range()
 	for m, cf in base do
 		m:PivotTo(cf)
 	end
+	for _, g in glues do
+		g:Disconnect()
+	end
 	Animator.stop()
 	panel:Destroy()
 	bar:Destroy()
+	-- сначала возвращаем мир игроку (скорость, прыжок, камера, режим HUD), и только потом идём к серверу за наградой:
+	-- если сервер отвечает долго, игрок не остаётся замороженным
+	local nh = hum()
+	if nh then
+		nh.WalkSpeed = savedWS > 0 and savedWS or Config.WALK_SPEED
+		nh.JumpPower = savedJP > 0 and savedJP or 50
+		nh.JumpHeight = savedJH > 0 and savedJH or 7.2
+		nh.AutoRotate = true
+	end
+	camera.CameraType = Enum.CameraType.Custom
+	Hud.setMode("normal")
+	Activities.busy = nil
 	if score > 0 then
 		local ok, r = Backend.call("Activity", "range", score)
-		Hud.banner("🎯 " .. score .. " POINTS", Theme.C.orange, ok and ("+" .. Num.short(r.coins) .. " coins") or nil, 2.2)
+		local coins = ok and type(r) == "table" and r.coins or nil
+		Hud.banner("🎯 " .. score .. " POINTS", Theme.C.orange, coins and ("+" .. Num.short(coins) .. " coins") or nil, 2.2)
 		if ok then
 			reward(r, stand.Position + Vector3.new(0, 4, -10))
 		end
@@ -427,13 +497,6 @@ function Activities.range()
 			UI.confetti(60)
 		end
 	end
-	local nh = hum()
-	if nh then
-		nh.WalkSpeed = savedWS > 0 and savedWS or Config.WALK_SPEED
-	end
-	camera.CameraType = Enum.CameraType.Custom
-	Hud.setMode("normal")
-	Activities.busy = nil
 end
 
 ---------------------------------------------------------------------
