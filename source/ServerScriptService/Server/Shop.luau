@@ -439,14 +439,21 @@ local function processReceipt(info: any): Enum.ProductPurchaseDecision
 	local backup = deepCopy(prof.shop)
 	local luckBackup = serverLuck
 	prof.busy = true
-	applyProduct(prof, item, pid)
-	prof.shop.spent = (tonumber(prof.shop.spent) or 0) + (tonumber(info.CurrencySpent) or item.price)
-	table.insert(prof.shop.receipts, pid)
-	while #prof.shop.receipts > 80 do
-		table.remove(prof.shop.receipts, 1)
-	end
-	local saved = saveProfile(player, prof)
+	-- выдача и сохранение в pcall: даже при ошибке busy снимается, иначе профиль завис бы до конца сессии
+	local okRun, saved = pcall(function()
+		applyProduct(prof, item, pid)
+		prof.shop.spent = (tonumber(prof.shop.spent) or 0) + (tonumber(info.CurrencySpent) or item.price)
+		table.insert(prof.shop.receipts, pid)
+		while #prof.shop.receipts > 80 do
+			table.remove(prof.shop.receipts, 1)
+		end
+		return saveProfile(player, prof)
+	end)
 	prof.busy = false
+	if not okRun then
+		warn("[Shop] receipt " .. pid .. " failed: " .. tostring(saved))
+		saved = false
+	end
 	if not saved then
 		prof.shop = backup
 		serverLuck = luckBackup

@@ -1511,8 +1511,10 @@ end
 -- "Exo" ("id,id,id"), поэтому питомцев видят и другие игроки (в радиусе range, не больше maxOthers чужих питомцев).
 -- На слабой графике (lowFx): только свои питомцы и без частиц, следов и лучей. Один общий Heartbeat на всех.
 ---------------------------------------------------------------------
-local Pets = { range = 90, maxOthers = 6, yaw = math.pi, byPlayer = {} :: { [Player]: any }, folder = nil :: Folder? }
-local PET_SLOTS = { Vector3.new(-3.4, 1.4, 3.8), Vector3.new(3.4, 1.8, 3.8), Vector3.new(0, 3.0, 6.0) } -- +Z = позади игрока
+local Pets = { range = 90, maxOthers = 6, yaw = 0, -- yaw 0: голова моделей Fauna150 смотрит вперёд вместе с игроком (проверено в Play: с yaw = pi головы были повёрнуты назад)
+	 byPlayer = {} :: { [Player]: any }, folder = nil :: Folder? }
+-- +Z = позади игрока. Все три по бокам, никто не стоит между камерой и персонажем и не лежит на линии прицела
+local PET_SLOTS = { Vector3.new(-4.4, 1.6, 3.2), Vector3.new(4.4, 2.0, 3.2), Vector3.new(-8.0, 3.2, 6.5) }
 local PET_RAINBOW = ColorSequence.new({
 	ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 70, 90)),
 	ColorSequenceKeypoint.new(0.2, Color3.fromRGB(255, 220, 60)),
@@ -1647,16 +1649,27 @@ function Pets.refresh()
 			Pets.clear(p)
 		elseif not e or e.key ~= key then
 			Pets.clear(p)
-			local list = {}
-			for i, id in ids do
-				local pt = Pets.build(Config.EXOTIC_BY_ID[id], low)
-				if pt then
-					pt.slot = i
-					pt.model.Parent = Pets.folder
-					table.insert(list, pt)
+			local entry = { key = key, list = {} }
+			Pets.byPlayer[p] = entry
+			-- по одному питомцу за раз (сборка модели стоит несколько миллисекунд): без одного большого пика кадра
+			task.spawn(function()
+				for i, id in ids do
+					if Pets.byPlayer[p] ~= entry then
+						return -- набор сменился или игрок вышел
+					end
+					local pt = Pets.build(Config.EXOTIC_BY_ID[id], low)
+					if pt then
+						pt.slot = i
+						if Pets.byPlayer[p] ~= entry then
+							pt.model:Destroy()
+							return
+						end
+						pt.model.Parent = Pets.folder
+						table.insert(entry.list, pt)
+					end
+					task.wait(0.12)
 				end
-			end
-			Pets.byPlayer[p] = { key = key, list = list }
+			end)
 		end
 	end
 	for p in Pets.byPlayer do
