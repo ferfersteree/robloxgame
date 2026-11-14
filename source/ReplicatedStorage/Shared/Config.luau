@@ -2,8 +2,18 @@
 -- v2: весь баланс, тексты и визуальные настройки. Меняй цифры здесь.
 local Config = {}
 
+-- Округление до 3 значащих цифр (цены и награды выглядят чисто).
+local function round3(x: number): number
+	if x <= 0 then
+		return 0
+	end
+	local p = 10 ^ (math.floor(math.log10(x)) - 2)
+	return math.floor(x / p + 0.5) * p
+end
+Config.round3 = round3
+
 Config.GAME_NAME = "Spear Hunt"
-Config.VERSION = "3.4-no-trophy-heads"
+Config.VERSION = "4.0-market"
 -- "Demo"   — всё работает на клиенте (фейковый бэкенд, сохранение не нужно)
 -- "Remote" — клиент шлёт действия на сервер через Remotes.Request (см. docs/BACKEND.md)
 Config.BACKEND = "Demo"
@@ -275,49 +285,56 @@ Config.SPECIES = {
 ---------------------------------------------------------------------
 Config.SPEARS = {
 	{ id = "stick", price = 0, sharp = 1, heavy = 1, luck = 1, range = 1, alpha = 0.85, impact = "dust", zone = 1, tier = 1, name = "Stone-tipped Spear", desc = "Every hunter starts somewhere.", trail = { Color3.fromHex("#e6dcc8"), Color3.fromHex("#a08c6e") } },
-	{ id = "bone", price = 150, sharp = 2, heavy = 1, luck = 1.2, range = 1.05, alpha = 0.8, impact = "dust", zone = 1, tier = 2, name = "Bone Spear", desc = "Pierces tougher hides.", trail = { Color3.fromHex("#fffaeb"), Color3.fromHex("#c8bea0") } },
-	{ id = "bronze", price = 1200, sharp = 2, heavy = 2, luck = 1.4, range = 1.1, alpha = 0.76, impact = "sparks", zone = 2, tier = 3, name = "Bronze Spear", desc = "Heavy and dependable.", trail = { Color3.fromHex("#ffbe6e"), Color3.fromHex("#cd7f32") } },
-	{ id = "feather", price = 6000, sharp = 3, heavy = 2, luck = 1.7, range = 1.25, alpha = 0.72, impact = "feathers", zone = 2, tier = 4, name = "Feathered Spear", desc = "Flies farther than other early spears.", trail = { Color3.fromHex("#ff7878"), Color3.fromHex("#50a0ff") } },
-	{ id = "iron", price = 25000, sharp = 3, heavy = 3, luck = 2, range = 1.3, alpha = 0.68, impact = "sparks", zone = 2, tier = 5, name = "Iron Spear", desc = "Built for bigger game.", trail = { Color3.fromHex("#dce2f0"), Color3.fromHex("#787c88") } },
-	{ id = "obsidian", price = 120000, sharp = 4, heavy = 3, luck = 2.6, range = 1.38, alpha = 0.63, impact = "shards", zone = 3, tier = 6, name = "Obsidian Spear", desc = "Forged from black volcanic glass.", trail = { Color3.fromHex("#c86eff"), Color3.fromHex("#3c145a") } },
-	{ id = "crystal", price = 600000, sharp = 5, heavy = 4, luck = 3.4, range = 1.45, alpha = 0.58, impact = "crystal", zone = 3, tier = 7, name = "Crystal Spear", desc = "Chimes as it flies.", trail = { Color3.fromHex("#8cffff"), Color3.fromHex("#ffc846") } },
-	{ id = "fire", price = 2500000, sharp = 5, heavy = 4, luck = 4.5, range = 1.55, alpha = 0.54, impact = "fire", zone = 4, tier = 8, name = "Fire Spear", desc = "Leaves a blazing trail.", trail = { Color3.fromHex("#ffdc50"), Color3.fromHex("#ff4614") } },
-	{ id = "ice", price = 10000000, sharp = 6, heavy = 5, luck = 6, range = 1.65, alpha = 0.5, impact = "ice", zone = 4, tier = 9, name = "Ice Spear", desc = "Freezes the air around it.", trail = { Color3.fromHex("#ebfaff"), Color3.fromHex("#78c8ff") } },
-	{ id = "star", price = 50000000, sharp = 6, heavy = 5, luck = 9, range = 1.8, alpha = 0.45, impact = "stars", zone = 4, tier = 10, name = "Star Spear", desc = "Fell from the sky. Almost aims itself.", trail = { Color3.fromHex("#ffe678"), Color3.fromHex("#785aff") } },
-	{ id = "amber_sting", price = 75000000, sharp = 7, heavy = 6, luck = 10.0, range = 1.9, alpha = 0.44, impact = "sparks", zone = 5, tier = 11, name = "Amber Sting", desc = "A honey-colored edge set in layered amber.", trail = { Color3.fromHex("#fff17b"), Color3.fromHex("#f5a817") } },
-	{ id = "solar_trident", price = 103500000, sharp = 8, heavy = 6, luck = 11.2, range = 1.945, alpha = 0.434, impact = "fire", zone = 5, tier = 12, name = "Solar Trident", desc = "Three golden prongs catch the light of the savanna.", trail = { Color3.fromHex("#ff692d"), Color3.fromHex("#ffd029") } },
-	{ id = "canyon_hook", price = 142830000, sharp = 8, heavy = 7, luck = 12.54, range = 1.99, alpha = 0.428, impact = "shards", zone = 6, tier = 13, name = "Canyon Hook", desc = "A hooked stone blade shaped for the red canyons.", trail = { Color3.fromHex("#73c6e8"), Color3.fromHex("#d77435") } },
-	{ id = "condor_quill", price = 197110000, sharp = 9, heavy = 7, luck = 14.05, range = 2.035, alpha = 0.422, impact = "feathers", zone = 6, tier = 14, name = "Condor Quill", desc = "A broad feathered edge built to cut through rising air.", trail = { Color3.fromHex("#d78e36"), Color3.fromHex("#e4dfca") } },
-	{ id = "mirage_lance", price = 272010000, sharp = 9, heavy = 8, luck = 15.74, range = 2.08, alpha = 0.416, impact = "crystal", zone = 7, tier = 15, name = "Mirage Lance", desc = "A pale desert lance with a shimmering point.", trail = { Color3.fromHex("#6ee1e9"), Color3.fromHex("#f1cf6c") } },
-	{ id = "scorpion_sting", price = 375370000, sharp = 10, heavy = 8, luck = 17.62, range = 2.125, alpha = 0.41, impact = "shards", zone = 7, tier = 16, name = "Scorpion Sting", desc = "A hooked tip and layered grip inspired by desert armor.", trail = { Color3.fromHex("#9aff7e"), Color3.fromHex("#be8240") } },
-	{ id = "emerald_vine", price = 518010000, sharp = 10, heavy = 9, luck = 19.74, range = 2.17, alpha = 0.404, impact = "crystal", zone = 8, tier = 17, name = "Emerald Vine", desc = "A green blade held by tightly wrapped jungle vines.", trail = { Color3.fromHex("#c2f757"), Color3.fromHex("#19bd67") } },
-	{ id = "temple_guard", price = 714850000, sharp = 11, heavy = 9, luck = 22.11, range = 2.215, alpha = 0.398, impact = "sparks", zone = 8, tier = 18, name = "Temple Guard", desc = "A carved guardian spear from the overgrown temple.", trail = { Color3.fromHex("#ffd24d"), Color3.fromHex("#1b8e78") } },
-	{ id = "mangrove_root", price = 986490000, sharp = 11, heavy = 10, luck = 24.76, range = 2.26, alpha = 0.392, impact = "dust", zone = 9, tier = 19, name = "Mangrove Root", desc = "A twisted root shaft fitted with a broad hunting edge.", trail = { Color3.fromHex("#a7e96a"), Color3.fromHex("#5b8c3e") } },
-	{ id = "hydra_fangs", price = 1361360000, sharp = 12, heavy = 10, luck = 27.73, range = 2.305, alpha = 0.386, impact = "shards", zone = 9, tier = 20, name = "Hydra Fangs", desc = "Twin fang-shaped blades rise from a reinforced socket.", trail = { Color3.fromHex("#9eff78"), Color3.fromHex("#358957") } },
-	{ id = "storm_trident", price = 1878680000, sharp = 12, heavy = 11, luck = 31.06, range = 2.35, alpha = 0.38, impact = "sparks", zone = 10, tier = 21, name = "Storm Trident", desc = "A forked point that gathers the colors of a storm.", trail = { Color3.fromHex("#fff16c"), Color3.fromHex("#83a9e6") } },
-	{ id = "thunder_split", price = 2592570000, sharp = 13, heavy = 11, luck = 34.79, range = 2.395, alpha = 0.374, impact = "sparks", zone = 10, tier = 22, name = "Thunder Splitter", desc = "An open lightning-shaped blade built for the high ridges.", trail = { Color3.fromHex("#f7ee56"), Color3.fromHex("#5e88cb") } },
-	{ id = "coral_branch", price = 3577750000, sharp = 13, heavy = 12, luck = 38.96, range = 2.44, alpha = 0.368, impact = "crystal", zone = 11, tier = 23, name = "Coral Branch", desc = "A branching coral point with a sturdy wrapped grip.", trail = { Color3.fromHex("#8cf5ee"), Color3.fromHex("#f17c8a") } },
-	{ id = "tide_crest", price = 4937300000, sharp = 14, heavy = 12, luck = 43.63, range = 2.485, alpha = 0.362, impact = "ice", zone = 11, tier = 24, name = "Tide Crest", desc = "A sweeping edge shaped like a breaking wave.", trail = { Color3.fromHex("#b6ffff"), Color3.fromHex("#25c2dd") } },
-	{ id = "abyss_anchor", price = 6813470000, sharp = 14, heavy = 13, luck = 48.87, range = 2.53, alpha = 0.356, impact = "shards", zone = 12, tier = 25, name = "Abyssal Anchor", desc = "A heavy anchor blade recovered from the deep.", trail = { Color3.fromHex("#64f2e8"), Color3.fromHex("#315c87") } },
-	{ id = "leviathan_fang", price = 9402590000, sharp = 15, heavy = 13, luck = 54.74, range = 2.575, alpha = 0.35, impact = "ice", zone = 12, tier = 26, name = "Leviathan Fang", desc = "A great sea fang secured inside a reinforced frame.", trail = { Color3.fromHex("#78dce9"), Color3.fromHex("#283c66") } },
-	{ id = "ash_saw", price = 12975580000, sharp = 15, heavy = 14, luck = 61.3, range = 2.62, alpha = 0.344, impact = "shards", zone = 13, tier = 27, name = "Ash Saw", desc = "A dark serrated blade forged for the volcanic plateau.", trail = { Color3.fromHex("#f0a460"), Color3.fromHex("#5d5a67") } },
-	{ id = "golem_heart", price = 17906290000, sharp = 16, heavy = 14, luck = 68.66, range = 2.665, alpha = 0.338, impact = "sparks", zone = 13, tier = 28, name = "Golem Heart", desc = "A warm stone core powers its layered metal point.", trail = { Color3.fromHex("#ffbb3c"), Color3.fromHex("#566270") } },
-	{ id = "magma_tongue", price = 24710690000, sharp = 16, heavy = 15, luck = 76.9, range = 2.71, alpha = 0.332, impact = "fire", zone = 14, tier = 29, name = "Magma Tongue", desc = "A bright molten edge held within a black stone frame.", trail = { Color3.fromHex("#ffd439"), Color3.fromHex("#f25b22") } },
-	{ id = "phoenix_wing", price = 34100750000, sharp = 17, heavy = 15, luck = 86.13, range = 2.755, alpha = 0.326, impact = "fire", zone = 14, tier = 30, name = "Phoenix Wing", desc = "A fiery wing-shaped blade with a feathered grip.", trail = { Color3.fromHex("#ffdf66"), Color3.fromHex("#f57b20") } },
-	{ id = "amethyst_geode", price = 47059030000, sharp = 17, heavy = 16, luck = 96.46, range = 2.8, alpha = 0.32, impact = "crystal", zone = 15, tier = 31, name = "Amethyst Geode", desc = "A hollow crystal crown opens around an amethyst core.", trail = { Color3.fromHex("#e9a2ff"), Color3.fromHex("#9637d8") } },
-	{ id = "quartz_needle", price = 64941460000, sharp = 18, heavy = 16, luck = 108.04, range = 2.845, alpha = 0.314, impact = "crystal", zone = 15, tier = 32, name = "Quartz Needle", desc = "A long clear point mounted in a delicate crystal socket.", trail = { Color3.fromHex("#d7ffff"), Color3.fromHex("#9e74d6") } },
-	{ id = "lunar_crescent", price = 89619220000, sharp = 18, heavy = 17, luck = 121.0, range = 2.89, alpha = 0.308, impact = "ice", zone = 16, tier = 33, name = "Lunar Crescent", desc = "A silver moon-shaped edge for the frozen plains.", trail = { Color3.fromHex("#ebfaff"), Color3.fromHex("#b5c7ef") } },
-	{ id = "aurora_weave", price = 123674520000, sharp = 19, heavy = 17, luck = 135.52, range = 2.935, alpha = 0.302, impact = "ice", zone = 16, tier = 34, name = "Aurora Weave", desc = "Colored bands wrap around its luminous northern blade.", trail = { Color3.fromHex("#bc90ff"), Color3.fromHex("#72e4c2") } },
-	{ id = "cloud_feather", price = 170670840000, sharp = 19, heavy = 18, luck = 151.79, range = 2.98, alpha = 0.296, impact = "feathers", zone = 17, tier = 35, name = "Cloud Feather", desc = "A light feathered point built for the floating islands.", trail = { Color3.fromHex("#effbff"), Color3.fromHex("#91d6ec") } },
-	{ id = "sky_harpoon", price = 235525770000, sharp = 20, heavy = 18, luck = 170.0, range = 3.025, alpha = 0.29, impact = "feathers", zone = 17, tier = 36, name = "Sky Harpoon", desc = "A long hooked harpoon made to reach across the clouds.", trail = { Color3.fromHex("#f7e696"), Color3.fromHex("#65b6d7") } },
-	{ id = "rift_shards", price = 325025560000, sharp = 20, heavy = 19, luck = 190.4, range = 3.07, alpha = 0.284, impact = "shards", zone = 18, tier = 37, name = "Rift Shards", desc = "A floating cluster of dark fragments surrounds its point.", trail = { Color3.fromHex("#dc9bff"), Color3.fromHex("#7139b8") } },
-	{ id = "void_scissors", price = 448535270000, sharp = 21, heavy = 19, luck = 213.25, range = 3.115, alpha = 0.278, impact = "crystal", zone = 18, tier = 38, name = "Void Shears", desc = "Two open blades frame the darkness between them.", trail = { Color3.fromHex("#b278ff"), Color3.fromHex("#3b285d") } },
-	{ id = "astral_armillary", price = 618978670000, sharp = 21, heavy = 20, luck = 238.84, range = 3.16, alpha = 0.272, impact = "stars", zone = 19, tier = 39, name = "Astral Armillary", desc = "Orbital rings hold a golden point at their center.", trail = { Color3.fromHex("#ffe48b"), Color3.fromHex("#6863df") } },
-	{ id = "singularity_spire", price = 854190560000, sharp = 22, heavy = 20, luck = 267.5, range = 3.205, alpha = 0.266, impact = "stars", zone = 19, tier = 40, name = "Singularity Spire", desc = "A stepped black spire held within an open event-horizon frame.", trail = { Color3.fromHex("#f5db77"), Color3.fromHex("#7864e5") } },
+	{ id = "bone", price = 201, sharp = 2, heavy = 1, luck = 1.2, range = 1.05, alpha = 0.8, impact = "dust", zone = 1, tier = 2, name = "Bone Spear", desc = "Pierces tougher hides.", trail = { Color3.fromHex("#fffaeb"), Color3.fromHex("#c8bea0") } },
+	{ id = "bronze", price = 294, sharp = 2, heavy = 2, luck = 1.4, range = 1.1, alpha = 0.76, impact = "sparks", zone = 2, tier = 3, name = "Bronze Spear", desc = "Heavy and dependable.", trail = { Color3.fromHex("#ffbe6e"), Color3.fromHex("#cd7f32") } },
+	{ id = "feather", price = 1200, sharp = 3, heavy = 2, luck = 1.7, range = 1.25, alpha = 0.72, impact = "feathers", zone = 2, tier = 4, name = "Feathered Spear", desc = "Flies farther than other early spears.", trail = { Color3.fromHex("#ff7878"), Color3.fromHex("#50a0ff") } },
+	{ id = "iron", price = 1480, sharp = 3, heavy = 3, luck = 2, range = 1.3, alpha = 0.68, impact = "sparks", zone = 2, tier = 5, name = "Iron Spear", desc = "Built for bigger game.", trail = { Color3.fromHex("#dce2f0"), Color3.fromHex("#787c88") } },
+	{ id = "obsidian", price = 5030, sharp = 4, heavy = 3, luck = 2.6, range = 1.38, alpha = 0.63, impact = "shards", zone = 3, tier = 6, name = "Obsidian Spear", desc = "Forged from black volcanic glass.", trail = { Color3.fromHex("#c86eff"), Color3.fromHex("#3c145a") } },
+	{ id = "crystal", price = 11400, sharp = 5, heavy = 4, luck = 3.4, range = 1.45, alpha = 0.58, impact = "crystal", zone = 3, tier = 7, name = "Crystal Spear", desc = "Chimes as it flies.", trail = { Color3.fromHex("#8cffff"), Color3.fromHex("#ffc846") } },
+	{ id = "fire", price = 61600, sharp = 5, heavy = 4, luck = 4.5, range = 1.55, alpha = 0.54, impact = "fire", zone = 4, tier = 8, name = "Fire Spear", desc = "Leaves a blazing trail.", trail = { Color3.fromHex("#ffdc50"), Color3.fromHex("#ff4614") } },
+	{ id = "ice", price = 75100, sharp = 6, heavy = 5, luck = 6, range = 1.65, alpha = 0.5, impact = "ice", zone = 4, tier = 9, name = "Ice Spear", desc = "Freezes the air around it.", trail = { Color3.fromHex("#ebfaff"), Color3.fromHex("#78c8ff") } },
+	{ id = "star", price = 280000, sharp = 6, heavy = 5, luck = 9, range = 1.8, alpha = 0.45, impact = "stars", zone = 4, tier = 10, name = "Star Spear", desc = "Fell from the sky. Almost aims itself.", trail = { Color3.fromHex("#ffe678"), Color3.fromHex("#785aff") } },
+	{ id = "amber_sting", price = 345000, sharp = 7, heavy = 6, luck = 10.0, range = 1.9, alpha = 0.44, impact = "sparks", zone = 5, tier = 11, name = "Amber Sting", desc = "A honey-colored edge set in layered amber.", trail = { Color3.fromHex("#fff17b"), Color3.fromHex("#f5a817") } },
+	{ id = "solar_trident", price = 593000, sharp = 8, heavy = 6, luck = 11.2, range = 1.945, alpha = 0.434, impact = "fire", zone = 5, tier = 12, name = "Solar Trident", desc = "Three golden prongs catch the light of the savanna.", trail = { Color3.fromHex("#ff692d"), Color3.fromHex("#ffd029") } },
+	{ id = "canyon_hook", price = 1370000, sharp = 8, heavy = 7, luck = 12.54, range = 1.99, alpha = 0.428, impact = "shards", zone = 6, tier = 13, name = "Canyon Hook", desc = "A hooked stone blade shaped for the red canyons.", trail = { Color3.fromHex("#73c6e8"), Color3.fromHex("#d77435") } },
+	{ id = "condor_quill", price = 1570000, sharp = 9, heavy = 7, luck = 14.05, range = 2.035, alpha = 0.422, impact = "feathers", zone = 6, tier = 14, name = "Condor Quill", desc = "A broad feathered edge built to cut through rising air.", trail = { Color3.fromHex("#d78e36"), Color3.fromHex("#e4dfca") } },
+	{ id = "mirage_lance", price = 3410000, sharp = 9, heavy = 8, luck = 15.74, range = 2.08, alpha = 0.416, impact = "crystal", zone = 7, tier = 15, name = "Mirage Lance", desc = "A pale desert lance with a shimmering point.", trail = { Color3.fromHex("#6ee1e9"), Color3.fromHex("#f1cf6c") } },
+	{ id = "scorpion_sting", price = 3790000, sharp = 10, heavy = 8, luck = 17.62, range = 2.125, alpha = 0.41, impact = "shards", zone = 7, tier = 16, name = "Scorpion Sting", desc = "A hooked tip and layered grip inspired by desert armor.", trail = { Color3.fromHex("#9aff7e"), Color3.fromHex("#be8240") } },
+	{ id = "emerald_vine", price = 7860000, sharp = 10, heavy = 9, luck = 19.74, range = 2.17, alpha = 0.404, impact = "crystal", zone = 8, tier = 17, name = "Emerald Vine", desc = "A green blade held by tightly wrapped jungle vines.", trail = { Color3.fromHex("#c2f757"), Color3.fromHex("#19bd67") } },
+	{ id = "temple_guard", price = 8640000, sharp = 11, heavy = 9, luck = 22.11, range = 2.215, alpha = 0.398, impact = "sparks", zone = 8, tier = 18, name = "Temple Guard", desc = "A carved guardian spear from the overgrown temple.", trail = { Color3.fromHex("#ffd24d"), Color3.fromHex("#1b8e78") } },
+	{ id = "mangrove_root", price = 17700000, sharp = 11, heavy = 10, luck = 24.76, range = 2.26, alpha = 0.392, impact = "dust", zone = 9, tier = 19, name = "Mangrove Root", desc = "A twisted root shaft fitted with a broad hunting edge.", trail = { Color3.fromHex("#a7e96a"), Color3.fromHex("#5b8c3e") } },
+	{ id = "hydra_fangs", price = 19300000, sharp = 12, heavy = 10, luck = 27.73, range = 2.305, alpha = 0.386, impact = "shards", zone = 9, tier = 20, name = "Hydra Fangs", desc = "Twin fang-shaped blades rise from a reinforced socket.", trail = { Color3.fromHex("#9eff78"), Color3.fromHex("#358957") } },
+	{ id = "storm_trident", price = 39100000, sharp = 12, heavy = 11, luck = 31.06, range = 2.35, alpha = 0.38, impact = "sparks", zone = 10, tier = 21, name = "Storm Trident", desc = "A forked point that gathers the colors of a storm.", trail = { Color3.fromHex("#fff16c"), Color3.fromHex("#83a9e6") } },
+	{ id = "thunder_split", price = 42400000, sharp = 13, heavy = 11, luck = 34.79, range = 2.395, alpha = 0.374, impact = "sparks", zone = 10, tier = 22, name = "Thunder Splitter", desc = "An open lightning-shaped blade built for the high ridges.", trail = { Color3.fromHex("#f7ee56"), Color3.fromHex("#5e88cb") } },
+	{ id = "coral_branch", price = 85300000, sharp = 13, heavy = 12, luck = 38.96, range = 2.44, alpha = 0.368, impact = "crystal", zone = 11, tier = 23, name = "Coral Branch", desc = "A branching coral point with a sturdy wrapped grip.", trail = { Color3.fromHex("#8cf5ee"), Color3.fromHex("#f17c8a") } },
+	{ id = "tide_crest", price = 91800000, sharp = 14, heavy = 12, luck = 43.63, range = 2.485, alpha = 0.362, impact = "ice", zone = 11, tier = 24, name = "Tide Crest", desc = "A sweeping edge shaped like a breaking wave.", trail = { Color3.fromHex("#b6ffff"), Color3.fromHex("#25c2dd") } },
+	{ id = "abyss_anchor", price = 184000000, sharp = 14, heavy = 13, luck = 48.87, range = 2.53, alpha = 0.356, impact = "shards", zone = 12, tier = 25, name = "Abyssal Anchor", desc = "A heavy anchor blade recovered from the deep.", trail = { Color3.fromHex("#64f2e8"), Color3.fromHex("#315c87") } },
+	{ id = "leviathan_fang", price = 196000000, sharp = 15, heavy = 13, luck = 54.74, range = 2.575, alpha = 0.35, impact = "ice", zone = 12, tier = 26, name = "Leviathan Fang", desc = "A great sea fang secured inside a reinforced frame.", trail = { Color3.fromHex("#78dce9"), Color3.fromHex("#283c66") } },
+	{ id = "ash_saw", price = 391000000, sharp = 15, heavy = 14, luck = 61.3, range = 2.62, alpha = 0.344, impact = "shards", zone = 13, tier = 27, name = "Ash Saw", desc = "A dark serrated blade forged for the volcanic plateau.", trail = { Color3.fromHex("#f0a460"), Color3.fromHex("#5d5a67") } },
+	{ id = "golem_heart", price = 416000000, sharp = 16, heavy = 14, luck = 68.66, range = 2.665, alpha = 0.338, impact = "sparks", zone = 13, tier = 28, name = "Golem Heart", desc = "A warm stone core powers its layered metal point.", trail = { Color3.fromHex("#ffbb3c"), Color3.fromHex("#566270") } },
+	{ id = "magma_tongue", price = 823000000, sharp = 16, heavy = 15, luck = 76.9, range = 2.71, alpha = 0.332, impact = "fire", zone = 14, tier = 29, name = "Magma Tongue", desc = "A bright molten edge held within a black stone frame.", trail = { Color3.fromHex("#ffd439"), Color3.fromHex("#f25b22") } },
+	{ id = "phoenix_wing", price = 873000000, sharp = 17, heavy = 15, luck = 86.13, range = 2.755, alpha = 0.326, impact = "fire", zone = 14, tier = 30, name = "Phoenix Wing", desc = "A fiery wing-shaped blade with a feathered grip.", trail = { Color3.fromHex("#ffdf66"), Color3.fromHex("#f57b20") } },
+	{ id = "amethyst_geode", price = 1720000000, sharp = 17, heavy = 16, luck = 96.46, range = 2.8, alpha = 0.32, impact = "crystal", zone = 15, tier = 31, name = "Amethyst Geode", desc = "A hollow crystal crown opens around an amethyst core.", trail = { Color3.fromHex("#e9a2ff"), Color3.fromHex("#9637d8") } },
+	{ id = "quartz_needle", price = 1820000000, sharp = 18, heavy = 16, luck = 108.04, range = 2.845, alpha = 0.314, impact = "crystal", zone = 15, tier = 32, name = "Quartz Needle", desc = "A long clear point mounted in a delicate crystal socket.", trail = { Color3.fromHex("#d7ffff"), Color3.fromHex("#9e74d6") } },
+	{ id = "lunar_crescent", price = 3570000000, sharp = 18, heavy = 17, luck = 121.0, range = 2.89, alpha = 0.308, impact = "ice", zone = 16, tier = 33, name = "Lunar Crescent", desc = "A silver moon-shaped edge for the frozen plains.", trail = { Color3.fromHex("#ebfaff"), Color3.fromHex("#b5c7ef") } },
+	{ id = "aurora_weave", price = 3760000000, sharp = 19, heavy = 17, luck = 135.52, range = 2.935, alpha = 0.302, impact = "ice", zone = 16, tier = 34, name = "Aurora Weave", desc = "Colored bands wrap around its luminous northern blade.", trail = { Color3.fromHex("#bc90ff"), Color3.fromHex("#72e4c2") } },
+	{ id = "cloud_feather", price = 7360000000, sharp = 19, heavy = 18, luck = 151.79, range = 2.98, alpha = 0.296, impact = "feathers", zone = 17, tier = 35, name = "Cloud Feather", desc = "A light feathered point built for the floating islands.", trail = { Color3.fromHex("#effbff"), Color3.fromHex("#91d6ec") } },
+	{ id = "sky_harpoon", price = 7740000000, sharp = 20, heavy = 18, luck = 170.0, range = 3.025, alpha = 0.29, impact = "feathers", zone = 17, tier = 36, name = "Sky Harpoon", desc = "A long hooked harpoon made to reach across the clouds.", trail = { Color3.fromHex("#f7e696"), Color3.fromHex("#65b6d7") } },
+	{ id = "rift_shards", price = 15100000000, sharp = 20, heavy = 19, luck = 190.4, range = 3.07, alpha = 0.284, impact = "shards", zone = 18, tier = 37, name = "Rift Shards", desc = "A floating cluster of dark fragments surrounds its point.", trail = { Color3.fromHex("#dc9bff"), Color3.fromHex("#7139b8") } },
+	{ id = "void_scissors", price = 15800000000, sharp = 21, heavy = 19, luck = 213.25, range = 3.115, alpha = 0.278, impact = "crystal", zone = 18, tier = 38, name = "Void Shears", desc = "Two open blades frame the darkness between them.", trail = { Color3.fromHex("#b278ff"), Color3.fromHex("#3b285d") } },
+	{ id = "astral_armillary", price = 30800000000, sharp = 21, heavy = 20, luck = 238.84, range = 3.16, alpha = 0.272, impact = "stars", zone = 19, tier = 39, name = "Astral Armillary", desc = "Orbital rings hold a golden point at their center.", trail = { Color3.fromHex("#ffe48b"), Color3.fromHex("#6863df") } },
+	{ id = "singularity_spire", price = 32200000000, sharp = 22, heavy = 20, luck = 267.5, range = 3.205, alpha = 0.266, impact = "stars", zone = 19, tier = 40, name = "Singularity Spire", desc = "A stepped black spire held within an open event-horizon frame.", trail = { Color3.fromHex("#f5db77"), Color3.fromHex("#7864e5") } },
+	{ id = "gear_pike", price = 62500000000, sharp = 23, heavy = 21, luck = 299.6, range = 3.25, alpha = 0.26, impact = "sparks", zone = 20, tier = 41, name = "Gearwork Pike", desc = "A copper-banded pike that ticks like a clock.", trail = { Color3.fromHex("#ffd07a"), Color3.fromHex("#c9803a") } },
+	{ id = "spore_halberd", price = 121000000000, sharp = 24, heavy = 22, luck = 335.6, range = 3.295, alpha = 0.254, impact = "dust", zone = 21, tier = 42, name = "Sporebloom Halberd", desc = "A glowing cap blooms behind its pale blade.", trail = { Color3.fromHex("#9dffd6"), Color3.fromHex("#3f8f78") } },
+	{ id = "bone_glaive", price = 235000000000, sharp = 25, heavy = 23, luck = 375.8, range = 3.34, alpha = 0.248, impact = "shards", zone = 22, tier = 43, name = "Boneforged Glaive", desc = "Carved from a fossil rib, edged like a crescent.", trail = { Color3.fromHex("#f4ead0"), Color3.fromHex("#a89a74") } },
+	{ id = "pearl_lance", price = 454000000000, sharp = 26, heavy = 24, luck = 420.9, range = 3.385, alpha = 0.242, impact = "ice", zone = 23, tier = 44, name = "Citadel Pearl Lance", desc = "A drowned-fortress spear with a pearl in its socket.", trail = { Color3.fromHex("#bff3ff"), Color3.fromHex("#3aa0c8") } },
+	{ id = "rift_conductor", price = 877000000000, sharp = 27, heavy = 25, luck = 471.4, range = 3.43, alpha = 0.236, impact = "sparks", zone = 24, tier = 45, name = "Rift Conductor", desc = "Draws the lightning of the torn sky into its tip.", trail = { Color3.fromHex("#d6ccff"), Color3.fromHex("#8a7cff") } },
+	{ id = "primal_fang", price = 1690000000000, sharp = 28, heavy = 26, luck = 528.0, range = 3.475, alpha = 0.23, impact = "fire", zone = 25, tier = 46, name = "Primordial Fang", desc = "A caldera-forged fang, still glowing from the first fire.", trail = { Color3.fromHex("#ffd08a"), Color3.fromHex("#ff7a3d") } },
 }
 -- Кузница: улучшение купленного копья (уровни 0..5)
 Config.FORGE = {
-	maxLevel = 5,
+	maxLevel = 7, -- абсолютный потолок; бесплатно доступно freeMax, остальное даёт пасс Master Smith
+	freeMax = 5,
 	luckPer = 0.12, -- +12% удачи за уровень
 	rangePer = 0.04, -- +4% дальности за уровень
 	alphaPer = 0.012, -- копьё «держит» натяжение дольше
@@ -382,11 +399,36 @@ Config.BOOSTS = {
 }
 -- Зелья Травницы
 Config.POTIONS = {
-	{ boost = "luck", dur = 300, cost = 120 },
-	{ boost = "coins", dur = 300, cost = 200 },
-	{ boost = "range", dur = 300, cost = 150 },
-	{ boost = "tension", dur = 240, cost = 260 },
+	{ boost = "luck", dur = 300, cost = 120, k = 0.10 },
+	{ boost = "coins", dur = 300, cost = 200, k = 0.35 },
+	{ boost = "range", dur = 300, cost = 150, k = 0.10 },
+	{ boost = "tension", dur = 240, cost = 260, k = 0.10 },
 }
+-- Цена зелья = доля k от дохода за время действия при лучшем купленном копье (бросок ≈ THROW_SECONDS).
+-- Раньше зелья стоили 120-260 монет всегда и в поздней игре были бесплатными.
+Config.THROW_SECONDS = 12
+function Config.potionCost(p: any, d: any): number
+	-- по лучшему из купленных копий: смена копья перед покупкой цену не снижает
+	local best = 1
+	for id in (d and d.spears or {}) do
+		local sp = Config.SPEAR_BY_ID[id]
+		if sp and sp.index > best then
+			best = sp.index
+		end
+	end
+	local ev = Config.EV_BY_SPEAR[best] or 0
+	local worth = ev * p.dur / Config.THROW_SECONDS
+	-- Зелье монет умножает всю продажу, поэтому полная сумка тоже считается: иначе его можно купить
+	-- за копейки и продать сразу всю сумку.
+	if p.boost == "coins" and d and d.items then
+		local bag = 0
+		for _, it in d.items do
+			bag += it.price * (it.wrapped and Config.WRAP_MULT or 1)
+		end
+		worth = math.max(worth, bag)
+	end
+	return math.max(p.cost, round3(worth * p.k))
+end
 
 ---------------------------------------------------------------------
 -- Задания NPC (kind: catch, rarity, zone, tier, sell, range, course, collect, wrap, train)
@@ -465,6 +507,15 @@ Config.SUFFIXES = { "", "K", "M", "B", "T", "Qa", "Qi", "Sx", "Sp", "Oc", "No", 
 ---------------------------------------------------------------------
 -- Производные таблицы и формулы
 ---------------------------------------------------------------------
+-- V25: цены видов зон 5-25 пересчитаны (x PRICE_PHI). В V24 доход скакал в 3800 раз между зонами 4 и 5,
+-- а копья 6-10 стоили до 100 000 бросков. Теперь рост плавный (см. SHOP.md, раздел "Экономика").
+Config.PRICE_PHI = 4.4e-4
+for _, sp in Config.SPECIES do
+	if sp.zone >= 5 then
+		sp.price = math.max(1, round3(sp.price * Config.PRICE_PHI))
+	end
+end
+
 Config.SPECIES_BY_ID = {} :: { [string]: any }
 for i, sp in Config.SPECIES do
 	sp.index = i
@@ -569,38 +620,52 @@ end
 -- price — запасная цифра для кнопки; настоящая цена читается из MarketplaceService.
 ---------------------------------------------------------------------
 Config.BOOSTS.server = { name = "Server Luck ×2", icon = "🎉", color = Color3.fromRGB(110, 190, 255), mult = 1 }
+-- Только за Robux: бесплатного эквивалента в игре нет.
+Config.BOOSTS.fortune = { name = "Golden Hour", icon = "✨", color = Color3.fromRGB(255, 200, 50), mult = 1 }
+Config.BOOSTS.jackpot = { name = "Jackpot Hour", icon = "🎰", color = Color3.fromRGB(255, 90, 140), mult = 1 }
+Config.BOOSTS.fair = { name = "Trade Fair", icon = "🎪", color = Color3.fromRGB(90, 220, 200), mult = 1 }
 
 Config.SHOP = {
 	DATASTORE = "SpearHunt_v1",
 	STARTER_MAX_LEVEL = 10,
 	COIN_REF_MIN = 5000,
+	-- Правило каталога: у каждого товара нет бесплатного эквивалента в игре.
+	--   charm   - потолки редкости +50% (бесплатные зелья дают +25% и ненадолго)
+	--   insight - прогноз рынка на 6 часов (бесплатно виден только текущий час)
+	--   broker  - цена почти не падает, когда продаёшь много одного вида
+	--   smith   - уровни кузницы 6-7 и скидка 25% (бесплатно максимум 5)
+	--   wrap    - завернуть всю сумку одним бантом (бесплатно по одной штуке)
+	--   vip     - продажа из любого места, золотая метка, +15% опыта
 	PASSES = {
-		{ key = "charm", id = 0, price = 399, name = "Lucky Charm", desc = "Luck x2 forever. Rare animal limits +50%." },
-		{ key = "purse", id = 0, price = 299, name = "Golden Purse", desc = "Every sale pays +100% coins. Forever." },
+		{ key = "charm", id = 0, price = 399, name = "Lucky Charm", desc = "Rare animal chances +50% forever. Luck x2." },
+		{ key = "insight", id = 0, price = 299, name = "Market Insight", desc = "See which rarity is in hot demand for the next 6 hours." },
+		{ key = "broker", id = 0, price = 349, name = "Silver Broker", desc = "Selling many of one animal barely lowers its price." },
+		{ key = "smith", id = 0, price = 399, name = "Master Smith", desc = "Forge levels 6 and 7. Forging costs 25% less." },
 		{ key = "wrap", id = 0, price = 249, name = "Master Wrapper", desc = "Tie one bow and your whole bag is wrapped." },
-		{ key = "bag", id = 0, price = 179, name = "Big Game Bag", desc = "+60 bag slots. Sell from anywhere." },
-		{ key = "titan", id = 0, price = 149, name = "Titan Training", desc = "Every dumbbell rep gives x2 Strength." },
-		{ key = "vip", id = 0, price = 449, name = "VIP Hunter", desc = "Gold VIP tag. +20% coins and +25% XP." },
+		{ key = "vip", id = 0, price = 449, name = "VIP Hunter", desc = "Sell from anywhere. Gold VIP tag. +15% XP." },
 	},
 	PRODUCTS = {
 		{ key = "starter", id = 0, price = 79, kind = "starter", name = "Starter Pack" },
-		{ key = "luck30", id = 0, price = 59, kind = "boost", boosts = { "luck" }, dur = 1800, name = "Luck Brew", desc = "Luck x2 and rare limits +25% for 30 min of play." },
-		{ key = "coins30", id = 0, price = 49, kind = "boost", boosts = { "coins" }, dur = 1800, name = "Coin Brew", desc = "+100% coins from sales for 30 min of play." },
-		{ key = "brew30", id = 0, price = 119, kind = "boost", boosts = { "luck", "coins", "range", "tension" }, dur = 1800, name = "Hunter's Brew", desc = "Luck, Coins, Range and Steady Grip for 30 min." },
-		{ key = "server15", id = 0, price = 149, kind = "server", dur = 900, name = "Server Luck", desc = "Luck x2 for everyone on the server for 15 min." },
+		{ key = "fortune20", id = 0, price = 79, kind = "boost", boosts = { "fortune" }, dur = 1200, name = "Golden Hour", desc = "Gold and Rainbow mutations come up much more often for 20 min of play." },
+		{ key = "jackpot20", id = 0, price = 99, kind = "boost", boosts = { "jackpot" }, dur = 1200, name = "Jackpot Hour", desc = "Rare animal chances +100% for 20 min of play." },
+		{ key = "fair30", id = 0, price = 59, kind = "boost", boosts = { "fair" }, dur = 1800, name = "Trade Fair", desc = "No price drops from selling and no weak-demand hours for 30 min." },
+		{ key = "server15", id = 0, price = 149, kind = "server", dur = 900, name = "Server Luck", desc = "Luck x2 and rare chances +25% for everyone on the server for 15 min." },
 		{ key = "coins1", id = 0, price = 49, kind = "coins", k = 0.3, name = "Coin Pouch" },
 		{ key = "coins2", id = 0, price = 99, kind = "coins", k = 0.8, name = "Coin Sack" },
 		{ key = "coins3", id = 0, price = 199, kind = "coins", k = 2, name = "Coin Chest" },
 		{ key = "coins4", id = 0, price = 399, kind = "coins", k = 5, name = "Hunter's Hoard", best = true },
 	},
-	STARTER = { spear = "bronze", coins = 2000, bagLvl = 2, boost = "luck", dur = 1800 },
+	STARTER = { spear = "iron", coins = 4000, bagLvl = 3, boost = "fortune", dur = 1800 },
 	-- Бонусы одной характеристики складываются, а не перемножаются.
 	PERK = {
 		charmLuck = 1, charmCaps = 0.5,
-		boostCaps = 0.25,
+		boostCaps = 0.25, -- зелье удачи за монеты
+		jackpotCaps = 1.0,
 		serverLuck = 1, serverCaps = 0.25,
-		purseCoins = 1, vipCoins = 0.2, vipXp = 0.25,
-		bagSlots = 60, repMult = 2,
+		vipXp = 0.15,
+		smithLevels = 2, smithDiscount = 0.25,
+		fortuneMutMul = 3,
+		forecastHours = 6,
 	},
 }
 Config.SHOP_BY_KEY = {} :: { [string]: any }
@@ -627,6 +692,188 @@ function Config.shopCoins(d: any, k: number): number
 	local n = math.max(1, ref * math.max(k, 0))
 	local p = 10 ^ (math.floor(math.log10(n)) - 1)
 	return math.floor(n / p + 0.5) * p
+end
+
+---------------------------------------------------------------------
+-- V25: рынок.
+-- Спрос - чистая функция серверного времени и номера вида: у всех игроков одинаковый,
+-- сервер для этого не нужен. Насыщение (много одного вида подряд) хранится у игрока в d.market.
+-- Средний множитель для того, кто просто продаёт всё, около 1: рынок награждает умение, а не наказывает.
+---------------------------------------------------------------------
+Config.MARKET = {
+	HOUR = 3600,
+	NOISE = 0.24, -- разброс спроса (ln-пространство)
+	HOT_RARITY = 1.3, -- "горячая" редкость часа
+	COLD_RARITY = 0.85,
+	HOT_HABITAT = 1.2, -- наземные / летающие / водные
+	CRAZE = 1.8, -- ажиотаж на вид (3 часа)
+	GLUT = 0.6, -- затоваривание вида (3 часа)
+	BLOCK_HOURS = 3,
+	NORM = 0.92, -- приводит средний спрос к ~1.0 (события дают в среднем +10%)
+	MIN = 0.5,
+	MAX = 2.2,
+	BROKER_FLOOR = 0.9, -- Silver Broker: спрос в плохие часы не ниже
+	SAT = { per = 0.97, floor = 0.5, recover = 20 }, -- каждая продажа вида: x0.97; одна "единица" проходит за 20 с
+	SAT_BROKER = { per = 0.99, floor = 0.8, recover = 8 },
+}
+
+-- Бонус к потолкам редкости от удачи копья. Без него удача выше ~160 ни на что не влияла:
+-- все потолки RARITY_CHANCE_CAPS упирались уже на копье №6.
+function Config.capLuckMul(luck: number): number
+	return math.clamp(1 + 0.25 * math.log10(math.max(luck or 0, 100) / 100), 1, 2.5)
+end
+
+-- Доход за бросок у лучшей зоны для копья по номеру (расчёт V25, бросок x10, без рынка).
+Config.EV_BY_SPEAR = { 13.4, 18, 62.6, 64.4, 182, 345, 1570, 1640, 5260, 5650, 8510, 17400, 17800, 34800, 34900, 65700, 66000, 124000, 125000, 234000, 235000, 439000, 441000, 826000, 829000, 1550000, 1560000, 2910000, 2920000, 5460000, 5480000, 10200000, 10300000, 19200000, 19200000, 35900000, 36000000, 67200000, 67400000, 126000000, 234000000, 436000000, 813000000, 1510000000, 2820000000, 3800000000 }
+
+local function hash01(a: number, b: number): number
+	local x = (a * 374761 + b * 668265) % 4294967296
+	x = bit32.bxor(x, bit32.rshift(x, 13))
+	x = (x * 1664525 + 1013904223) % 4294967296
+	x = bit32.bxor(x, bit32.rshift(x, 16))
+	x = (x * 69069 + 1) % 4294967296
+	return (x % 1000003) / 1000003
+end
+
+function Config.marketNow(): number
+	local ok, t = pcall(function()
+		return workspace:GetServerTimeNow()
+	end)
+	return (ok and type(t) == "number") and t or os.time()
+end
+
+local eventCache: { [number]: any } = {}
+local HABITATS = { "ground", "air", "water" }
+
+-- События часа: горячая и холодная редкость, горячая среда обитания, ажиотаж и затоваривание вида.
+function Config.marketEventsAtHour(h: number): any
+	local c = eventCache[h]
+	if c then
+		return c
+	end
+	local nR = #Config.RARITIES
+	local hot = 1 + math.floor(hash01(h, 11) * nR)
+	local cold = ((hot - 1 + 1 + math.floor(hash01(h, 12) * (nR - 1))) % nR) + 1
+	local block = math.floor(h / Config.MARKET.BLOCK_HOURS)
+	local nS = #Config.SPECIES
+	local ci = 1 + math.floor(hash01(block, 21) * nS)
+	local gi = 1 + math.floor(hash01(block, 22) * nS)
+	if gi == ci then
+		gi = gi % nS + 1
+	end
+	local ev = {
+		hotRarity = hot,
+		coldRarity = cold,
+		hotHabitat = HABITATS[1 + math.floor(hash01(h, 13) * #HABITATS)],
+		craze = Config.SPECIES[ci],
+		glut = Config.SPECIES[gi],
+	}
+	eventCache[h] = ev
+	return ev
+end
+
+function Config.marketEvents(now: number): any
+	return Config.marketEventsAtHour(math.floor(now / Config.MARKET.HOUR))
+end
+
+local function demandAtHour(sp: any, h: number): number
+	local M = Config.MARKET
+	local idx = sp.index or 1
+	local r = hash01(idx, h) + hash01(idx + 7919, h * 3 + 1) - 1 -- [-1, 1], ближе к 0
+	local d = math.exp(M.NOISE * r * 1.8) * M.NORM
+	local ev = Config.marketEventsAtHour(h)
+	if sp.rarity == ev.hotRarity then
+		d *= M.HOT_RARITY
+	elseif sp.rarity == ev.coldRarity then
+		d *= M.COLD_RARITY
+	end
+	local kind = sp.spawnKind
+	if kind == "shore_and_water" or kind == "shallow_water_ground" then
+		kind = "water"
+	end
+	if kind == ev.hotHabitat then
+		d *= M.HOT_HABITAT
+	end
+	if ev.craze and sp.id == ev.craze.id then
+		d *= M.CRAZE
+	end
+	if ev.glut and sp.id == ev.glut.id then
+		d *= M.GLUT
+	end
+	return math.clamp(d, M.MIN, M.MAX)
+end
+
+-- Спрос на вид в момент now (плавный переход между часами).
+function Config.marketDemand(sp: any, now: number): number
+	local H = Config.MARKET.HOUR
+	local h = math.floor(now / H)
+	local f = now / H - h
+	local s = f * f * (3 - 2 * f)
+	local a = demandAtHour(sp, h)
+	local b = demandAtHour(sp, h + 1)
+	return a + (b - a) * s
+end
+
+-- Прогноз спроса на n часов вперёд (пасс Market Insight).
+function Config.marketForecast(sp: any, now: number, n: number): { number }
+	local out = {}
+	for k = 0, n do
+		table.insert(out, Config.marketDemand(sp, now + k * Config.MARKET.HOUR))
+	end
+	return out
+end
+
+-- Насыщение: сколько "единиц" этого вида игрок продал недавно.
+function Config.marketSaturation(rec: any, now: number, S: any): number
+	if type(rec) ~= "table" or type(rec.n) ~= "number" or type(rec.t) ~= "number" then
+		return 0
+	end
+	return math.max(0, rec.n - math.max(0, now - rec.t) / S.recover)
+end
+
+-- Котировка продажи. items - предметы к продаже (без изменения состояния).
+-- flags: broker (мягкое насыщение), fair (ярмарка: спрос не ниже 1, без насыщения).
+-- Возвращает сумму (без бустов монет), количество, строки по предметам, новые счётчики насыщения.
+function Config.marketQuote(items: { any }, d: any, now: number, flags: any?): (number, number, { [number]: any }, { [string]: number })
+	flags = flags or {}
+	local M = Config.MARKET
+	local S = flags.broker and M.SAT_BROKER or M.SAT
+	local sold = d and d.market and d.market.sold or {}
+	local order = table.clone(items)
+	table.sort(order, function(a, b)
+		local av = a.price * (a.wrapped and Config.WRAP_MULT or 1)
+		local bv = b.price * (b.wrapped and Config.WRAP_MULT or 1)
+		if av ~= bv then
+			return av > bv
+		end
+		return a.id < b.id
+	end)
+	local counts: { [string]: number } = {}
+	local rows: { [number]: any } = {}
+	local total = 0
+	for _, it in order do
+		local sp = Config.SPECIES_BY_ID[it.sp]
+		local base = it.price * (it.wrapped and Config.WRAP_MULT or 1)
+		local dem = sp and Config.marketDemand(sp, now) or 1
+		local n = counts[it.sp]
+		if n == nil then
+			n = Config.marketSaturation(sold[it.sp], now, S)
+		end
+		local sat = 1
+		if flags.fair then
+			dem = math.max(1, dem)
+		else
+			if flags.broker then
+				dem = math.max(M.BROKER_FLOOR, dem)
+			end
+			sat = math.max(S.floor, S.per ^ n)
+			counts[it.sp] = n + 1
+		end
+		local v = base * dem * sat
+		rows[it.id] = { dem = dem, sat = sat, value = v }
+		total += v
+	end
+	return math.floor(total), #order, rows, counts
 end
 
 return Config

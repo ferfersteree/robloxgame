@@ -131,6 +131,31 @@ local function itemValue(it: any): number
 	return it.price * (it.wrapped and Config.WRAP_MULT or 1)
 end
 
+-- V25: строка рынка под сумкой и на прилавке. base - цена без рынка, quote - с рынком.
+local function marketLine(now: number, mflags: any, base: number, quote: number): string
+	local M = Config.MARKET
+	local ev = Config.marketEvents(now)
+	local ratio = base > 0 and quote / base or 1
+	local parts = {
+		string.format("📈 Market ×%.2f", ratio),
+		string.format("🔥 %s ×%.1f", Config.RARITIES[ev.hotRarity].name, M.HOT_RARITY),
+		string.format("❄ %s ×%.2f", Config.RARITIES[ev.coldRarity].name, M.COLD_RARITY),
+		string.format("⭐ %s ×%.1f", ev.craze.name, M.CRAZE),
+		string.format("📉 %s ×%.1f", ev.glut.name, M.GLUT),
+	}
+	if Perks.has("insight") then
+		local seq = {}
+		for k = 1, Config.SHOP.PERK.forecastHours do
+			table.insert(seq, Config.RARITIES[Config.marketEvents(now + k * M.HOUR).hotRarity].name)
+		end
+		table.insert(parts, "🔮 hot next: " .. table.concat(seq, " › "))
+	end
+	if mflags.fair then
+		table.insert(parts, "🎪 Trade Fair")
+	end
+	return table.concat(parts, "  ·  ")
+end
+
 local function renderBag(body: Frame, st: { [string]: any })
 	local d = Backend.data
 	local items = table.clone(d.items)
@@ -139,13 +164,16 @@ local function renderBag(body: Frame, st: { [string]: any })
 	end)
 	st.sel = st.sel or {}
 	st.page = st.page or 1
-	local market = nearPrompt("sell", 22) or Perks.has("bag") -- Big Game Bag: продажа откуда угодно
+	local market = nearPrompt("sell", 22) or Perks.sellAnywhere() -- VIP Hunter: продажа откуда угодно
 	local total = 0
 	for _, it in items do
 		total += itemValue(it)
 	end
+	local now = Config.marketNow()
+	local mflags = Perks.marketFlags()
+	local mq = Config.marketQuote(items, d, now, mflags)
 	local top = row(body, 44)
-	txt(top, string.format("🎒 %d / %d   ·   💰 %s", #items, d.bagCap, Num.short(total * Backend.boostMult("coins"))), 26, C.text, { Size = UDim2.new(0.6, 0, 1, 0) })
+	txt(top, string.format("🎒 %d / %d   ·   💰 %s", #items, d.bagCap, Num.short(mq * Backend.boostMult("coins"))), 26, C.text, { Size = UDim2.new(0.6, 0, 1, 0) })
 	if market then
 		local n = 0
 		local selSum = 0
@@ -215,7 +243,7 @@ local function renderBag(body: Frame, st: { [string]: any })
 	end)
 	nxt.Parent = bot
 	UI.setEnabled(nxt, st.page < pages)
-	txt(bot, "📦 Wrap your catch at the cabin table to sell it for ×" .. Config.WRAP_MULT, 18, C.dim, { Size = UDim2.new(1, -260, 1, 0), Position = UDim2.fromOffset(260, 0), XAlign = Enum.TextXAlignment.Right, Wrap = true })
+	txt(bot, marketLine(now, mflags, total, mq) .. "\n📦 Wrapped catch sells for ×" .. Config.WRAP_MULT, 14, C.dim, { Size = UDim2.new(1, -260, 1, 0), Position = UDim2.fromOffset(260, 0), XAlign = Enum.TextXAlignment.Right, Wrap = true })
 end
 
 function Menus.bag()
@@ -309,7 +337,7 @@ local function renderForge(body: Frame, _st: { [string]: any })
 	local id = d.spear
 	local s = Config.SPEAR_BY_ID[id]
 	local lvl = d.spears[id] or 0
-	local maxL = Config.FORGE.maxLevel
+	local maxL = Perks.forgeMax()
 	local left = Instance.new("Frame")
 	left.BackgroundTransparency = 1
 	left.Size = UDim2.new(0.42, 0, 1, 0)
@@ -332,10 +360,10 @@ local function renderForge(body: Frame, _st: { [string]: any })
 	cmp("Reach ×10", Num.odds(Roll.reachChance(10, a.alpha)), Num.odds(Roll.reachChance(10, b.alpha)), 4)
 	cmp("Reach ×25", Num.odds(Roll.reachChance(25, a.alpha)), Num.odds(Roll.reachChance(25, b.alpha)), 5)
 	if lvl >= maxL then
-		txt(right, "This spear is fully upgraded! 🔥", 26, C.gold, { LayoutOrder = 6 })
+		txt(right, lvl >= Config.FORGE.maxLevel and "This spear is fully upgraded! 🔥" or "Free forge limit reached. Master Smith (Shop) unlocks 2 more levels.", 24, C.gold, { LayoutOrder = 6, Wrap = true, Size = UDim2.new(1, 0, 0, 60) })
 		return
 	end
-	local cost = Config.forgeCost(id, lvl)
+	local cost = Perks.forgeCost(id, lvl)
 	local holder = row(right, 64, 7)
 	local btn = UI.button({ Text = "🔨 Upgrade · " .. Num.short(cost), TextSize = 26, Color = C.orange, Size = UDim2.fromOffset(330, 60), Shine = d.coins >= cost }, function()
 		local ok, nl = call("Forge")
@@ -377,8 +405,11 @@ local function renderMarket(body: Frame, _st: { [string]: any })
 		end
 	end
 	local cm = Backend.boostMult("coins")
+	local now = Config.marketNow()
+	local mflags = Perks.marketFlags()
+	local mq = Config.marketQuote(d.items, d, now, mflags)
 	txt(body, string.format("In your bag: <b>%d</b> (📦 wrapped: %d)", #d.items, wrapped), 26, C.text, { LayoutOrder = 1 })
-	txt(body, string.format("Value: <font color=\"#FFCC34\">💰 %s</font>%s", Num.short(total * cm), cm > 1 and "  (×2 boost!)" or ""), 26, C.text, { LayoutOrder = 2 })
+	txt(body, string.format("Value: <font color=\"#FFCC34\">💰 %s</font>%s", Num.short(mq * cm), cm > 1 and "  (×2 boost!)" or ""), 26, C.text, { LayoutOrder = 2 })
 	local r1 = row(body, 64, 3)
 	local sell = UI.button({ Text = "Sell All", TextSize = 28, Color = C.gold, Size = UDim2.fromOffset(280, 60), Shine = #d.items > 0 }, function()
 		local ok, gain, cnt = call("Sell", "all")
@@ -403,7 +434,7 @@ local function renderMarket(body: Frame, _st: { [string]: any })
 	end)
 	pick.Parent = r1
 	UI.setEnabled(pick, #d.items > 0)
-	txt(body, "📦 Catch wrapped at your cabin table sells for ×" .. Config.WRAP_MULT .. "!", 20, C.dim, { LayoutOrder = 4 })
+	txt(body, marketLine(now, mflags, total, mq) .. "\n📦 Catch wrapped at your cabin table sells for ×" .. Config.WRAP_MULT .. "!", 18, C.dim, { LayoutOrder = 4, Wrap = true, Size = UDim2.new(1, 0, 0, 70) })
 	local nxt = Config.BAG[d.bagLvl + 1]
 	local r2 = UI.panel({ Color = C.card, Size = UDim2.new(1, 0, 0, 90), Radius = 16, LayoutOrder = 5, Parent = body })
 	if nxt then
@@ -592,12 +623,13 @@ local function renderPotions(body: Frame, _st: { [string]: any })
 	g.Parent = body
 	for i, p in Config.POTIONS do
 		local b = Config.BOOSTS[p.boost]
+		local pc = Config.potionCost(p, d)
 		local f = UI.panel({ Color = b.color:Lerp(C.panel, 0.55), Size = UDim2.fromOffset(360, 170), Radius = 18, LayoutOrder = i, Parent = body })
 		UI.label({ Text = "🧪", TextSize = 64, Size = UDim2.fromOffset(90, 100), Position = UDim2.fromOffset(8, 10), Parent = f })
 		UI.label({ Text = b.icon .. " " .. b.name, TextSize = 26, Size = UDim2.new(1, -110, 0, 32), Position = UDim2.fromOffset(100, 14), XAlign = Enum.TextXAlignment.Left, Parent = f })
 		local left = Backend.boostLeft(p.boost)
 		UI.label({ Text = "⏱ " .. Num.time(p.dur) .. (left > 0 and ("  ·  active: " .. Num.time(left)) or ""), TextSize = 19, Color = C.dim, Size = UDim2.new(1, -110, 0, 24), Position = UDim2.fromOffset(100, 50), XAlign = Enum.TextXAlignment.Left, Stroke = 2, Parent = f })
-		local btn = UI.button({ Text = "💰 " .. Num.short(p.cost), TextSize = 24, Color = C.green, Size = UDim2.fromOffset(200, 54), AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -12), Shine = d.coins >= p.cost }, function()
+		local btn = UI.button({ Text = "💰 " .. Num.short(pc), TextSize = 24, Color = C.green, Size = UDim2.fromOffset(200, 54), AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -12), Shine = d.coins >= pc }, function()
 			if call("BuyPotion", i) then
 				Sfx.play("buy")
 				UI.flash(b.color, 0.3, 0.6)
@@ -605,7 +637,7 @@ local function renderPotions(body: Frame, _st: { [string]: any })
 			end
 		end)
 		btn.Parent = f
-		UI.setEnabled(btn, d.coins >= p.cost)
+		UI.setEnabled(btn, d.coins >= pc)
 	end
 end
 

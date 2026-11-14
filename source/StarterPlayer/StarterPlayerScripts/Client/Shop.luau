@@ -47,29 +47,29 @@ local K = {
 	tile = rgb(10, 20, 70), cardLine = rgb(26, 16, 64), cardBot = rgb(59, 29, 122),
 }
 local ACCENT = {
-	charm = rgb(120, 255, 150), purse = rgb(255, 196, 70), wrap = rgb(255, 126, 190), bag = rgb(255, 157, 67),
-	titan = rgb(255, 106, 122), vip = rgb(255, 216, 74),
-	luck30 = rgb(110, 240, 130), coins30 = rgb(255, 200, 60), brew30 = rgb(80, 224, 213), server15 = rgb(110, 190, 255),
+	charm = rgb(120, 255, 150), insight = rgb(130, 200, 255), broker = rgb(210, 220, 235), smith = rgb(255, 150, 80),
+	wrap = rgb(255, 126, 190), vip = rgb(255, 216, 74),
+	fortune20 = rgb(255, 216, 74), jackpot20 = rgb(255, 120, 170), fair30 = rgb(100, 232, 214), server15 = rgb(110, 190, 255),
 }
 -- Основной цвет плитки товара (как зелёный x2 Cash, оранжевый VIP, синий Egg Growth в референсе)
 local TILE = {
-	charm = rgb(92, 214, 56), purse = rgb(255, 150, 24), wrap = rgb(236, 82, 170), bag = rgb(24, 188, 196),
-	titan = rgb(236, 64, 72), vip = rgb(255, 170, 20),
-	luck30 = rgb(84, 204, 70), coins30 = rgb(255, 172, 20), brew30 = rgb(56, 148, 255), server15 = rgb(52, 196, 96),
+	charm = rgb(92, 214, 56), insight = rgb(70, 130, 240), broker = rgb(120, 140, 170), smith = rgb(236, 110, 40),
+	wrap = rgb(236, 82, 170), vip = rgb(255, 170, 20),
+	fortune20 = rgb(255, 172, 20), jackpot20 = rgb(226, 56, 120), fair30 = rgb(24, 188, 196), server15 = rgb(52, 196, 96),
 	coins1 = rgb(132, 214, 36), coins2 = rgb(132, 214, 36), coins3 = rgb(40, 190, 140), coins4 = rgb(80, 130, 255),
 }
 
 -- Подписи под товаром читаются за секунду: крупно выгода, мелко срок или условие.
 local PITCH: { [string]: { string } } = {
-	charm = { "LUCK ×2", "forever" },
-	purse = { "COINS ×2", "every sale, forever" },
+	charm = { "RARE CHANCE +50%", "forever" },
+	insight = { "6H FORECAST", "see prices before they move" },
+	broker = { "SELL FREELY", "prices drop far less" },
+	smith = { "FORGE +2 LEVELS", "and 25% cheaper" },
 	wrap = { "WRAP ALL", "one bow, whole bag" },
-	bag = { "+60 SLOTS", "sell from anywhere" },
-	titan = { "STRENGTH ×2", "every rep" },
-	vip = { "+20% COINS", "+25% XP · gold tag" },
-	luck30 = { "LUCK ×2", "30 min" },
-	coins30 = { "COINS ×2", "30 min" },
-	brew30 = { "4 BOOSTS", "30 min" },
+	vip = { "SELL ANYWHERE", "+15% XP · gold tag" },
+	fortune20 = { "MORE MUTATIONS", "20 min · gold & rainbow" },
+	jackpot20 = { "RARE CHANCE +100%", "20 min" },
+	fair30 = { "NO PRICE DROPS", "30 min · always good demand" },
 	server15 = { "LUCK ×2 FOR EVERYONE", "15 min · whole server" },
 }
 
@@ -230,6 +230,48 @@ local function buildIcon(kind: string): Model
 			part(m, BALL, Vector3.one * 0.36, CFrame.new(x, 0.56 + tall, z), (i % 2 == 1) and rgb(232, 50, 56) or rgb(78, 181, 255), Enum.Material.Neon)
 		end
 		part(m, BALL, Vector3.one * 0.34, CFrame.new(0, 0.26, -0.95), rgb(120, 255, 150), Enum.Material.Neon)
+	elseif kind == "insight" then
+		disc(m, 1.7, 0.3, Vector3.new(0, 0.15, 0), rgb(96, 70, 40), Enum.Material.Wood)
+		local ball = part(m, BALL, Vector3.one * 1.7, CFrame.new(0, 1.15, 0), rgb(120, 190, 255), Enum.Material.Glass)
+		ball.Transparency = 0.25
+		part(m, BALL, Vector3.one * 0.5, CFrame.new(0.1, 1.2, 0.2), rgb(255, 240, 150), Enum.Material.Neon)
+	elseif kind == "broker" then
+		part(m, BLOCK, Vector3.new(0.22, 2.1, 0.22), CFrame.new(0, 1.05, 0), rgb(150, 156, 170), Enum.Material.Metal)
+		part(m, BLOCK, Vector3.new(2.5, 0.14, 0.2), CFrame.new(0, 2.05, 0), GOLD, Enum.Material.Metal)
+		for _, x in { -1.1, 1.1 } do
+			disc(m, 0.95, 0.1, Vector3.new(x, 1.15, 0), rgb(214, 218, 230), Enum.Material.Metal)
+			part(m, BLOCK, Vector3.new(0.05, 0.9, 0.05), CFrame.new(x, 1.6, 0), rgb(214, 218, 230), Enum.Material.Metal)
+		end
+		coinStack(m, 3, -1.1, 0)
+		disc(m, 1.3, 0.3, Vector3.new(0, 0.15, 0), rgb(96, 100, 112), Enum.Material.Metal)
+	elseif kind == "smith" then
+		local iron = rgb(70, 74, 88)
+		part(m, BLOCK, Vector3.new(1.7, 0.45, 0.9), CFrame.new(0, 0.22, 0), iron, Enum.Material.Metal)
+		part(m, BLOCK, Vector3.new(0.8, 0.6, 0.6), CFrame.new(0, 0.75, 0), iron, Enum.Material.Metal)
+		part(m, BLOCK, Vector3.new(2.1, 0.4, 0.85), CFrame.new(0, 1.2, 0), rgb(96, 100, 114), Enum.Material.Metal)
+		part(m, BLOCK, Vector3.new(0.18, 1.5, 0.18), CFrame.new(0.4, 1.9, 0.1) * CFrame.Angles(0, 0, math.rad(-35)), rgb(150, 98, 56))
+		part(m, BLOCK, Vector3.new(0.6, 0.42, 0.42), CFrame.new(-0.12, 2.5, 0.1), rgb(120, 124, 136), Enum.Material.Metal)
+		part(m, BALL, Vector3.one * 0.3, CFrame.new(-0.6, 1.5, 0), rgb(255, 150, 40), Enum.Material.Neon)
+	elseif kind == "fortune20" then
+		flask(m, rgb(255, 200, 50), Vector3.zero, 1)
+		for i = 1, 4 do
+			local a = i * math.pi / 2 + 0.4
+			part(m, BALL, Vector3.one * 0.28, CFrame.new(math.cos(a) * 1.3, 0.7 + (i % 2) * 0.8, math.sin(a) * 1.3), rgb(255, 236, 120), Enum.Material.Neon)
+		end
+	elseif kind == "jackpot20" then
+		flask(m, rgb(255, 90, 140), Vector3.new(-0.3, 0, 0), 1)
+		coinStack(m, 4, 1.45, -0.2)
+		coinStack(m, 2, 1.0, 0.6)
+	elseif kind == "fair30" then
+		local reds = { rgb(232, 50, 56), rgb(255, 255, 255) }
+		for i = 1, 6 do
+			part(m, BLOCK, Vector3.new(0.4, 0.16, 1.9), CFrame.new(-1 + (i - 1) * 0.4, 1.85, 0), reds[(i % 2) + 1])
+		end
+		for _, p in { { -1, -0.85 }, { 1, -0.85 }, { -1, 0.85 }, { 1, 0.85 } } do
+			part(m, BLOCK, Vector3.new(0.14, 1.8, 0.14), CFrame.new(p[1], 0.9, p[2]), rgb(150, 98, 56))
+		end
+		part(m, BLOCK, Vector3.new(1.7, 0.1, 1.5), CFrame.new(0, 0.08, 0), rgb(120, 190, 90))
+		coinStack(m, 3, 0, 0)
 	elseif kind == "luck30" or kind == "charm" then
 		flask(m, rgb(90, 220, 110), Vector3.zero, 1)
 	elseif kind == "coins30" then
@@ -895,7 +937,7 @@ local function renderHero(o: Open, parent: Instance, order: number)
 		{ "spear:" .. st.spear, spear and spear.name or "Spear", rgb(77, 184, 255) },
 		{ "coins1", Num.short(st.coins) .. " Coins", rgb(255, 210, 62) },
 		{ "bag", "Bag Level " .. tostring(st.bagLvl), rgb(92, 240, 106) },
-		{ "luck30", "Luck x2 " .. Num.time(st.dur), rgb(199, 125, 255) },
+		{ st.boost == "fortune" and "fortune20" or "luck30", (Config.BOOSTS[st.boost] and Config.BOOSTS[st.boost].name or "Boost") .. " " .. Num.time(st.dur), rgb(199, 125, 255) },
 	}
 	for i, t in tiles do
 		local tile = box({ Top = K.tile, Bottom = K.tile, Line = t[3], LineThick = 2, Radius = 8, Size = UDim2.new(0.25, -6, 1, 0), LayoutOrder = i, Parent = row })
