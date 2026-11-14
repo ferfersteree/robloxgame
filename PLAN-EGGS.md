@@ -16,7 +16,7 @@ Stages
 4. [x] Bonuses: Perks and boost hooks (luck, rare chance, coins, XP, range, grip, bag, training, forge).
 5. [x] UI: Eggs section with odds, hatch animation, Exotic window, HUD chips.
 6. [~] Balance check and frame time.
-7. [x] Final check, Obsidian notes, push.
+7. [x] Final check and Obsidian notes (no push, by instruction).
 
 Log
 - Stages 1-5 done in Studio and synced to `source/` (saved with `save_place`, extracted with a script).
