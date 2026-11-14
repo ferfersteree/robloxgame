@@ -1,3 +1,27 @@
+# Flat shop icons (V32)
+
+The rest of the shop got simple, clean icons instead of the glossy 3D-style ones: a thick dark outline, flat colours with a light edge top-left and a dark edge bottom-right, one picture per item so it can be understood without reading.
+
+| Item | Picture |
+|---|---|
+| Coin Pouch, Coin Sack, Coin Chest, Hunter's Hoard | coin pouch, bigger sack, treasure chest, chest with gems and coin stacks |
+| Lucky Charm (rare chance) | four-leaf clover |
+| Market Insight (6 h forecast) | price chart going up with a clock |
+| Silver Broker (sell freely) | scales with coins |
+| Master Smith (forge) | anvil with a hammer |
+| Master Wrapper (wrap all) | gift box |
+| VIP Hunter / Founder's Edition | gold crown / purple crown with gems |
+| Golden Hour / Jackpot Hour / Trade Fair | gold flask with a star (more mutations) / pink flask with a gem (rare chance) / teal flask with "=" (no price drops) |
+| Hunter's Bundle | the three flasks together |
+| Server Luck | globe with an "x2" badge |
+| Starter Pack bag, luck flask | backpack, green flask with a clover |
+
+Code: `tools/render_flat_icons.py` (rendered offline; one function per icon), packed with `python tools/pack_eggs.py <dir> <out> 1.0 crop`, drawn through `Client/EggArt` like the eggs; `icon()` in `Client/Shop` uses them for every item that has a picture and falls back to the old cartoon icon otherwise. PNG copies are in `shop-art/flat/`. The data is tiny (5 to 10 KB per icon). Spear icons still use the game's own models.
+
+Seen in Studio on screenshots of the passes, boosts, bundle and Server Luck banners, Founder banner and the coin packs. Not checked: the unlock ("received") screen with the new icons, small screens. The same EditableImage requirement as for the eggs applies (see the V29 section): without it the old cartoon icons show.
+
+---
+
 # Egg opening cinematic (V31)
 
 Buying an egg now plays a full scene (`Client/EggScene`, started from `playHatch` in `Client/Shop`). It is built from UI objects, nothing is uploaded to Roblox.

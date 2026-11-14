@@ -624,7 +624,7 @@ Shop.cartoon = drawCartoon
 -- Ставит иконку товара в parent. Копья и звери берутся из самой игры.
 local function icon(parent: Instance, kind: string, spin: number?)
 	-- V29: отрисованные 3D-иконки (tools/render_icons.py, рисуются через EditableImage) важнее мультяшных; не вышло - старая мультяшная
-	if EggArt and string.sub(kind, 1, 4) == "egg_" and EggArt.has(kind) then
+	if EggArt and EggArt.has(kind) then
 		local img = Instance.new("ImageLabel")
 		img.BackgroundTransparency = 1
 		img.ScaleType = Enum.ScaleType.Fit
