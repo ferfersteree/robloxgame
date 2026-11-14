@@ -238,7 +238,16 @@ local function build(key: string): any?
 		return nil
 	end
 	local data = require(mod) :: any
-	local src = b64decode(data.z)
+	local z = data.z
+	if not z then
+		-- big pictures are split into child modules "1", "2", ... (a script source is limited to 200,000 characters)
+		local parts = {}
+		for i = 1, data.n do
+			parts[i] = require(mod:FindFirstChild(tostring(i)) :: ModuleScript) :: string
+		end
+		z = table.concat(parts)
+	end
+	local src = b64decode(z)
 	local raw = inflate(src, data.w * data.h * 4)
 	if adler32(raw, data.w * data.h * 4) ~= data.adler then
 		warn("[EggArt] checksum mismatch for " .. key)

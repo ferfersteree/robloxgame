@@ -1,3 +1,15 @@
+# Eggs, high detail (V30)
+
+The four eggs were redone at 336x426 (was 240x304) with much more detail, and the egg banners got life.
+
+- **Egg art (`tools/render_eggs.py`).** Glowing light leaking through the cracks between the shards, an inner light core, gem texture inside each shard, bloom, a lit pedestal under the egg, a light column behind it, floating sparks and glints. Each egg has its own tier look: Mystic frosted ice, Royal amethyst with gold bands and pink studs, Cosmic starfire with a golden orbit ring, Absolute prismatic shards with a rainbow halo and rainbow cracks.
+- **Banner (`renderEggBanner` in `Client/Shop`).** A bigger egg that breathes (scale pulse and a slight sway), pulsing glow, six sparks orbiting it, rotating light rays, a ribbon with an honest promise computed from the odds table (Mystic ALL RARITIES, Royal ALL RARITIES, Cosmic RARE OR BETTER, Absolute EPIC OR BETTER), the rarest card (Mythic and Absolute) with a rainbow shimmering border, shine sweeping over the price button, a larger price button. The ribbon text is derived from `Config.eggOdds`, so it cannot drift from the real odds.
+- **Size limit found on the way.** A Studio script source is limited to 200,000 characters, so each egg is now split into two chunk modules (`egg_royal/1`, `egg_royal/2`) that `EggArt` joins. `tools/pack_eggs.py` does the split automatically above 150,000 characters.
+- **Seen in Studio** on screenshots of the Royal, Cosmic and Absolute banners. Animations were seen only as stills; frame time with the new effects was not re-measured.
+- **Not done.** The three icon pictures for passes and potions are still the V29 set. Multi-buy packs (x3, x10) need new products. An "open the egg" button preview that shows the egg cracking was not added to the banner.
+
+---
+
 # Shop restyle with rendered 3D art (V29, on the eggs branch)
 
 The shop now looks like the reference: a deep purple crystal hall instead of the meadow, dark tiles with a bright coloured outline, wide egg banners and glossy 3D pictures instead of the flat cartoon icons.

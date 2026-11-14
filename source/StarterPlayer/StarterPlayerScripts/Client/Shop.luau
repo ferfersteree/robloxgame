@@ -1830,14 +1830,17 @@ local function renderEggBanner(o: Open, parent: Instance, item: any, order: numb
 	local f = box({ Top = base:Lerp(rgb(24, 8, 56), 0.6), Mid = base:Lerp(rgb(30, 10, 72), 0.78), Bottom = rgb(22, 8, 54), Line = line, LineThick = 4, Radius = 16, Size = CENTER.Size, AnchorPoint = CENTER.AnchorPoint, Position = CENTER.Position, Clip = true, Parent = slot(parent, order, 244) })
 	pcall(function()
 		local r = UI.rays(f, base:Lerp(Color3.new(1, 1, 1), 0.35), 10, 400, 8)
-		r.Position = UDim2.fromOffset(86, 122)
+		r.Position = UDim2.fromOffset(96, 126)
 		r.ZIndex = 1
 	end)
-	glowSpot(f, base, 360, UDim2.fromOffset(86, 122), 0.45)
+	local gs = UI.glow(f, base, 400, 0.42)
+	gs.Position = UDim2.fromOffset(96, 126)
+	gs.ZIndex = 1
 	for i = 1, 7 do
 		sparkle(o.cards, f, 0.1 + i * 0.12, 0.1 + (i % 3) * 0.3, 11 + (i % 3) * 4, i * 1.9 + order, 2)
 	end
-	local art = holder(f, UDim2.fromOffset(160, 206), UDim2.fromOffset(6, 16), 4)
+	local art = holder(f, UDim2.fromOffset(238, 302), UDim2.fromOffset(-22, -16), 4)
+	art.AnchorPoint = Vector2.new(0, 0)
 	local img = Instance.new("ImageLabel")
 	img.BackgroundTransparency = 1
 	img.ScaleType = Enum.ScaleType.Fit
@@ -1853,9 +1856,48 @@ local function renderEggBanner(o: Open, parent: Instance, item: any, order: numb
 		img:Destroy()
 		icon(art, item.key, 0)
 	end
-	bob(o, art, UDim2.fromOffset(6, 16), 4, order)
-	UI.label({ Text = string.upper(item.name), TextSize = 36, Color = K.white, StrokeColor = base:Lerp(Color3.new(0, 0, 0), 0.6), Stroke = 5, Size = UDim2.new(1, -330, 0, 42), Position = UDim2.fromOffset(170, 6), XAlign = Enum.TextXAlignment.Left, ZIndex = 5, Parent = f })
-	UI.label({ Text = "Exotic pets you cannot find while hunting", TextSize = 15, Color = K.white, StrokeColor = base:Lerp(Color3.new(0, 0, 0), 0.6), Stroke = 3, Size = UDim2.new(1, -330, 0, 18), Position = UDim2.fromOffset(172, 46), XAlign = Enum.TextXAlignment.Left, ZIndex = 5, Parent = f })
+	bob(o, art, UDim2.fromOffset(-22, -16), 4, order)
+	-- яйцо "дышит": мягкий пульс масштаба и покачивание, свечение пульсирует, вокруг кружатся искры
+	local pulse = Instance.new("UIScale")
+	pulse.Parent = art
+	reg(o.cards, art, function(t)
+		pulse.Scale = 1 + 0.03 * math.sin(t * 2.2 + order)
+		art.Rotation = math.sin(t * 1.3 + order * 1.7) * 2.2
+	end)
+	reg(o.cards, gs, function(t)
+		if gs:IsA("ImageLabel") then
+			gs.ImageTransparency = 0.34 + 0.14 * math.sin(t * 2.0 + order)
+		end
+	end)
+	for i = 1, 6 do
+		local d = Instance.new("Frame")
+		d.BorderSizePixel = 0
+		d.BackgroundColor3 = i % 2 == 0 and K.white or base:Lerp(Color3.new(1, 1, 1), 0.55)
+		d.AnchorPoint = Vector2.new(0.5, 0.5)
+		local ds = 5 + (i % 3) * 3
+		d.Size = UDim2.fromOffset(ds, ds)
+		d.Rotation = 45
+		d.ZIndex = 6
+		d.Parent = f
+		reg(o.cards, d, function(t)
+			local a = t * (0.7 + i * 0.11) + i * 1.3
+			d.Position = UDim2.fromOffset(97 + math.cos(a) * (92 + i * 4), 120 + math.sin(a) * (104 + i * 3) * 0.55)
+			d.BackgroundTransparency = 0.1 + 0.55 * (0.5 + 0.5 * math.sin(t * 3 + i))
+		end)
+	end
+	-- лента с честным обещанием (минимальная редкость берётся из таблицы шансов)
+	local minR = 99
+	for _, od in Config.eggOdds(item.key) do
+		local ex0 = Config.EXOTIC_BY_ID[od.id]
+		if ex0 and ex0.rarity < minR then
+			minR = ex0.rarity
+		end
+	end
+	local ribText = if minR >= 3 then string.upper(Config.EXOTIC.RARITIES[minR].name) .. " OR BETTER" elseif minR == 2 then "RARE OR BETTER" else "ALL RARITIES"
+	local rib = box({ Top = base:Lerp(Color3.new(1, 1, 1), 0.2), Bottom = base:Lerp(Color3.new(0, 0, 0), 0.4), Line = Color3.new(1, 1, 1), LineThick = 2, Radius = 8, Size = UDim2.fromOffset(196, 26), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -16, 0, 12), ZIndex = 6, Parent = f })
+	UI.label({ Text = ribText, TextSize = 15, Color = K.white, StrokeColor = base:Lerp(Color3.new(0, 0, 0), 0.7), Stroke = 3, Size = UDim2.fromScale(1, 1), ZIndex = 7, Parent = rib })
+	UI.label({ Text = string.upper(item.name), TextSize = 36, Color = K.white, StrokeColor = base:Lerp(Color3.new(0, 0, 0), 0.6), Stroke = 5, Size = UDim2.new(1, -420, 0, 42), Position = UDim2.fromOffset(190, 6), XAlign = Enum.TextXAlignment.Left, ZIndex = 5, Parent = f })
+	UI.label({ Text = "Exotic pets you cannot find while hunting", TextSize = 15, Color = K.white, StrokeColor = base:Lerp(Color3.new(0, 0, 0), 0.6), Stroke = 3, Size = UDim2.new(1, -420, 0, 18), Position = UDim2.fromOffset(192, 46), XAlign = Enum.TextXAlignment.Left, ZIndex = 5, Parent = f })
 	local groups: { any } = {}
 	local byRarity: { [number]: any } = {}
 	for _, od in Config.eggOdds(item.key) do
@@ -1876,7 +1918,7 @@ local function renderEggBanner(o: Open, parent: Instance, item: any, order: numb
 	table.sort(groups, function(a, b)
 		return a.r < b.r
 	end)
-	local x = 172
+	local x = 192
 	for gi, g in groups do
 		local rar = Config.EXOTIC.RARITIES[g.r]
 		local top = gi == #groups and #groups > 1
@@ -1884,6 +1926,13 @@ local function renderEggBanner(o: Open, parent: Instance, item: any, order: numb
 		local card = box({ Top = rgb(34, 18, 70), Bottom = rgb(20, 10, 46), Line = rar.color, LineThick = top and 4 or 3, Radius = 10, Size = UDim2.fromOffset(w, h), Position = UDim2.fromOffset(x, top and 66 or 78), ZIndex = 3, Parent = f })
 		if top then
 			glowSpot(card, rar.color, 150, UDim2.fromScale(0.5, 0.5), 0.55)
+			local stroke = card:FindFirstChildOfClass("UIStroke")
+			if stroke and g.r >= 5 then
+				-- самая редкая карточка переливается радугой: главный приз, ради которого и покупают
+				reg(o.cards, card, function(t)
+					stroke.Color = Color3.fromHSV((t * 0.25 + order * 0.2) % 1, 0.65, 1)
+				end)
+			end
 		end
 		local pb = holder(card, UDim2.new(1, -6, 1, -40), UDim2.fromOffset(3, 14), 3)
 		Pets.deferPortrait(pb, g.ex)
@@ -1896,9 +1945,10 @@ local function renderEggBanner(o: Open, parent: Instance, item: any, order: numb
 	end)
 	ob.ZIndex = 6
 	ob.Parent = f
-	local price = buyButton(item, UDim2.fromOffset(244, 52), UDim2.new(1, -14, 1, -10), 28, f)
+	local price = buyButton(item, UDim2.fromOffset(252, 56), UDim2.new(1, -14, 1, -10), 30, f)
 	price.AnchorPoint = Vector2.new(1, 1)
 	price.ZIndex = 6
+	table.insert(o.shiny, price) -- блики бегут по кнопке цены
 	table.insert(o.shiny, f)
 	introPop(o, f)
 end
@@ -2017,7 +2067,7 @@ local function playHatch(h: any, done: () -> ())
 	glow.AnchorPoint = Vector2.new(0.5, 0.5)
 	glow.Visible = false
 	-- яйцо
-	local eggBox = newI('Frame', { BackgroundTransparency = 1, Size = UDim2.fromOffset(240, 240), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.45) }, dim)
+	local eggBox = newI('Frame', { BackgroundTransparency = 1, Size = UDim2.fromOffset(264, 334), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.45) }, dim)
 	local eggScale = newI('UIScale', { Scale = 1 }, eggBox)
 	icon(eggBox, h.egg, 0)
 	local cracks = {}
