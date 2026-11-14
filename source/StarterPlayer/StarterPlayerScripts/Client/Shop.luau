@@ -1555,6 +1555,41 @@ function Pets.sig(): string
 	return tostring(E.shards or 0) .. '|' .. table.concat(E.equipped, ',') .. '|' .. table.concat(ids, ',')
 end
 
+-- Подпись того, что рисует тело магазина (без времени): нельзя перестраивать всё окно (клоны портретов животных) каждые 30 с от pushAll
+Pets.lastShopSig = ''
+function Pets.shopSig(): string
+	local st = Perks.state()
+	local keys = {}
+	for k, v in st.passes do
+		if v then
+			table.insert(keys, k)
+		end
+	end
+	table.sort(keys)
+	return table.concat(keys, ',') .. '|' .. tostring(st.rank) .. '|' .. tostring(st.starter) .. '|' .. tostring(st.eggsOff) .. '|' .. tostring(st.loaded) .. '|' .. tostring(st.studio) .. '|' .. tostring((tonumber(st.gift) or 0) > 0) .. '|' .. tostring(st.spent)
+end
+
+-- Портреты в баннерах яиц (16 штук) строятся по одному за кадр: иначе первое открытие магазина зависает на полсекунды
+Pets.portraitQueue = {} :: { any }
+Pets.portraitRunning = false
+function Pets.deferPortrait(pb: Frame, ex: any)
+	table.insert(Pets.portraitQueue, { pb = pb, ex = ex })
+	if Pets.portraitRunning then
+		return
+	end
+	Pets.portraitRunning = true
+	task.spawn(function()
+		while #Pets.portraitQueue > 0 do
+			local e = table.remove(Pets.portraitQueue, 1)
+			if e.pb.Parent then
+				pcall(exoticPortrait, e.pb, e.ex, false, 0, 4)
+			end
+			task.wait()
+		end
+		Pets.portraitRunning = false
+	end)
+end
+
 function Pets.ids(p: Player): { string }
 	local out = {}
 	local raw = p:GetAttribute('Exo')
@@ -1815,11 +1850,12 @@ local function renderEggBanner(o: Open, parent: Instance, item: any, order: numb
 		local ex = Config.EXOTIC_BY_ID[od.id]
 		local g = byRarity[ex.rarity]
 		if not g then
-			g = { r = ex.rarity, pct = 0, ex = ex, best = 0 }
+			g = { r = ex.rarity, pct = 0, ex = ex, best = 0, n = 0 }
 			byRarity[ex.rarity] = g
 			table.insert(groups, g)
 		end
 		g.pct += od.pct
+		g.n += 1
 		if od.pct > g.best then
 			g.best = od.pct
 			g.ex = ex
@@ -1838,8 +1874,8 @@ local function renderEggBanner(o: Open, parent: Instance, item: any, order: numb
 			glowSpot(card, rar.color, 150, UDim2.fromScale(0.5, 0.5), 0.55)
 		end
 		local pb = holder(card, UDim2.new(1, -6, 1, -40), UDim2.fromOffset(3, 14), 3)
-		pcall(exoticPortrait, pb, g.ex, false, 0, 4)
-		UI.label({ Text = string.upper(rar.name), TextSize = 11, Color = rar.color, StrokeColor = Color3.new(0, 0, 0), Stroke = 2, Size = UDim2.new(1, 0, 0, 14), Position = UDim2.fromOffset(0, 1), ZIndex = 5, Parent = card })
+		Pets.deferPortrait(pb, g.ex)
+		UI.label({ Text = string.upper(rar.name) .. (g.n > 1 and (" x" .. g.n) or ""), TextSize = 12, Scaled = true, MaxSize = 12, Color = rar.color, StrokeColor = Color3.new(0, 0, 0), Stroke = 2, Size = UDim2.new(1, -4, 0, 14), Position = UDim2.fromOffset(2, 1), ZIndex = 5, Parent = card })
 		UI.label({ Text = oddsText(g.pct), TextSize = top and 24 or 21, Color = top and K.goldText or K.white, StrokeColor = Color3.new(0, 0, 0), Stroke = 3, XAlign = Enum.TextXAlignment.Right, Size = UDim2.new(1, -6, 0, 24), Position = UDim2.new(0, 0, 1, -26), ZIndex = 5, Parent = card })
 		x += w + 8
 	end
@@ -2687,7 +2723,11 @@ function Shop.init()
 
 	Perks.Changed.Event:Connect(function()
 		Backend.applyPerks()
-		Shop.refresh()
+		local shopSig = Pets.shopSig()
+		if shopSig ~= Pets.lastShopSig then
+			Pets.lastShopSig = shopSig
+			Shop.refresh()
+		end
 		local sig = Pets.sig()
 		if exoticRefresh and sig ~= Pets.lastSig then
 			exoticRefresh()

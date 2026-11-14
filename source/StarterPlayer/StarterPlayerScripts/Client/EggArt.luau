@@ -9,6 +9,7 @@ local EggArt = {}
 local cache: { [string]: any } = {}
 local waiting: { [string]: { () -> () } } = {}
 local failed: { [string]: boolean } = {}
+local busy = false
 
 local B64: { [number]: number } = {}
 do
@@ -31,6 +32,9 @@ local function b64decode(s: string): (buffer, number)
 	local out = buffer.create(outLen + 3)
 	local o = 0
 	for i = 1, n, 4 do
+		if i % 40001 == 1 and i > 1 then
+			task.wait()
+		end
 		local a, b, c, d = string.byte(s, i, i + 3)
 		local v = bit32.lshift(B64[a], 18) + bit32.lshift(B64[b], 12) + bit32.lshift(B64[c] or 0, 6) + (B64[d] or 0)
 		buffer.writeu8(out, o, bit32.rshift(v, 16))
@@ -94,7 +98,7 @@ do
 	FIXED_DIST = construct(d, 30, 1)
 end
 
--- raw deflate stream -> bytes. Yields (task.wait) every 40000 symbols so the frame rate stays smooth.
+-- raw deflate stream -> bytes. Yields (task.wait) every 5000 symbols so a frame never gets more than a few ms of work.
 local function inflate(src: buffer, outLen: number): buffer
 	local out = buffer.create(outLen)
 	local op, pos, bitbuf, bitcnt, steps = 0, 0, 0, 0, 0
@@ -143,7 +147,7 @@ local function inflate(src: buffer, outLen: number): buffer
 				op += len
 			end
 			steps += 1
-			if steps % 40000 == 0 then
+			if steps % 5000 == 0 then
 				task.wait()
 			end
 		end
@@ -210,6 +214,9 @@ local function adler32(buf: buffer, len: number): number
 	for i = 0, len - 1 do
 		a = (a + buffer.readu8(buf, i)) % 65521
 		b = (b + a) % 65521
+		if i % 30000 == 29999 then
+			task.wait()
+		end
 	end
 	return b * 65536 + a
 end
@@ -247,7 +254,13 @@ local function whenReady(key: string, cb: (any?) -> ())
 	end
 	waiting[key] = { cb }
 	task.spawn(function()
+		-- one picture at a time, in the order they were asked for (the visible ones first)
+		while busy do
+			task.wait()
+		end
+		busy = true
 		local ok, img = pcall(build, key)
+		busy = false
 		if ok and img then
 			cache[key] = img
 		else
