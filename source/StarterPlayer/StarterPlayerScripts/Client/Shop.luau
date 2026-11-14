@@ -1566,7 +1566,19 @@ function Pets.shopSig(): string
 		end
 	end
 	table.sort(keys)
+	-- всё, что окно читает и что меняется без заметного пуша: сумма паков монет (растёт с ценой следующего копья), виден ли стартовый набор,
+	-- таймер подарка (шаг 5 минут: редкая пересборка вместо каждых 30 с)
+	local packK = 1
+	for _, it in SHOP.PRODUCTS do
+		if it.kind == 'coins' then
+			packK = it.k
+			break
+		end
+	end
+	local okC, packCoins = pcall(Config.shopCoins, Backend.data, packK)
+	local okS, starterOn = pcall(starterVisible)
 	return table.concat(keys, ',') .. '|' .. tostring(st.rank) .. '|' .. tostring(st.starter) .. '|' .. tostring(st.eggsOff) .. '|' .. tostring(st.loaded) .. '|' .. tostring(st.studio) .. '|' .. tostring((tonumber(st.gift) or 0) > 0) .. '|' .. tostring(st.spent)
+		.. '|' .. tostring(okC and packCoins or 0) .. '|' .. tostring(okS and starterOn) .. '|' .. tostring(math.floor(Perks.giftLeft() / 300))
 end
 
 -- Портреты в баннерах яиц (16 штук) строятся по одному за кадр: иначе первое открытие магазина зависает на полсекунды
@@ -2720,6 +2732,12 @@ function Shop.init()
 	local fn = ShopFn :: RemoteFunction
 	ev.OnClientEvent:Connect(onEvent)
 	Pets.start()
+	-- яйца распаковываются заранее, чтобы окно вылупления не ждало картинку (все четыре занимают около 1 с кадров по частям)
+	if EggArt then
+		task.delay(3, function()
+			EggArt.preload({ "egg_mystic", "egg_royal", "egg_cosmic", "egg_absolute" })
+		end)
+	end
 
 	Perks.Changed.Event:Connect(function()
 		Backend.applyPerks()

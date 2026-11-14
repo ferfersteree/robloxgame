@@ -10,6 +10,17 @@ local cache: { [string]: any } = {}
 local waiting: { [string]: { () -> () } } = {}
 local failed: { [string]: boolean } = {}
 local busy = false
+local available: boolean? = nil -- can this client create an EditableImage at all? asked once, before any decoding
+
+local function checkAvailable(): boolean
+	if available == nil then
+		available = pcall(function()
+			local probe = AssetService:CreateEditableImage({ Size = Vector2.new(1, 1) })
+			probe:Destroy()
+		end)
+	end
+	return available :: boolean
+end
 
 local B64: { [number]: number } = {}
 do
@@ -32,8 +43,8 @@ local function b64decode(s: string): (buffer, number)
 	local out = buffer.create(outLen + 3)
 	local o = 0
 	for i = 1, n, 4 do
-		if i % 40001 == 1 and i > 1 then
-			task.wait()
+		if i > 1 and (i - 1) % 40000 == 0 then
+			task.wait() -- every 10000 groups
 		end
 		local a, b, c, d = string.byte(s, i, i + 3)
 		local v = bit32.lshift(B64[a], 18) + bit32.lshift(B64[b], 12) + bit32.lshift(B64[c] or 0, 6) + (B64[d] or 0)
@@ -254,6 +265,16 @@ local function whenReady(key: string, cb: (any?) -> ())
 	end
 	waiting[key] = { cb }
 	task.spawn(function()
+		if not checkAvailable() then
+			-- EditableImage is off (experience setting, device): fail every picture at once, no wasted decoding
+			failed[key] = true
+			local list0 = waiting[key]
+			waiting[key] = nil
+			for _, f in list0 do
+				f(nil)
+			end
+			return
+		end
 		-- one picture at a time, in the order they were asked for (the visible ones first)
 		while busy do
 			task.wait()
@@ -286,6 +307,13 @@ function EggArt.apply(label: ImageLabel, key: string, onFail: (() -> ())?)
 			onFail()
 		end
 	end)
+end
+
+-- Decode pictures ahead of time (the hatch window needs its egg at once, not after the whole queue)
+function EggArt.preload(keys: { string })
+	for _, k in keys do
+		whenReady(k, function() end)
+	end
 end
 
 function EggArt.has(key: string): boolean
