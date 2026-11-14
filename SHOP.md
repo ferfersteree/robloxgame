@@ -1,3 +1,40 @@
+# Donate eggs and exotic animals (V28)
+
+Open `SpearHunt V28 - Eggs.rbxl`. Four eggs (Robux Developer Products, id = 0, simulated in Studio) hatch 16 exotic animals that cannot be found while hunting.
+
+## Where things live
+- `Config.EXOTICS`: the 16 species (base model from Fauna150, style, scale, bonuses). **Not** in `Config.SPECIES`, so Roll, Population, Ambient, Showroom and the collection (all read `Config.SPECIES`) cannot see them. Test run in Studio: 0 pool leaks, 0 exotics in 60,000 normal hunt rolls.
+- `Config.EGGS`: one weight table per egg. The server rolls from it (`Config.eggRoll`) and the odds window shows percentages computed from the same table (`Config.eggOdds`). Observed over 100,000 rolls per egg, the difference from the shown odds is at most 0.3 percentage points.
+- `Config.EXOTIC`: equip limit (3), level bonus (+10% per level, max 5), per-stat caps and floors, shard rewards and upgrade costs. All numbers in one place.
+- `Server/Shop`: `rollEgg` runs inside `applyProduct`, the same step that writes the receipt id and saves, so a purchase is recorded once. It stores owned, equipped, levels, shards and a hatch queue in the DataStore profile, and handles `exoticEquip`, `exoticUnequip`, `exoticUpgrade`, `hatchAck`.
+- `Perks`: reads the server state and adds exotic bonuses to the existing sums (luck, rare-chance caps, sale coins, XP, bag slots, training power, forge discount) plus throw range and steady grip. Hooks in `DemoServer`/`Backend` (`boostMult`) and the bag size.
+- `Client/Shop`: Eggs section with tiles and an ODDS button, odds window, hatch animation (shaking egg, cracks, flash, reveal card), Exotic collection window (equip, upgrade with shards), chips for equipped exotics at the bottom left.
+
+## Eggs and exact odds
+| Egg | R$ | Odds |
+|---|---|---|
+| Mystic | 99 | Common 80%, Rare 20% |
+| Royal | 249 | Common 24%, Rare 44%, Epic 18%, Legendary 12%, Mythic 2% |
+| Cosmic | 499 | Rare 24%, Epic 42%, Legendary 24%, Mythic 8%, Absolute 2% |
+| Absolute | 999 | Epic 15%, Legendary 45%, Mythic 30%, Absolute 10% |
+
+There is no pity counter and no hidden condition. A duplicate gives shards (5, 12, 30, 80, 200, 500 by rarity) used to upgrade owned exotics.
+
+## The 16 exotics (bonus, then trade-off)
+Common: Candy Hopper (luck +6%), Neon Fox (coins +8%), Bubble Boar (XP +10%). Rare: Glowstripe Wolf (range +12%, coins -6%), Frostfur Bear (bag +20, luck -5%), Ruby Antlerlord (rare chance +10%), Prism Otter (training +15%). Epic: Storm Kitsune (luck +20%, grip -10%), Magma Titan (coins +20%, range -10%), Ghost Lynx (rare chance +14%, XP +10%). Legendary: Solar Maned Lion (luck +30%, grip -12%), Void Mammoth (bag +35, forge -15%, range -8%), Aurora Phoenix (rare chance +20%, XP +20%). Mythic: Astral Wyrm (luck +45%, rare chance +25%, coins -15%), Leviathan Prime (range +25%, grip +15%, luck -10%). Absolute: Prismatic Overlord (luck +55%, rare chance +30%, coins +25%, XP +25%, range +15%, bag -20).
+
+## Stacking and balance
+Bonuses of one stat add, together with passes and boosts. Per-stat caps: luck +100%, rare chance +60%, coins +60%, XP +100%, range +30%, grip +30%, bag +40 slots, training +100%, forge -40%; penalties floor at -40% (bag -40 slots). At most 3 equipped. Checked in Studio with test purchases: totals, caps and the equip limit work. Not re-simulated: a full loadout on top of every pass is estimated at roughly x2 to x2.5 income from rare chance and coins; the V25 pass table already reaches x2 to x4.9 while timed boosts run.
+
+## Known limits
+- **Not tested with real money.** Only Studio test purchases. The receipt path is the existing `processReceipt`; the DataStore is unavailable in Studio, so saving and rejoining were not tested (the load code validates every field).
+- The animal portraits are 3D viewports. In the Studio session used for testing, screenshots did not show any ViewportFrame content (even a plain red cube), so the portraits, the rainbow colour animation and the neon looks were not seen. Their code path (model, parts, camera) was checked.
+- The "crazy" looks are colour, neon material and size in the card portraits. Particle auras and trails cannot render inside a viewport and were not added.
+- Frame time: Studio ran at about 15 FPS in this environment even when idle (67 ms per frame). During a hatch the average stayed the same (67.0 ms vs 66.7 ms); one frame reached 103 ms when the reveal portrait is built at the start of a hatch.
+- The economy is still client-side (`Config.BACKEND = "Demo"`): exotic bonuses come from server-validated state but are applied on the client. For real-money launch the sums should also be applied on the server (`Config.exoticTotals` works on both sides).
+
+---
+
 # Cartoon shop icons (V27)
 
 Open `SpearHunt V27 - Cartoon Shop.rbxl`. The shop item icons are no longer small 3D models in a viewport (blocky and soft). They are drawn from UI shapes (rounded frames with a gradient, a thick dark outline, glints and sparkles), so they stay sharp at any size and need no uploaded images. Code: `drawCartoon` in `Client/Shop.luau`; the table `CARTOON_KEYS` lists the icons (coin packs, Lucky Charm clover, Market Insight crystal ball, Silver Broker scales, Master Smith anvil and hammer, Master Wrapper gift, VIP and Founder crowns, Golden Hour flask, Jackpot slot machine, Trade Fair stall, Hunter's Bundle, Server Luck globe, bag). To add one, add a key to `CARTOON_KEYS` and a branch in `drawCartoon` (canvas 100 x 100). Spear icons still use the game's 3D spear models. Hunter's Bundle is now a wide banner under Server Luck.

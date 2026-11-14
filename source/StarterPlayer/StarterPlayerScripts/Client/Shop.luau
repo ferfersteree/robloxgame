@@ -58,6 +58,7 @@ local TILE = {
 	wrap = rgb(236, 82, 170), vip = rgb(255, 170, 20),
 	fortune20 = rgb(255, 172, 20), jackpot20 = rgb(226, 56, 120), fair30 = rgb(24, 188, 196), server15 = rgb(52, 196, 96),
 	founder = rgb(132, 62, 214), hour_bundle = rgb(226, 120, 20),
+	egg_mystic = rgb(60, 150, 230), egg_royal = rgb(150, 80, 230), egg_cosmic = rgb(230, 120, 30), egg_absolute = rgb(30, 190, 210),
 	coins1 = rgb(132, 214, 36), coins2 = rgb(132, 214, 36), coins3 = rgb(40, 190, 140), coins4 = rgb(80, 130, 255),
 }
 
@@ -75,6 +76,10 @@ local PITCH: { [string]: { string } } = {
 	server15 = { "LUCK ×2 FOR EVERYONE", "15 min · whole server" },
 	founder = { "FOUNDER TAG + AURA", "limited · bigger daily gift" },
 	hour_bundle = { "3 BOOSTS, SAVE 40%", "30 min · mutations, rare, fair" },
+	egg_mystic = { "EXOTIC PET", "Common · Rare" },
+	egg_royal = { "EXOTIC PET", "Rare up to Mythic" },
+	egg_cosmic = { "EXOTIC PET", "Epic up to Absolute" },
+	egg_absolute = { "EXOTIC PET", "Legendary up to Absolute" },
 }
 
 -- Мультяшные иллюстрации магазина (папка shop-art/ в репозитории). Номера берутся из Client/AudioIds (art_<имя>).
@@ -318,6 +323,9 @@ local CARTOON_KEYS = {
 	wrap = true, vip = true, founder = true, fortune20 = true, jackpot20 = true, fair30 = true, hour_bundle = true,
 	server15 = true, bag = true, luck30 = true,
 }
+for eggKey in Config.EGGS do
+	CARTOON_KEYS[eggKey] = true
+end
 
 local function drawCartoon(parent: Instance, kind: string): boolean
 	if not CARTOON_KEYS[kind] then
@@ -581,6 +589,18 @@ local function drawCartoon(parent: Instance, kind: string): boolean
 		S("round", 50, 72, 34, 22, c(62, 134, 74), 0, 0.25)
 		S("round", 50, 48, 12, 12, GOLD, 0, 0.25)
 		H(34, 58, 8, 18, 0)
+	elseif Config.EGGS[kind] then
+		local ec = Config.EGGS[kind].color
+		S("circle", 50, 62, 56, 58, ec)
+		S("circle", 50, 44, 44, 48, ec)
+		S("circle", 40, 50, 11, 11, ec:Lerp(W, 0.55))
+		S("circle", 60, 66, 10, 10, ec:Lerp(W, 0.55))
+		S("circle", 46, 76, 8, 8, ec:Lerp(BLACK, 0.2))
+		S("circle", 56, 40, 7, 7, ec:Lerp(W, 0.4))
+		H(38, 36, 9, 20, 20)
+		SP(84, 20, 11)
+		SP(14, 40, 8)
+		SP(88, 72, 7)
 	elseif kind == "luck30" then
 		flask(50, 64, 1, c(90, 220, 110))
 		SP(80, 20, 9)
@@ -1286,6 +1306,9 @@ local function renderBanner(o: Open, parent: Instance, item: any, order: number)
 end
 
 -- Вертикальная плитка: пасс, буст или пак монет
+-- V28: окно шансов яйца (определяется ниже, плитки яиц зовут его по кнопке ODDS)
+local openOdds: (string) -> () = function(_: string) end
+
 local function renderTile(o: Open, parent: Instance, item: any, order: number, kind: string)
 	local base = TILE[item.key] or rgb(70, 160, 245)
 	local top, bot, line = Theme.shades(base)
@@ -1322,13 +1345,540 @@ local function renderTile(o: Open, parent: Instance, item: any, order: number, k
 		local owned = box({ Top = rgb(255, 224, 102), Bottom = rgb(245, 163, 0), Line = rgb(74, 38, 0), LineThick = 2, Radius = 8, Size = UDim2.new(1, -20, 0, 34), Position = UDim2.fromOffset(10, 172), ZIndex = 3, Parent = f })
 		UI.label({ Text = "OWNED", TextSize = 19, StrokeColor = rgb(107, 61, 0), Size = UDim2.fromScale(1, 1), Parent = owned })
 	else
-		buyButton(item, UDim2.new(1, -20, 0, 34), UDim2.fromOffset(10, 172), 19, f).ZIndex = 4
+		buyButton(item, kind == "egg" and UDim2.new(1, -84, 0, 34) or UDim2.new(1, -20, 0, 34), UDim2.fromOffset(10, 172), 19, f).ZIndex = 4
 	end
 	if kind == "boost" then
 		o.status[item.key] = UI.label({ Text = "", TextSize = 13, Color = K.goldText, Stroke = 2, StrokeColor = line, Size = UDim2.new(1, -12, 0, 16), Position = UDim2.fromOffset(6, 34), XAlign = Enum.TextXAlignment.Left, ZIndex = 4, Parent = f })
 	end
+	if kind == "egg" then
+		-- V28: шансы выпадения до покупки (требование правил Roblox для платных случайных предметов)
+		local ob = UI.button({ Text = "ODDS", TextSize = 15, Color = rgb(70, 110, 230), Size = UDim2.fromOffset(60, 34), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -10, 0, 172), Sound = "press" }, function()
+			openOdds(item.key)
+		end)
+		ob.ZIndex = 6
+		ob.Parent = f
+	end
 	table.insert(o.shiny, f)
 	introPop(o, f)
+end
+
+---------------------------------------------------------------------
+-- V28: экзотика, яйца, вылупление.
+-- Бросок яйца делает сервер (Server/Shop, rollEgg). Здесь только показ: шансы берутся из Config.EGGS (Config.eggOdds),
+-- то есть из той же таблицы, по которой бросает сервер. Меняешь веса в Config - меняются и бросок, и проценты в окне.
+---------------------------------------------------------------------
+local EXO_STYLE = {
+	rainbow = { hue = true },
+	rainbow_neon = { hue = true, neon = true },
+	galaxy = { hue = true, h0 = 0.58, span = 0.25, neon = true },
+	neon_pink = { color = rgb(255, 80, 190), neon = true },
+	neon_cyan = { color = rgb(70, 235, 255), neon = true },
+	neon_green = { color = rgb(100, 255, 110), neon = true },
+	neon_red = { color = rgb(255, 60, 80), neon = true },
+	gold_neon = { color = rgb(255, 196, 40), neon = true },
+	magma = { color = rgb(255, 110, 30), neon = true },
+	void = { color = rgb(130, 60, 230), neon = true, dark = 0.5 },
+	ice = { color = rgb(150, 225, 255) },
+	ghost = { color = rgb(170, 245, 255), neon = true, transp = 0.4 },
+}
+
+local function newI(class: string, props: { [string]: any }, parent: Instance?): any
+	local i = Instance.new(class)
+	for k, v in props do
+		(i :: any)[k] = v
+	end
+	if parent then
+		i.Parent = parent
+	end
+	return i
+end
+
+local function lowFx(): boolean
+	local d = Backend.data
+	return d ~= nil and d.settings ~= nil and d.settings.lowFx == true
+end
+
+-- Безумный вариант обычного животного: модель берём у Fauna150 и красим/увеличиваем. Радужные цвета крутит exoTick.
+local function exoticModel(ex: any): Model?
+	local base = Card.model(ex.base, nil)
+	if not base then
+		return nil
+	end
+	local m = base:Clone()
+	pcall(function()
+		m:ScaleTo(ex.scale)
+	end)
+	local st = EXO_STYLE[ex.style] or EXO_STYLE.neon_cyan
+	local i = 0
+	for _, d in m:GetDescendants() do
+		if d:IsA('BasePart') and d.Transparency < 1 then
+			i += 1
+			local _, _, v = d.Color:ToHSV()
+			if st.hue then
+				d.Color = Color3.fromHSV(((st.h0 or 0) + ((i * 0.07) % 1) * (st.span or 1)) % 1, 0.75, 1)
+				d:SetAttribute('Phase', (i * 0.07) % 1)
+			else
+				d.Color = st.color:Lerp(Color3.new(0, 0, 0), (1 - math.max(v, 0.4)) * (st.dark or 0.45))
+			end
+			if st.neon then
+				d.Material = Enum.Material.Neon
+			end
+			if st.transp then
+				d.Transparency = math.max(d.Transparency, st.transp)
+			end
+		end
+	end
+	return m
+end
+
+-- Радужная анимация: один общий цикл ~12 раз в секунду на все видимые портреты (не больше 14 моделей по 50 частей)
+local exoAnim: { any } = {}
+local exoConn: RBXScriptConnection? = nil
+local exoClock = 0
+local function exoTick(dt: number)
+	exoClock += dt
+	if exoClock < 0.08 then
+		return
+	end
+	exoClock = 0
+	local t = os.clock()
+	for i = #exoAnim, 1, -1 do
+		local e = exoAnim[i]
+		if not e.model:IsDescendantOf(game) then
+			table.remove(exoAnim, i)
+		else
+			for _, p in e.parts do
+				p.part.Color = Color3.fromHSV(((e.st.h0 or 0) + ((p.ph + t * 0.3) % 1) * (e.st.span or 1)) % 1, 0.75, 1)
+			end
+		end
+	end
+	if #exoAnim == 0 and exoConn then
+		exoConn:Disconnect()
+		exoConn = nil
+	end
+end
+
+-- Портрет животного во ViewportFrame. locked = чёрный силуэт.
+local function exoticPortrait(parent: Instance, ex: any, locked: boolean?, spin: number?, z: number?): ViewportFrame?
+	local m = exoticModel(ex)
+	if not m then
+		return nil
+	end
+	local vp = UI.viewport(m, { ZIndex = z or 4 }, math.rad(-30), spin)
+	m:Destroy()
+	vp.Parent = parent
+	local vm = vp:FindFirstChildWhichIsA('Model')
+	local st = EXO_STYLE[ex.style]
+	if vm and locked then
+		for _, d in vm:GetDescendants() do
+			if d:IsA('BasePart') then
+				d.Color = Color3.new(0.04, 0.04, 0.06)
+				d.Material = Enum.Material.SmoothPlastic
+			end
+		end
+	elseif vm and st and st.hue and #exoAnim < 14 then
+		local parts = {}
+		for _, d in vm:GetDescendants() do
+			if d:IsA('BasePart') and d:GetAttribute('Phase') and #parts < 50 then
+				table.insert(parts, { part = d, ph = d:GetAttribute('Phase') })
+			end
+		end
+		table.insert(exoAnim, { model = vm, st = st, parts = parts })
+		if not exoConn then
+			exoConn = RunService.Heartbeat:Connect(exoTick)
+		end
+	end
+	return vp
+end
+
+-- Доля в проценты без ошибки округления для минусов (-0.10 -> -10, а не -11)
+local function pct(v: number): number
+	return v >= 0 and math.floor(v * 100 + 0.5) or -math.floor(-v * 100 + 0.5)
+end
+
+-- Строки бонусов: зелёные плюсы, красные минусы
+local function fxLines(ex: any): { { any } }
+	local out = {}
+	local names = Config.EXOTIC.STATS
+	local keys = {}
+	for k in ex.fx do
+		table.insert(keys, k)
+	end
+	table.sort(keys, function(a, b)
+		return ex.fx[a] > ex.fx[b]
+	end)
+	for _, k in keys do
+		local v = ex.fx[k]
+		local txt = k == 'bag' and string.format('%+d %s', v, names[k]) or string.format('%+d%% %s', pct(v), names[k])
+		table.insert(out, { txt, v > 0 and rgb(120, 255, 130) or rgb(255, 120, 120) })
+	end
+	return out
+end
+
+local function fxOneLine(ex: any): string
+	local parts = {}
+	for _, l in fxLines(ex) do
+		table.insert(parts, l[1])
+	end
+	return table.concat(parts, ' · ')
+end
+
+-- Окно шансов яйца
+openOdds = function(key: string)
+	local egg = Config.EGGS[key]
+	local item = Config.SHOP_BY_KEY[key]
+	if not egg then
+		return
+	end
+	local sg = newI('ScreenGui', { Name = 'EggOdds', DisplayOrder = 40, ResetOnSpawn = false, IgnoreGuiInset = true }, UI.top.Parent)
+	local dim = newI('TextButton', { Text = '', AutoButtonColor = false, BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 0.45, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1) }, sg)
+	local panel = box({ Top = K.heroTop, Mid = K.heroMid, Bottom = K.heroBot, Line = K.heroLine, Size = UDim2.fromOffset(560, 560), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Parent = dim })
+	UI.label({ Text = string.upper(egg.name) .. ' ODDS', TextSize = 30, Color = egg.color, StrokeColor = K.heroLine, Stroke = 4, Size = UDim2.new(1, -20, 0, 36), Position = UDim2.fromOffset(10, 8), ZIndex = 3, Parent = panel })
+	UI.label({ Text = 'Exact chances. The server rolls with this same table, so what you see here is what you get.', TextSize = 14, Color = K.white, StrokeColor = K.heroLine, Stroke = 2, Wrap = true, Size = UDim2.new(1, -30, 0, 36), Position = UDim2.fromOffset(15, 46), ZIndex = 3, Parent = panel })
+	local odds = Config.eggOdds(key)
+	local byRar: { [number]: number } = {}
+	for _, o in odds do
+		local r = Config.EXOTIC_BY_ID[o.id].rarity
+		byRar[r] = (byRar[r] or 0) + o.pct
+	end
+	local sums = {}
+	for r = 6, 1, -1 do
+		if byRar[r] then
+			table.insert(sums, string.format('%s %.2f%%', Config.EXOTIC.RARITIES[r].name, byRar[r]))
+		end
+	end
+	UI.label({ Text = table.concat(sums, '  ·  '), TextSize = 15, Color = K.goldText, StrokeColor = K.heroLine, Stroke = 2, Wrap = true, Size = UDim2.new(1, -30, 0, 36), Position = UDim2.fromOffset(15, 84), ZIndex = 3, Parent = panel })
+	local list = newI('ScrollingFrame', { BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.new(1, -20, 1, -190), Position = UDim2.fromOffset(10, 124), CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, ScrollBarThickness = 6, ZIndex = 3 }, panel)
+	newI('UIListLayout', { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }, list)
+	local sorted = table.clone(odds)
+	table.sort(sorted, function(a, b)
+		local ra, rb = Config.EXOTIC_BY_ID[a.id].rarity, Config.EXOTIC_BY_ID[b.id].rarity
+		if ra ~= rb then
+			return ra > rb
+		end
+		return a.pct > b.pct
+	end)
+	for i, o in sorted do
+		local ex = Config.EXOTIC_BY_ID[o.id]
+		local rar = Config.EXOTIC.RARITIES[ex.rarity]
+		local row = newI('Frame', { BackgroundColor3 = K.tile, BackgroundTransparency = 0.35, BorderSizePixel = 0, Size = UDim2.new(1, -8, 0, 44), LayoutOrder = i, ZIndex = 3 }, list)
+		UI.corner(8).Parent = row
+		newI('Frame', { BackgroundColor3 = rar.color, BorderSizePixel = 0, Size = UDim2.fromOffset(8, 30), Position = UDim2.fromOffset(6, 7), ZIndex = 4 }, row)
+		UI.label({ Text = ex.name, TextSize = 16, Color = rar.color, Stroke = 2, XAlign = Enum.TextXAlignment.Left, Size = UDim2.fromOffset(170, 40), Position = UDim2.fromOffset(20, 2), ZIndex = 4, Parent = row })
+		UI.label({ Text = fxOneLine(ex), TextSize = 12, Color = K.white, Stroke = 1, Wrap = true, XAlign = Enum.TextXAlignment.Left, Size = UDim2.new(1, -300, 0, 42), Position = UDim2.fromOffset(194, 1), ZIndex = 4, Parent = row })
+		UI.label({ Text = string.format('%.2f%%', o.pct), TextSize = 18, Color = K.goldText, Stroke = 2, XAlign = Enum.TextXAlignment.Right, Size = UDim2.fromOffset(80, 40), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -8, 0, 2), ZIndex = 4, Parent = row })
+	end
+	local note = 'Duplicates turn into shards that upgrade your exotics.'
+	if item then
+		note = string.format('%s  ·  %d R$', note, item.price)
+	end
+	UI.label({ Text = note, TextSize = 13, Color = K.white, StrokeColor = K.heroLine, Stroke = 2, Wrap = true, Size = UDim2.new(1, -240, 0, 40), Position = UDim2.fromOffset(15, 510), XAlign = Enum.TextXAlignment.Left, ZIndex = 3, Parent = panel })
+	local close = UI.button({ Text = 'CLOSE', TextSize = 22, Color = K.red, Size = UDim2.fromOffset(150, 42), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 508), Sound = 'press' }, function()
+		sg:Destroy()
+	end)
+	close.ZIndex = 5
+	close.Parent = panel
+	dim.MouseButton1Click:Connect(function()
+		sg:Destroy()
+	end)
+end
+
+-- Вылупление: яйцо трясётся, трескается, вспышка, появление. Всё создаётся заранее, в кадре только меняются свойства.
+local hatchQueue: { any } = {}
+local hatchSeen: { [string]: boolean } = {}
+local hatchAck: { string } = {}
+local hatchBusy = false
+
+local function playHatch(h: any, done: () -> ())
+	local ex = Config.EXOTIC_BY_ID[h.sp]
+	if not ex then
+		done()
+		return
+	end
+	local rar = Config.EXOTIC.RARITIES[ex.rarity]
+	local low = lowFx()
+	local sg = newI('ScreenGui', { Name = 'EggHatch', DisplayOrder = 60, ResetOnSpawn = false, IgnoreGuiInset = true }, UI.top.Parent)
+	local dim = newI('TextButton', { Text = '', AutoButtonColor = false, BackgroundColor3 = rgb(8, 6, 30), BackgroundTransparency = 0.12, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1) }, sg)
+	local glow = UI.glow(dim, rar.color, 520, 0.55)
+	glow.Position = UDim2.fromScale(0.5, 0.45)
+	glow.AnchorPoint = Vector2.new(0.5, 0.5)
+	glow.Visible = false
+	-- яйцо
+	local eggBox = newI('Frame', { BackgroundTransparency = 1, Size = UDim2.fromOffset(240, 240), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.45) }, dim)
+	local eggScale = newI('UIScale', { Scale = 1 }, eggBox)
+	drawCartoon(eggBox, h.egg)
+	local cracks = {}
+	for i, c in { { 0.46, 0.38, 70, 0.1 }, { 0.56, 0.5, -20, 0.12 }, { 0.44, 0.62, 25, 0.1 } } do
+		cracks[i] = newI('Frame', { BackgroundColor3 = rgb(255, 250, 200), BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(c[1], c[2]), Size = UDim2.fromScale(0.035, c[4] + 0.1), Rotation = c[3], Visible = false, ZIndex = 20 }, eggBox)
+		UI.corner(4).Parent = cracks[i]
+	end
+	-- искры (пул заранее; на слабой графике меньше)
+	local nSpark = low and 10 or 30
+	local sparks = {}
+	for i = 1, nSpark do
+		local a = (i / nSpark) * math.pi * 2 + (i % 3) * 0.3
+		local sp = newI('Frame', { BackgroundColor3 = i % 3 == 0 and K.white or rar.color, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(10 + (i % 4) * 4, 10 + (i % 4) * 4), Rotation = 45, Visible = false, ZIndex = 30 }, dim)
+		sparks[i] = { f = sp, vx = math.cos(a) * (260 + (i % 5) * 70), vy = math.sin(a) * (260 + (i % 5) * 70) - 120 }
+	end
+	-- карточка раскрытия (собрана заранее и скрыта)
+	local reveal = newI('Frame', { BackgroundTransparency = 1, Size = UDim2.fromOffset(460, 540), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Visible = false, ZIndex = 10 }, dim)
+	local revScale = newI('UIScale', { Scale = 0.2 }, reveal)
+	local portrait = newI('Frame', { BackgroundTransparency = 1, Size = UDim2.fromOffset(360, 260), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 0), ZIndex = 11 }, reveal)
+	exoticPortrait(portrait, ex, false, low and 0 or 0.6, 12)
+	UI.label({ Text = string.upper(rar.name), TextSize = 22, Color = rar.color, StrokeColor = Color3.new(0, 0, 0), Stroke = 4, Size = UDim2.new(1, 0, 0, 28), Position = UDim2.fromOffset(0, 268), ZIndex = 12, Parent = reveal })
+	UI.label({ Text = ex.name, TextSize = 40, Color = K.white, StrokeColor = rar.color:Lerp(Color3.new(0, 0, 0), 0.6), Stroke = 5, Scaled = true, MaxSize = 40, Size = UDim2.new(1, 0, 0, 46), Position = UDim2.fromOffset(0, 296), ZIndex = 12, Parent = reveal })
+	UI.label({ Text = ex.desc, TextSize = 16, Color = K.white, StrokeColor = Color3.new(0, 0, 0), Stroke = 3, Wrap = true, Size = UDim2.new(1, -40, 0, 40), Position = UDim2.fromOffset(20, 344), ZIndex = 12, Parent = reveal })
+	for i, l in fxLines(ex) do
+		UI.label({ Text = l[1], TextSize = 20, Color = l[2], StrokeColor = Color3.new(0, 0, 0), Stroke = 3, Size = UDim2.new(1, 0, 0, 24), Position = UDim2.fromOffset(0, 386 + (i - 1) * 24), ZIndex = 12, Parent = reveal })
+	end
+	local tag = h.dupe and string.format('DUPLICATE  +%d shards', h.shards or 0) or 'NEW EXOTIC!'
+	UI.label({ Text = tag, TextSize = 24, Color = h.dupe and rgb(160, 220, 255) or K.goldText, StrokeColor = Color3.new(0, 0, 0), Stroke = 4, Size = UDim2.new(1, 0, 0, 30), Position = UDim2.fromOffset(0, 500), ZIndex = 12, Parent = reveal })
+	local cont = UI.button({ Text = 'CONTINUE', TextSize = 22, Color = K.green, Size = UDim2.fromOffset(200, 46), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 1, -56), Sound = 'press' }, function() end)
+	cont.Visible = false
+	cont.ZIndex = 40
+	cont.Parent = dim
+	cont.Position = UDim2.new(0.5, 0, 0.5, 300)
+	local flash = newI('Frame', { BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), ZIndex = 50, Active = false }, dim)
+
+	local DUR = low and 1.5 or 2.5
+	local t0 = os.clock()
+	local phase = 'shake'
+	local lastTick = 0
+	local conn: RBXScriptConnection? = nil
+	local finished = false
+	local function finish()
+		if finished then
+			return
+		end
+		finished = true
+		if conn then
+			conn:Disconnect()
+		end
+		sg:Destroy()
+		done()
+	end
+	conn = RunService.RenderStepped:Connect(function()
+		local t = os.clock() - t0
+		if phase == 'shake' then
+			local p = math.min(t / DUR, 1)
+			eggBox.Rotation = math.sin(t * (14 + 22 * p)) * (3 + 14 * p)
+			eggBox.Position = UDim2.new(0.5, math.sin(t * 40) * 5 * p, 0.45, 0)
+			eggScale.Scale = 1 + 0.05 * math.sin(t * 9) + 0.2 * p
+			cracks[1].Visible = p > 0.35
+			cracks[2].Visible = p > 0.6
+			cracks[3].Visible = p > 0.82
+			if t - lastTick > 0.34 - 0.24 * p then
+				lastTick = t
+				Sfx.play('tick', 0.8 + p * 0.9, 0.5)
+			end
+			if t >= DUR then
+				phase = 'burst'
+				t0 = os.clock()
+				eggBox.Visible = false
+				glow.Visible = true
+				reveal.Visible = true
+				cont.Visible = true
+				flash.BackgroundTransparency = 0
+				UI.tween(flash, 0.7, { BackgroundTransparency = 1 })
+				UI.tween(revScale, 0.55, { Scale = 1 }, Enum.EasingStyle.Back)
+				for _, s in sparks do
+					s.f.Visible = true
+				end
+				local big = ex.rarity
+				Sfx.play(big >= 5 and 'thunder' or (big >= 3 and 'boom' or 'pop'), 1, 0.9)
+				Sfx.play('sparkle', 1 + big * 0.04, 0.8)
+				if big >= 4 then
+					Sfx.play('level', 1, 0.7)
+					UI.flash(rar.color, 0.4, 0.5)
+				end
+			end
+		elseif phase == 'burst' then
+			local bt = t
+			for _, s in sparks do
+				local alive = bt < 1.4
+				s.f.Visible = alive
+				if alive then
+					s.f.Position = UDim2.new(0.5, s.vx * bt, 0.45, s.vy * bt + 300 * bt * bt)
+					s.f.BackgroundTransparency = bt / 1.4
+				end
+			end
+			if bt > 1.5 then
+				phase = 'show'
+			end
+		end
+	end)
+	cont.MouseButton1Click:Connect(finish)
+	dim.MouseButton1Click:Connect(function()
+		if phase == 'show' then
+			finish()
+		end
+	end)
+end
+
+local function nextHatch()
+	if hatchBusy or #hatchQueue == 0 then
+		return
+	end
+	hatchBusy = true
+	local h = table.remove(hatchQueue, 1)
+	playHatch(h, function()
+		table.insert(hatchAck, h.id)
+		local fn = ShopFn
+		local ids = table.clone(hatchAck)
+		table.clear(hatchAck)
+		if fn then
+			task.spawn(function()
+				pcall(function()
+					fn:InvokeServer('hatchAck', ids)
+				end)
+			end)
+		end
+		hatchBusy = false
+		nextHatch()
+	end)
+end
+
+-- Новые вылупления из состояния сервера (в том числе пропущенные до выхода из игры)
+local function queueHatches()
+	local list = Perks.state().exotic and Perks.state().exotic.hatch
+	if type(list) ~= 'table' then
+		return
+	end
+	for _, h in list do
+		if type(h) == 'table' and type(h.id) == 'string' and not hatchSeen[h.id] then
+			hatchSeen[h.id] = true
+			table.insert(hatchQueue, h)
+		end
+	end
+	nextHatch()
+end
+
+-- Окно коллекции экзотики
+local exoticRefresh: (() -> ())? = nil
+local function openExotic()
+	if UI.windowOpen('exotic') then
+		return
+	end
+	local win, body = UI.window('exotic', 'Exotic', Vector2.new(820, 580), rgb(122, 62, 214), function()
+		exoticRefresh = nil
+	end)
+	local info = UI.label({ Text = '', TextSize = 18, Color = K.white, Stroke = 3, XAlign = Enum.TextXAlignment.Left, Size = UDim2.new(1, -20, 0, 30), Position = UDim2.fromOffset(10, 0), Parent = body })
+	local totalsLabel = UI.label({ Text = '', TextSize = 15, Color = K.goldText, Stroke = 2, XAlign = Enum.TextXAlignment.Left, Wrap = true, Size = UDim2.new(1, -20, 0, 36), Position = UDim2.fromOffset(10, 28), Parent = body })
+	local scroll = newI('ScrollingFrame', { BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.new(1, -10, 1, -72), Position = UDim2.fromOffset(5, 68), CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, ScrollBarThickness = 6 }, body)
+	newI('UIGridLayout', { CellSize = UDim2.fromOffset(250, 306), CellPadding = UDim2.fromOffset(8, 8), SortOrder = Enum.SortOrder.LayoutOrder, HorizontalAlignment = Enum.HorizontalAlignment.Center }, scroll)
+	local function call(action: string, id: string)
+		local fn = ShopFn
+		if fn then
+			task.spawn(function()
+				pcall(function()
+					fn:InvokeServer(action, id)
+				end)
+			end)
+		end
+	end
+	local function render()
+		for _, c in scroll:GetChildren() do
+			if c:IsA('GuiObject') then
+				c:Destroy()
+			end
+		end
+		local E = Perks.state().exotic
+		local eq = {}
+		for _, id in E.equipped do
+			eq[id] = true
+		end
+		info.Text = string.format('Equipped %d / %d   ·   Shards %d', #E.equipped, Config.EXOTIC.EQUIP_MAX, E.shards or 0)
+		local T = Perks.exotic()
+		local parts = {}
+		for _, stat in { 'luck', 'caps', 'coins', 'xp', 'range', 'grip', 'bag', 'train', 'forge' } do
+			if T[stat] and math.abs(T[stat]) > 0.0001 then
+				table.insert(parts, stat == 'bag' and string.format('%+d %s', T[stat], Config.EXOTIC.STATS[stat]) or string.format('%+d%% %s', pct(T[stat]), Config.EXOTIC.STATS[stat]))
+			end
+		end
+		totalsLabel.Text = #parts > 0 and ('Active: ' .. table.concat(parts, ' · ')) or 'Open eggs in the Shop, then equip up to 3 exotics here.'
+		for i, ex in Config.EXOTICS do
+			local owned = (E.owned[ex.id] or 0) > 0
+			local rar = Config.EXOTIC.RARITIES[ex.rarity]
+			local card = newI('Frame', { BackgroundColor3 = rar.color:Lerp(Color3.new(0.05, 0.03, 0.14), 0.78), BorderSizePixel = 0, LayoutOrder = i }, scroll)
+			UI.corner(14).Parent = card
+			newI('UIStroke', { Thickness = eq[ex.id] and 4 or 2, Color = eq[ex.id] and K.goldText or rar.color }, card)
+			if owned then
+				UI.glow(card, rar.color, 200, 0.62).Position = UDim2.fromOffset(125, 80)
+			end
+			local pbox = newI('Frame', { BackgroundTransparency = 1, Size = UDim2.new(1, -16, 0, 130), Position = UDim2.fromOffset(8, 6), ZIndex = 3 }, card)
+			exoticPortrait(pbox, ex, not owned, 0, 4)
+			UI.label({ Text = ex.name, TextSize = 20, Color = owned and rar.color or K.white, Stroke = 3, Scaled = true, MaxSize = 20, Size = UDim2.new(1, -12, 0, 24), Position = UDim2.fromOffset(6, 138), ZIndex = 4, Parent = card })
+			UI.label({ Text = string.upper(rar.name) .. (owned and string.format('   Lv %d/%d', E.level[ex.id] or 0, Config.EXOTIC.MAX_LEVEL) or '   NOT OWNED'), TextSize = 13, Color = K.white, Stroke = 2, Size = UDim2.new(1, -12, 0, 16), Position = UDim2.fromOffset(6, 162), ZIndex = 4, Parent = card })
+			for j, l in fxLines(ex) do
+				UI.label({ Text = l[1], TextSize = 14, Color = l[2], Stroke = 2, Size = UDim2.new(1, -12, 0, 16), Position = UDim2.fromOffset(6, 182 + (j - 1) * 16), ZIndex = 4, Parent = card })
+			end
+			if owned then
+				local on = eq[ex.id] == true
+				local b1 = UI.button({ Text = on and 'UNEQUIP' or 'EQUIP', TextSize = 15, Color = on and rgb(110, 110, 140) or K.green, Size = UDim2.new(0.5, -10, 0, 30), Position = UDim2.new(0, 6, 1, -36), Sound = 'press' }, function()
+					call(on and 'exoticUnequip' or 'exoticEquip', ex.id)
+				end)
+				b1.ZIndex = 5
+				b1.Parent = card
+				local lvl = E.level[ex.id] or 0
+				if lvl < Config.EXOTIC.MAX_LEVEL then
+					local cost = Config.exoticUpgradeCost(ex, lvl)
+					local b2 = UI.button({ Text = 'UP ' .. cost, TextSize = 15, Color = (E.shards or 0) >= cost and rgb(70, 130, 240) or rgb(90, 90, 120), Size = UDim2.new(0.5, -10, 0, 30), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -6, 1, -36), Sound = 'press' }, function()
+						call('exoticUpgrade', ex.id)
+					end)
+					b2.ZIndex = 5
+					b2.Parent = card
+				end
+			end
+		end
+	end
+	exoticRefresh = render
+	render()
+end
+
+-- Значки надетой экзотики на экране (маленькие портреты внизу слева). Пересобираются только при смене набора.
+local exoHudGui: ScreenGui? = nil
+local exoHudKey = ''
+local function updateExoHud()
+	local E = Perks.state().exotic
+	if not E then
+		return
+	end
+	local key = table.concat(E.equipped, ',')
+	for _, id in E.equipped do
+		key ..= ':' .. tostring(E.level[id] or 0)
+	end
+	if key == exoHudKey and exoHudGui then
+		return
+	end
+	exoHudKey = key
+	if exoHudGui then
+		exoHudGui:Destroy()
+		exoHudGui = nil
+	end
+	if #E.equipped == 0 then
+		return
+	end
+	local sg = newI('ScreenGui', { Name = 'ExoticHud', DisplayOrder = 6, ResetOnSpawn = false }, UI.top.Parent)
+	local row = newI('Frame', { BackgroundTransparency = 1, Size = UDim2.fromOffset(#E.equipped * 66, 62), Position = UDim2.new(0, 200, 1, -150) }, sg)
+	newI('UIListLayout', { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 6) }, row)
+	for _, id in E.equipped do
+		local ex = Config.EXOTIC_BY_ID[id]
+		if ex then
+			local rar = Config.EXOTIC.RARITIES[ex.rarity]
+			local chip = newI('TextButton', { Text = '', AutoButtonColor = false, BackgroundColor3 = rar.color:Lerp(Color3.new(0.05, 0.03, 0.14), 0.7), Size = UDim2.fromOffset(60, 60) }, row)
+			UI.corner(12).Parent = chip
+			newI('UIStroke', { Thickness = 3, Color = rar.color }, chip)
+			local pb = newI('Frame', { BackgroundTransparency = 1, Size = UDim2.new(1, -6, 1, -6), Position = UDim2.fromOffset(3, 3) }, chip)
+			exoticPortrait(pb, ex, false, 0, 3)
+			chip.MouseButton1Click:Connect(openExotic)
+		end
+	end
+	exoHudGui = sg
+end
+
+Shop.openExotic = openExotic
+Shop.showOdds = function(key: string)
+	openOdds(key)
 end
 
 -- V26: ранг поддержки и ежедневный подарок
@@ -1458,6 +2008,20 @@ local function renderBody(o: Open)
 	for i, it in brews do
 		renderTile(o, boosts, it, i, "boost")
 	end
+	sectionBar(o, scroll, "Eggs", nextOrder())
+	local collect = UI.button({ Text = "OPEN EXOTIC COLLECTION", TextSize = 20, Color = rgb(122, 62, 214), Size = UDim2.new(1, 0, 0, 46), LayoutOrder = nextOrder(), Sound = "press" }, function()
+		openExotic()
+	end)
+	collect.Parent = scroll
+	local eggs = grid(scroll, 4, 212, nextOrder())
+	local ei = 0
+	for _, it in SHOP.PRODUCTS do
+		if it.kind == "egg" then
+			ei += 1
+			renderTile(o, eggs, it, ei, "egg")
+		end
+	end
+	UI.label({ Text = "Eggs hatch exotic animals you cannot find while hunting. Tap SEE ODDS on any egg to see the exact chances.", TextSize = 14, Color = K.white, Stroke = 2, StrokeColor = K.navy, Wrap = true, Size = UDim2.new(1, 0, 0, 36), LayoutOrder = nextOrder(), Parent = scroll })
 	sectionBar(o, scroll, "Coins", nextOrder())
 	local coins = grid(scroll, 4, 212, nextOrder())
 	for i, it in packs do
@@ -1721,6 +2285,8 @@ local function onEvent(kind: any, payload: any)
 	if kind == "state" then
 		Perks.set(payload)
 		processPending(Perks.state().pending)
+		queueHatches()
+		updateExoHud()
 	elseif kind == "granted" then
 		local item = Config.SHOP_BY_KEY[payload]
 		if not item then
@@ -1732,6 +2298,9 @@ local function onEvent(kind: any, payload: any)
 			unlock(item, "OPENED!")
 		elseif item.kind == "coins" then
 			UI.toast(item.name .. " delivered", "gold", 3)
+		elseif item.kind == "egg" then
+			-- вылупление покажет queueHatches по состоянию сервера
+			UI.toast(item.name .. " is hatching!", "gold", 2)
 		else
 			Sfx.play("sparkle")
 			UI.flash(ACCENT[item.key] or K.goldText, 0.35, 0.5)
@@ -1753,6 +2322,10 @@ function Shop.init()
 	Perks.Changed.Event:Connect(function()
 		Backend.applyPerks()
 		Shop.refresh()
+		if exoticRefresh then
+			exoticRefresh()
+		end
+		updateExoHud()
 	end)
 	Backend.onChange(function()
 		dirty = true

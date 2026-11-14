@@ -10,12 +10,16 @@ Design decisions
 - New modules cannot be added by the patch tool (no cargo), so code goes into Config, Perks, DemoServer, Backend, Server/Shop and Client/Shop.
 
 Stages
-1. [ ] Data and Config: 16 exotics, 4 eggs, caps, odds and roll functions, egg products (id = 0).
-2. [ ] Server: egg roll in `applyProduct`, owned/equipped/levels/shards saved, equip/unequip/upgrade/hatch-ack actions, state push.
-3. [ ] Exclusion from normal pools plus test.
-4. [ ] Bonuses: Perks and boost hooks (luck, rare chance, coins, XP, range, grip, bag, training, forge).
-5. [ ] UI: Eggs section with odds, hatch animation, Exotic window, HUD chips.
-6. [ ] Balance check and frame time.
-7. [ ] Final check, Obsidian notes, push.
+1. [x] Data and Config: 16 exotics, 4 eggs, caps, odds and roll functions, egg products (id = 0).
+2. [x] Server: egg roll in `applyProduct`, owned/equipped/levels/shards saved, equip/unequip/upgrade/hatch-ack actions, state push.
+3. [x] Exclusion from normal pools plus test.
+4. [x] Bonuses: Perks and boost hooks (luck, rare chance, coins, XP, range, grip, bag, training, forge).
+5. [x] UI: Eggs section with odds, hatch animation, Exotic window, HUD chips.
+6. [~] Balance check and frame time.
+7. [x] Final check, Obsidian notes, push.
 
 Log
+- Stages 1-5 done in Studio and synced to `source/` (saved with `save_place`, extracted with a script).
+- Stage 6: frame time measured (no extra cost during hatch). Balance of a full loadout was estimated, not simulated.
+- Not done: particle auras (cannot render in viewports), visual check of portraits (Studio capture did not draw ViewportFrames), real-money and DataStore tests.
+- Nothing was pushed to GitHub (the task said not to publish anything). Commits are local on branch `donate-eggs`.
