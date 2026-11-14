@@ -1,3 +1,19 @@
+# Target range with a charge scale (V33)
+
+The target range on the right of the village (`Throw at Targets`, `Activities.range` in `Client/Activities`) now teaches the same skill as the hunt: hold, then release before the grip slips.
+
+- **Scale.** A bar at the bottom fills in 1.7 s while you hold (LMB, Space or a finger). Zones: WEAK (0-35%), GOOD (35-65%), PERFECT (65-92%), SLIP (92-100%). The hint above it changes as it fills ("Keep holding", "Almost!", "RELEASE NOW!", "TOO MUCH!"). Aim with the mouse (or the finger) while holding; the aim point at the moment of release is used.
+- **Result.** PERFECT lands exactly where you aimed (tiny scatter), GOOD scatters up to about 1.7 studs, WEAK falls short on the ground, SLIP (held too long, or the bar reaches the end) tumbles in front of you with no points. Points are the same as before (10 / 25 / 50 per target, x1.5 or x2 near the centre).
+- **Bugs fixed in the old range.**
+  - `SpearFx.launch` snaps the landing point to the ground, so the spear fell under the target instead of sticking in it. It now sticks where it hit and rides with the moving target.
+  - Targets kept moving while the spear flew, so the points were scored for a point that was already empty. The hit is now stored on the target and followed.
+  - A stuck flight or the character dying left `Activities.busy` set forever (the range, the course and the lookout stayed locked) and the camera scriptable. There is now a 3 s flight timeout, an exit when the character dies or is replaced, and everything is restored on exit.
+  - The title was cut by the Exit button (now short), and clicks during a throw were silently ignored (now the hint shows the result of the throw).
+- **Checked in Studio (Play).** Scale and zone hints, a SLIP throw (no points, the range recovers), a PERFECT throw (+10, the spear sticks in the target, reward +10 coins after Exit), exit and re-entry, the hunt still works unchanged. Not checked: touch screens, Space-hold timing on slow machines, the other two targets' scores.
+- **Mistake made on the way and reverted.** I first added a coach and practice throws to the hunt from the ambush (HuntCtl, Hud, DemoServer, Config). That was not what was asked; all of it was reverted and only the range changed.
+
+---
+
 # Flat shop icons (V32)
 
 The rest of the shop got simple, clean icons instead of the glossy 3D-style ones: a thick dark outline, flat colours with a light edge top-left and a dark edge bottom-right, one picture per item so it can be understood without reading.
