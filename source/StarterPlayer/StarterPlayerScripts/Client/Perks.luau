@@ -28,6 +28,7 @@ function Perks.set(s: any)
 		spent = tonumber(s.spent) or 0,
 		rank = tonumber(s.rank) or 0,
 		gift = tonumber(s.gift) or 0,
+		eggsOff = s.eggsOff == true, -- регион игрока: платные случайные предметы запрещены (PolicyService, считает сервер)
 		exotic = type(s.exotic) == "table" and s.exotic or { owned = {}, equipped = {}, level = {}, shards = 0, hatch = {} },
 	}
 	stamp = os.clock()

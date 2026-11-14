@@ -810,6 +810,10 @@ local function buy(item: any)
 		UI.toast("The shop is still loading your data. Try again in a moment.", "warn")
 		return
 	end
+	if item.kind == "egg" and st.eggsOff then
+		UI.toast("Eggs are not available in your region.", "warn")
+		return
+	end
 	if item.id > 0 then
 		if item.pass then
 			MarketplaceService:PromptGamePassPurchase(player, item.id)
@@ -1491,14 +1495,198 @@ local function exoticPortrait(parent: Instance, ex: any, locked: boolean?, spin:
 	return vp
 end
 
+---------------------------------------------------------------------
+-- V28: питомцы-экзотики рядом с игроком: ауры (ParticleEmitter), следы (Trail), столб света (Beam), свет.
+-- Всё процедурное, модели берутся у Fauna150, загружаемых ассетов нет. Сервер кладёт надетые виды в атрибут игрока
+-- "Exo" ("id,id,id"), поэтому питомцев видят и другие игроки (в радиусе range, не больше maxOthers чужих питомцев).
+-- На слабой графике (lowFx): только свои питомцы и без частиц, следов и лучей. Один общий Heartbeat на всех.
+---------------------------------------------------------------------
+local Pets = { range = 90, maxOthers = 6, yaw = math.pi, byPlayer = {} :: { [Player]: any }, folder = nil :: Folder? }
+local PET_SLOTS = { Vector3.new(-3.4, 1.4, 3.8), Vector3.new(3.4, 1.8, 3.8), Vector3.new(0, 3.0, 6.0) } -- +Z = позади игрока
+local PET_RAINBOW = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 70, 90)),
+	ColorSequenceKeypoint.new(0.2, Color3.fromRGB(255, 220, 60)),
+	ColorSequenceKeypoint.new(0.4, Color3.fromRGB(90, 255, 120)),
+	ColorSequenceKeypoint.new(0.6, Color3.fromRGB(70, 230, 255)),
+	ColorSequenceKeypoint.new(0.8, Color3.fromRGB(110, 110, 255)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 90, 230)),
+})
+
+function Pets.ids(p: Player): { string }
+	local out = {}
+	local raw = p:GetAttribute('Exo')
+	if type(raw) == 'string' then
+		for id in string.gmatch(raw, '[^,]+') do
+			if Config.EXOTIC_BY_ID[id] and not table.find(out, id) and #out < Config.EXOTIC.EQUIP_MAX then
+				table.insert(out, id)
+			end
+		end
+	end
+	return out
+end
+
+function Pets.build(ex: any, low: boolean): any?
+	local m = exoticModel(ex)
+	if not m then
+		return nil
+	end
+	local core: BasePart? = nil
+	local best = 0
+	for _, d in m:GetDescendants() do
+		if d:IsA('BasePart') then
+			d.Anchored = true
+			d.CanCollide = false
+			d.CanQuery = false
+			d.CanTouch = false
+			d.CastShadow = false
+			local vol = d.Size.X * d.Size.Y * d.Size.Z
+			if vol > best then
+				best = vol
+				core = d
+			end
+		elseif d:IsA('LuaSourceContainer') or d:IsA('Humanoid') then
+			d:Destroy()
+		end
+	end
+	if not core then
+		m:Destroy()
+		return nil
+	end
+	local ext = m:GetExtentsSize()
+	pcall(function()
+		m:ScaleTo(m:GetScale() * (2.4 + ex.rarity * 0.5) / math.max(ext.X, ext.Y, ext.Z, 0.1))
+	end)
+	m.PrimaryPart = nil
+	m.WorldPivot = (m:GetBoundingBox()) -- центр по габаритам: питомец парит ровно вокруг точки
+	local rar = Config.EXOTIC.RARITIES[ex.rarity]
+	local st = EXO_STYLE[ex.style]
+	local c1 = rar.color
+	local c2 = (st and st.color) or rar.color:Lerp(Color3.new(1, 1, 1), 0.45)
+	local seq = (st and st.hue) and PET_RAINBOW or ColorSequence.new(c1, c2)
+	if not low then
+		local r = ex.rarity
+		newI('ParticleEmitter', { Texture = 'rbxasset://textures/sparkle.png', Color = seq, LightEmission = 1, Rate = 5 + r * 3, Lifetime = NumberRange.new(0.9, 1.6), Speed = NumberRange.new(0.4, 1.2), SpreadAngle = Vector2.new(180, 180), Shape = Enum.ParticleEmitterShape.Box, Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.25, 0.45 + r * 0.06), NumberSequenceKeypoint.new(1, 0) }), Transparency = NumberSequence.new(0.1, 1), Rotation = NumberRange.new(0, 360), RotSpeed = NumberRange.new(-60, 60), Acceleration = Vector3.new(0, 0.6, 0), Drag = 1 }, core)
+		local sz = core.Size
+		local t0 = newI('Attachment', { Position = Vector3.new(0, sz.Y / 2, 0) }, core)
+		local t1 = newI('Attachment', { Position = Vector3.new(0, -sz.Y / 2, 0) }, core)
+		newI('Trail', { Attachment0 = t0, Attachment1 = t1, Color = seq, Lifetime = 0.7, LightEmission = 1, FaceCamera = true, MinLength = 0.05, Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.25), NumberSequenceKeypoint.new(1, 1) }), WidthScale = NumberSequence.new(1, 0) }, core)
+		if r >= 5 then
+			local b0 = newI('Attachment', {}, core)
+			local b1 = newI('Attachment', { Position = Vector3.new(0, 9, 0) }, core)
+			newI('Beam', { Attachment0 = b0, Attachment1 = b1, Color = seq, LightEmission = 1, LightInfluence = 0, FaceCamera = true, Width0 = 1.1, Width1 = 0.15, Segments = 1, Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.45), NumberSequenceKeypoint.new(1, 1) }) }, core)
+		end
+		if r >= 4 then
+			newI('PointLight', { Color = c1, Brightness = 1.5, Range = 9, Shadows = false }, core)
+		end
+	end
+	if st and st.hue and #exoAnim < 14 then
+		local parts = {}
+		for _, d in m:GetDescendants() do
+			if d:IsA('BasePart') and d:GetAttribute('Phase') and #parts < 50 then
+				table.insert(parts, { part = d, ph = d:GetAttribute('Phase') })
+			end
+		end
+		table.insert(exoAnim, { model = m, st = st, parts = parts })
+		if not exoConn then
+			exoConn = RunService.Heartbeat:Connect(exoTick)
+		end
+	end
+	return { model = m, slot = 1, cf = nil }
+end
+
+function Pets.clear(p: Player)
+	local e = Pets.byPlayer[p]
+	if e then
+		for _, pt in e.list do
+			pt.model:Destroy()
+		end
+		Pets.byPlayer[p] = nil
+	end
+end
+
+-- Раз в полсекунды: кого показывать (свои всегда, чужие в радиусе и в пределах лимита) и пересборка при смене набора
+function Pets.refresh()
+	local low = lowFx()
+	local cam = workspace.CurrentCamera
+	local othersUsed = 0
+	for _, p in Players:GetPlayers() do
+		local ids = Pets.ids(p)
+		local want = #ids > 0
+		if want and p ~= player then
+			local root = p.Character and p.Character:FindFirstChild('HumanoidRootPart')
+			want = not low and root ~= nil and cam ~= nil and (root.Position - cam.CFrame.Position).Magnitude <= Pets.range and othersUsed + #ids <= Pets.maxOthers
+			if want then
+				othersUsed += #ids
+			end
+		end
+		local key = table.concat(ids, ',') .. (low and ':low' or '')
+		local e = Pets.byPlayer[p]
+		if not want then
+			Pets.clear(p)
+		elseif not e or e.key ~= key then
+			Pets.clear(p)
+			local list = {}
+			for i, id in ids do
+				local pt = Pets.build(Config.EXOTIC_BY_ID[id], low)
+				if pt then
+					pt.slot = i
+					pt.model.Parent = Pets.folder
+					table.insert(list, pt)
+				end
+			end
+			Pets.byPlayer[p] = { key = key, list = list }
+		end
+	end
+	for p in Pets.byPlayer do
+		if p.Parent == nil then
+			Pets.clear(p)
+		end
+	end
+end
+
+function Pets.step(dt: number)
+	local t = os.clock()
+	local k = 1 - math.exp(-7 * dt)
+	for p, e in Pets.byPlayer do
+		local root = p.Character and p.Character:FindFirstChild('HumanoidRootPart')
+		if root and root:IsA('BasePart') then
+			for _, pt in e.list do
+				local target = root.CFrame * CFrame.new(PET_SLOTS[pt.slot] + Vector3.new(0, math.sin(t * 2.2 + pt.slot * 2.1) * 0.35, 0))
+				if not pt.cf or (pt.cf.Position - target.Position).Magnitude > 40 then
+					pt.cf = target
+				else
+					pt.cf = pt.cf:Lerp(target, k)
+				end
+				pt.model:PivotTo(pt.cf * CFrame.Angles(0, Pets.yaw, 0))
+			end
+		end
+	end
+end
+
+function Pets.start()
+	local f = Instance.new('Folder')
+	f.Name = 'ExoPets'
+	f.Parent = workspace
+	Pets.folder = f
+	RunService.Heartbeat:Connect(Pets.step)
+	Players.PlayerRemoving:Connect(Pets.clear)
+	task.spawn(function()
+		while true do
+			pcall(Pets.refresh)
+			task.wait(0.5)
+		end
+	end)
+end
+
 -- Доля в проценты без ошибки округления для минусов (-0.10 -> -10, а не -11)
 local function pct(v: number): number
 	return v >= 0 and math.floor(v * 100 + 0.5) or -math.floor(-v * 100 + 0.5)
 end
 
 -- Строки бонусов: зелёные плюсы, красные минусы
-local function fxLines(ex: any): { { any } }
+local function fxLines(ex: any, level: number?): { { any } }
 	local out = {}
+	local lk = 1 + Config.EXOTIC.LEVEL_BONUS * math.clamp(level or 0, 0, Config.EXOTIC.MAX_LEVEL) -- уровень усиливает и плюсы, и минусы (как в Config.exoticTotals)
 	local names = Config.EXOTIC.STATS
 	local keys = {}
 	for k in ex.fx do
@@ -1508,8 +1696,8 @@ local function fxLines(ex: any): { { any } }
 		return ex.fx[a] > ex.fx[b]
 	end)
 	for _, k in keys do
-		local v = ex.fx[k]
-		local txt = k == 'bag' and string.format('%+d %s', v, names[k]) or string.format('%+d%% %s', pct(v), names[k])
+		local v = ex.fx[k] * lk
+		local txt = k == 'bag' and string.format('%+d %s', math.floor(v), names[k]) or string.format('%+d%% %s', pct(v), names[k])
 		table.insert(out, { txt, v > 0 and rgb(120, 255, 130) or rgb(255, 120, 120) })
 	end
 	return out
@@ -1633,7 +1821,10 @@ local function playHatch(h: any, done: () -> ())
 	end
 	local tag = h.dupe and string.format('DUPLICATE  +%d shards', h.shards or 0) or 'NEW EXOTIC!'
 	UI.label({ Text = tag, TextSize = 24, Color = h.dupe and rgb(160, 220, 255) or K.goldText, StrokeColor = Color3.new(0, 0, 0), Stroke = 4, Size = UDim2.new(1, 0, 0, 30), Position = UDim2.fromOffset(0, 500), ZIndex = 12, Parent = reveal })
-	local cont = UI.button({ Text = 'CONTINUE', TextSize = 22, Color = K.green, Size = UDim2.fromOffset(200, 46), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 1, -56), Sound = 'press' }, function() end)
+	local finish: () -> () = function() end -- настоящая задаётся ниже, кнопка вызывает её по имени
+	local cont = UI.button({ Text = 'CONTINUE', TextSize = 22, Color = K.green, Size = UDim2.fromOffset(200, 46), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 1, -56), Sound = 'press' }, function()
+		finish()
+	end)
 	cont.Visible = false
 	cont.ZIndex = 40
 	cont.Parent = dim
@@ -1646,7 +1837,7 @@ local function playHatch(h: any, done: () -> ())
 	local lastTick = 0
 	local conn: RBXScriptConnection? = nil
 	local finished = false
-	local function finish()
+	finish = function()
 		if finished then
 			return
 		end
@@ -1707,7 +1898,6 @@ local function playHatch(h: any, done: () -> ())
 			end
 		end
 	end)
-	cont.MouseButton1Click:Connect(finish)
 	dim.MouseButton1Click:Connect(function()
 		if phase == 'show' then
 			finish()
@@ -1809,7 +1999,7 @@ local function openExotic()
 			exoticPortrait(pbox, ex, not owned, 0, 4)
 			UI.label({ Text = ex.name, TextSize = 20, Color = owned and rar.color or K.white, Stroke = 3, Scaled = true, MaxSize = 20, Size = UDim2.new(1, -12, 0, 24), Position = UDim2.fromOffset(6, 138), ZIndex = 4, Parent = card })
 			UI.label({ Text = string.upper(rar.name) .. (owned and string.format('   Lv %d/%d', E.level[ex.id] or 0, Config.EXOTIC.MAX_LEVEL) or '   NOT OWNED'), TextSize = 13, Color = K.white, Stroke = 2, Size = UDim2.new(1, -12, 0, 16), Position = UDim2.fromOffset(6, 162), ZIndex = 4, Parent = card })
-			for j, l in fxLines(ex) do
+			for j, l in fxLines(ex, owned and (E.level[ex.id] or 0) or 0) do
 				UI.label({ Text = l[1], TextSize = 14, Color = l[2], Stroke = 2, Size = UDim2.new(1, -12, 0, 16), Position = UDim2.fromOffset(6, 182 + (j - 1) * 16), ZIndex = 4, Parent = card })
 			end
 			if owned then
@@ -2013,15 +2203,16 @@ local function renderBody(o: Open)
 		openExotic()
 	end)
 	collect.Parent = scroll
+	local eggsOff = Perks.state().eggsOff == true
 	local eggs = grid(scroll, 4, 212, nextOrder())
 	local ei = 0
 	for _, it in SHOP.PRODUCTS do
-		if it.kind == "egg" then
+		if it.kind == "egg" and not eggsOff then
 			ei += 1
 			renderTile(o, eggs, it, ei, "egg")
 		end
 	end
-	UI.label({ Text = "Eggs hatch exotic animals you cannot find while hunting. Tap SEE ODDS on any egg to see the exact chances.", TextSize = 14, Color = K.white, Stroke = 2, StrokeColor = K.navy, Wrap = true, Size = UDim2.new(1, 0, 0, 36), LayoutOrder = nextOrder(), Parent = scroll })
+	UI.label({ Text = if eggsOff then "Eggs are not available in your region. Your exotic animals still work." else "Eggs hatch exotic animals you cannot find while hunting. Tap SEE ODDS on any egg to see the exact chances.", TextSize = 14, Color = K.white, Stroke = 2, StrokeColor = K.navy, Wrap = true, Size = UDim2.new(1, 0, 0, 36), LayoutOrder = nextOrder(), Parent = scroll })
 	sectionBar(o, scroll, "Coins", nextOrder())
 	local coins = grid(scroll, 4, 212, nextOrder())
 	for i, it in packs do
@@ -2318,6 +2509,7 @@ function Shop.init()
 	local ev = ShopEv :: RemoteEvent
 	local fn = ShopFn :: RemoteFunction
 	ev.OnClientEvent:Connect(onEvent)
+	Pets.start()
 
 	Perks.Changed.Event:Connect(function()
 		Backend.applyPerks()

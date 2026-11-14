@@ -24,14 +24,30 @@ There is no pity counter and no hidden condition. A duplicate gives shards (5, 1
 Common: Candy Hopper (luck +6%), Neon Fox (coins +8%), Bubble Boar (XP +10%). Rare: Glowstripe Wolf (range +12%, coins -6%), Frostfur Bear (bag +20, luck -5%), Ruby Antlerlord (rare chance +10%), Prism Otter (training +15%). Epic: Storm Kitsune (luck +20%, grip -10%), Magma Titan (coins +20%, range -10%), Ghost Lynx (rare chance +14%, XP +10%). Legendary: Solar Maned Lion (luck +30%, grip -12%), Void Mammoth (bag +35, forge -15%, range -8%), Aurora Phoenix (rare chance +20%, XP +20%). Mythic: Astral Wyrm (luck +45%, rare chance +25%, coins -15%), Leviathan Prime (range +25%, grip +15%, luck -10%). Absolute: Prismatic Overlord (luck +55%, rare chance +30%, coins +25%, XP +25%, range +15%, bag -20).
 
 ## Stacking and balance
-Bonuses of one stat add, together with passes and boosts. Per-stat caps: luck +100%, rare chance +60%, coins +60%, XP +100%, range +30%, grip +30%, bag +40 slots, training +100%, forge -40%; penalties floor at -40% (bag -40 slots). At most 3 equipped. Checked in Studio with test purchases: totals, caps and the equip limit work. Not re-simulated: a full loadout on top of every pass is estimated at roughly x2 to x2.5 income from rare chance and coins; the V25 pass table already reaches x2 to x4.9 while timed boosts run.
+Bonuses of one stat add. The per-stat caps apply to the sum of the equipped exotics only; passes and boosts are added on top of that result (`Perks.luckMult` and the others), so exotics can never give more than the cap whatever else the player owns. Caps: luck +100%, rare chance +60%, coins +60%, XP +100%, range +30%, grip +30%, bag +40 slots, training +100%, forge -40%; penalties floor at -40% (bag -40 slots). At most 3 equipped. Levels scale both the bonus and the penalty (+10% per level), and the Exotic window now shows the levelled numbers.
+
+Simulated with the real `Config.exoticTotals` over all 560 loadouts of 3 (not estimated):
+- Level 0 best loadout for luck x coins x rare-chance: x4.03 (Magma Titan + Astral Wyrm + Prismatic Overlord). Level 5: x4.67 (Ruby Antlerlord + Magma Titan + Prismatic Overlord). That product is an upper bound for income, because luck only improves odds inside a pool and the rare caps saturate.
+- Luck alone: the best exotic loadout gives +100% (candy hopper + two luck mythics at level 5). On top of potion + Lucky Charm + Server Luck (4.00) that is x1.25; for a player with no pass or potion it is x2.00.
+- Rare-chance caps: base stack 3.00 (potion, charm, Jackpot Hour, Server Luck), exotics add up to +0.60 (3.60, x1.2).
+- Range +30% and grip +30% at most; bag +40 slots at most.
+The top results need the 999 R$ Prismatic Overlord (2% in Cosmic, 10% in Absolute) plus upgrades paid in shards, so the realistic early loadout is far below those numbers. If it still feels too strong, lower `Config.EXOTIC.CAP` (one table).
+
+## Region rule for paid random items
+Roblox restricts paid random items in some regions. The server asks `PolicyService:GetPolicyInfoForPlayerAsync` when the profile loads and keeps `ArePaidRandomItemsRestricted` as `prof.eggsOff`. If the lookup fails outside Studio, eggs stay off (fail closed). When off, the Eggs tiles and odds are hidden ("Eggs are not available in your region. Your exotic animals still work."), `buy` refuses egg products, and the Studio test purchase refuses them. A receipt that arrives anyway (the player paid through another path) is still granted. The collection and bonuses keep working.
+
+## Companions (auras, trails)
+Each equipped exotic follows its owner as a small floating companion built from the same Fauna150 model, with a particle aura (rate by rarity), a Trail, a light for Legendary and above and a vertical light Beam for Mythic and Absolute. The server writes the equipped ids into the player attribute `Exo`, so other players see them too (within 90 studs, at most 6 foreign companions). Low graphics (`lowFx`): only your own, without particles, trails, beams or lights. No uploaded assets. Code: `Pets` in `Client/Shop.luau`; `Pets.yaw` turns the model if it faces the wrong way.
+
+## Persistence tests (no DataStore in Studio)
+`Server/Shop` has a Studio-only `Shop._test` hook that swaps the DataStore for a fake one (JSON round-trip like the real one). A temporary script ran these cases, all passed: receipt grants one animal and is idempotent; the same receipt again does not give a second animal; rejoin keeps owned, hatch queue and receipt; a Roblox retry after rejoin does not duplicate; `hatchAck` then rejoin does not replay the hatch; a failed save returns NotProcessedYet and rolls everything back, and the retry grants exactly once; an old save without `exotic` loads; corrupt data (unknown species, negative numbers, wrong types) is dropped; the equip limit and the level clamp are applied on load; a region-restricted profile cannot buy eggs.
+A hatch bug found and fixed on the way: the CONTINUE button of the hatch window was wired to the wrong object, so the window could not be closed. Verified with a real click.
 
 ## Known limits
-- **Not tested with real money.** Only Studio test purchases. The receipt path is the existing `processReceipt`; the DataStore is unavailable in Studio, so saving and rejoining were not tested (the load code validates every field).
-- The animal portraits are 3D viewports. In the Studio session used for testing, screenshots did not show any ViewportFrame content (even a plain red cube), so the portraits, the rainbow colour animation and the neon looks were not seen. Their code path (model, parts, camera) was checked.
-- The "crazy" looks are colour, neon material and size in the card portraits. Particle auras and trails cannot render inside a viewport and were not added.
-- Frame time: Studio ran at about 15 FPS in this environment even when idle (67 ms per frame). During a hatch the average stayed the same (67.0 ms vs 66.7 ms); one frame reached 103 ms when the reveal portrait is built at the start of a hatch.
-- The economy is still client-side (`Config.BACKEND = "Demo"`): exotic bonuses come from server-validated state but are applied on the client. For real-money launch the sums should also be applied on the server (`Config.exoticTotals` works on both sides).
+- **Not tested with real money.** Only Studio test purchases. Persistence was tested against a fake DataStore, not the real one. There is no session lock: a player who joins a second server before the first one has saved could overwrite a newer save (the same as the rest of the shop profile).
+- Screenshots in the Studio session used for testing drew neither ViewportFrames nor the 3D world, so the portraits, the rainbow colour animation, the companions' auras and which way they face were **not seen**. Their structure was checked (objects, emitters, trails, beams, lights and sizes in Play).
+- Frame time with 3 companions (about 880 instances): 16.7 ms average with and without them in a Play session. During a hatch the average did not change either.
+- The economy is still client-side (`Config.BACKEND = "Demo"`): exotic bonuses come from server-validated state but are applied on the client. For a real-money launch the sums should also be applied on the server (`Config.exoticTotals` works on both sides).
 
 ---
 

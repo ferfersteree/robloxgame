@@ -15,7 +15,7 @@ Stages
 3. [x] Exclusion from normal pools plus test.
 4. [x] Bonuses: Perks and boost hooks (luck, rare chance, coins, XP, range, grip, bag, training, forge).
 5. [x] UI: Eggs section with odds, hatch animation, Exotic window, HUD chips.
-6. [~] Balance check and frame time.
+6. [x] Balance simulated over all 560 loadouts, frame time measured, persistence tested with a fake DataStore.
 7. [x] Final check and Obsidian notes (no push, by instruction).
 
 Log
@@ -23,3 +23,5 @@ Log
 - Stage 6: frame time measured (no extra cost during hatch). Balance of a full loadout was estimated, not simulated.
 - Not done: particle auras (cannot render in viewports), visual check of portraits (Studio capture did not draw ViewportFrames), real-money and DataStore tests.
 - Nothing was pushed to GitHub (the task said not to publish anything). Commits are local on branch `donate-eggs`.
+- Round 2: region gate (PolicyService), hatch CONTINUE button bug fixed, levelled numbers in the Exotic window, companions with auras/trails/beams (`Pets`), balance simulation, persistence tests. See SHOP.md.
+- Still not seen by eye: portraits and companions (Studio capture draws neither viewports nor the 3D world). Still not done: real-money test, real DataStore test, server-side application of bonuses.

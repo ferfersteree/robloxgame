@@ -12,6 +12,7 @@ local RunService = game:GetService("RunService")
 local MarketplaceService = game:GetService("MarketplaceService")
 local DataStoreService = game:GetService("DataStoreService")
 local HttpService = game:GetService("HttpService")
+local PolicyService = game:GetService("PolicyService")
 
 local Config = require(RS.Shared.Config)
 local SHOP = Config.SHOP
@@ -93,6 +94,7 @@ local function stateOf(prof: any): any
 		spent = spentOf(prof),
 		rank = rankOf(prof),
 		exotic = prof.shop.exotic,
+		eggsOff = prof.eggsOff == true,
 		gift = math.max(0, (tonumber(prof.shop.lastGift) or 0) + SHOP.GIFT_HOURS * 3600 - os.time()),
 		pending = prof.shop.pending,
 		studio = IS_STUDIO,
@@ -103,6 +105,15 @@ end
 local function push(player: Player)
 	local prof = profiles[player]
 	if prof then
+		-- V28: надетая экзотика в атрибут игрока ("id,id,id"): по нему клиенты рисуют питомцев с аурой, в том числе чужих
+		local E = prof.shop.exotic
+		local ids = {}
+		for _, id in E.equipped do
+			if (E.owned[id] or 0) > 0 and #ids < Config.EXOTIC.EQUIP_MAX then
+				table.insert(ids, id)
+			end
+		end
+		player:SetAttribute("Exo", table.concat(ids, ","))
 		ShopEv:FireClient(player, "state", stateOf(prof))
 	end
 end
@@ -330,6 +341,21 @@ local function loadProfile(player: Player)
 	if profiles[player] ~= prof then
 		return
 	end
+	-- V28: правила Roblox для платных случайных предметов. В некоторых регионах их продавать нельзя:
+	-- спрашиваем PolicyService; если спросить не вышло, вне Studio считаем, что нельзя (яйца скрыты, тестовая покупка закрыта).
+	do
+		local okPol, pol = pcall(function()
+			return PolicyService:GetPolicyInfoForPlayerAsync(player)
+		end)
+		if okPol and type(pol) == "table" then
+			prof.eggsOff = pol.ArePaidRandomItemsRestricted == true
+		else
+			prof.eggsOff = not IS_STUDIO
+		end
+	end
+	if profiles[player] ~= prof then
+		return
+	end
 	refreshVip(player)
 	push(player)
 end
@@ -482,6 +508,9 @@ local function onInvoke(player: Player, action: any, a: any, b: any): ...any
 		-- Только Studio и только для товаров без id: проверить магазин без Robux
 		local item = type(a) == "string" and Config.SHOP_BY_KEY[a] or nil
 		if not IS_STUDIO or not item or item.id ~= 0 then
+			return false
+		end
+		if item.kind == "egg" and prof.eggsOff then
 			return false
 		end
 		if item.pass then
@@ -677,6 +706,24 @@ function Shop.start()
 			end
 		end
 	end)
+end
+
+-- Только Studio: хук для проверок (подмена DataStore, чеки, перезаход) без настоящих покупок.
+if IS_STUDIO then
+	Shop._test = {
+		profiles = profiles,
+		processReceipt = processReceipt,
+		loadProfile = loadProfile,
+		saveProfile = saveProfile,
+		stateOf = stateOf,
+		invoke = onInvoke,
+		setStore = function(s: any)
+			store = s
+		end,
+		addProduct = function(item: any)
+			PRODUCT_BY_ID[item.id] = item
+		end,
+	}
 end
 
 return Shop
