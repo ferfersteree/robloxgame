@@ -50,12 +50,14 @@ local ACCENT = {
 	charm = rgb(120, 255, 150), insight = rgb(130, 200, 255), broker = rgb(210, 220, 235), smith = rgb(255, 150, 80),
 	wrap = rgb(255, 126, 190), vip = rgb(255, 216, 74),
 	fortune20 = rgb(255, 216, 74), jackpot20 = rgb(255, 120, 170), fair30 = rgb(100, 232, 214), server15 = rgb(110, 190, 255),
+	founder = rgb(196, 130, 255), hour_bundle = rgb(255, 216, 74),
 }
 -- Основной цвет плитки товара (как зелёный x2 Cash, оранжевый VIP, синий Egg Growth в референсе)
 local TILE = {
 	charm = rgb(92, 214, 56), insight = rgb(70, 130, 240), broker = rgb(120, 140, 170), smith = rgb(236, 110, 40),
 	wrap = rgb(236, 82, 170), vip = rgb(255, 170, 20),
 	fortune20 = rgb(255, 172, 20), jackpot20 = rgb(226, 56, 120), fair30 = rgb(24, 188, 196), server15 = rgb(52, 196, 96),
+	founder = rgb(132, 62, 214), hour_bundle = rgb(226, 120, 20),
 	coins1 = rgb(132, 214, 36), coins2 = rgb(132, 214, 36), coins3 = rgb(40, 190, 140), coins4 = rgb(80, 130, 255),
 }
 
@@ -71,6 +73,8 @@ local PITCH: { [string]: { string } } = {
 	jackpot20 = { "RARE CHANCE +100%", "20 min" },
 	fair30 = { "NO PRICE DROPS", "30 min · always good demand" },
 	server15 = { "LUCK ×2 FOR EVERYONE", "15 min · whole server" },
+	founder = { "FOUNDER TAG + AURA", "limited · bigger daily gift" },
+	hour_bundle = { "3 BOOSTS, SAVE 40%", "30 min · mutations, rare, fair" },
 }
 
 -- Мультяшные иллюстрации магазина (папка shop-art/ в репозитории). Номера берутся из Client/AudioIds (art_<имя>).
@@ -230,6 +234,19 @@ local function buildIcon(kind: string): Model
 			part(m, BALL, Vector3.one * 0.36, CFrame.new(x, 0.56 + tall, z), (i % 2 == 1) and rgb(232, 50, 56) or rgb(78, 181, 255), Enum.Material.Neon)
 		end
 		part(m, BALL, Vector3.one * 0.34, CFrame.new(0, 0.26, -0.95), rgb(120, 255, 150), Enum.Material.Neon)
+	elseif kind == "founder" then
+		disc(m, 1.9, 0.4, Vector3.new(0, 0.2, 0), GOLD, Enum.Material.Metal)
+		for i = 1, 5 do
+			local a = (i - 1) * math.pi * 2 / 5
+			local x, z = math.cos(a) * 0.75, math.sin(a) * 0.75
+			part(m, BLOCK, Vector3.new(0.3, 1.2, 0.3), CFrame.new(x, 0.9, z) * CFrame.Angles(0, -a, 0), GOLD, Enum.Material.Metal)
+			part(m, BALL, Vector3.one * 0.38, CFrame.new(x, 1.6, z), rgb(196, 130, 255), Enum.Material.Neon)
+		end
+		part(m, BALL, Vector3.one * 0.6, CFrame.new(0, 0.7, 0), rgb(120, 224, 255), Enum.Material.Neon)
+	elseif kind == "hour_bundle" then
+		flask(m, rgb(255, 200, 50), Vector3.new(-1.05, 0, 0.2), 0.85)
+		flask(m, rgb(255, 90, 140), Vector3.new(0, 0, -0.35), 1)
+		flask(m, rgb(90, 220, 200), Vector3.new(1.05, 0, 0.2), 0.85)
 	elseif kind == "insight" then
 		disc(m, 1.7, 0.3, Vector3.new(0, 0.15, 0), rgb(96, 70, 40), Enum.Material.Wood)
 		local ball = part(m, BALL, Vector3.one * 1.7, CFrame.new(0, 1.15, 0), rgb(120, 190, 255), Enum.Material.Glass)
@@ -969,7 +986,12 @@ local function renderBanner(o: Open, parent: Instance, item: any, order: number)
 	UI.label({ Text = pitch[1], TextSize = 25, Color = K.goldText, StrokeColor = line, Stroke = 4, Size = UDim2.new(1, -350, 0, 30), Position = UDim2.fromOffset(124, 46), XAlign = Enum.TextXAlignment.Left, ZIndex = 3, Parent = f })
 	UI.label({ Text = pitch[2], TextSize = 16, Color = K.white, StrokeColor = line, Stroke = 3, Size = UDim2.new(1, -350, 0, 20), Position = UDim2.fromOffset(124, 80), XAlign = Enum.TextXAlignment.Left, ZIndex = 3, Parent = f })
 	o.status[item.key] = UI.label({ Text = "", TextSize = 16, Color = K.goldText, Stroke = 3, StrokeColor = line, Size = UDim2.fromOffset(220, 20), Position = UDim2.fromOffset(124, 100), XAlign = Enum.TextXAlignment.Left, ZIndex = 3, Parent = f })
-	buyButton(item, UDim2.fromOffset(190, 44), UDim2.new(1, -204, 0.5, -24), 22, f).ZIndex = 4
+	if item.pass and Perks.has(item.key) then
+		local owned = box({ Top = rgb(255, 224, 102), Bottom = rgb(245, 163, 0), Line = rgb(74, 38, 0), LineThick = 2, Radius = 8, Size = UDim2.fromOffset(190, 44), AnchorPoint = Vector2.new(0, 0), Position = UDim2.new(1, -204, 0.5, -24), ZIndex = 3, Parent = f })
+		UI.label({ Text = "OWNED", TextSize = 22, StrokeColor = rgb(107, 61, 0), Size = UDim2.fromScale(1, 1), Parent = owned })
+	else
+		buyButton(item, UDim2.fromOffset(190, 44), UDim2.new(1, -204, 0.5, -24), 22, f).ZIndex = 4
+	end
 	table.insert(o.shiny, f)
 	introPop(o, f)
 end
@@ -1020,6 +1042,74 @@ local function renderTile(o: Open, parent: Instance, item: any, order: number, k
 	introPop(o, f)
 end
 
+-- V26: ранг поддержки и ежедневный подарок
+local function fmtWait(sec: number): string
+	return string.format("%dh %02dm", math.floor(sec / 3600), math.floor((sec % 3600) / 60))
+end
+
+local function rankPerks(rk: any): string
+	local parts = {}
+	if rk.bag > 0 then
+		table.insert(parts, "+" .. rk.bag .. " bag slots")
+	end
+	table.insert(parts, "prices recover x" .. tostring(rk.recover))
+	table.insert(parts, "daily gift " .. math.floor(rk.gift * 100) .. "%")
+	if rk.insight then
+		table.insert(parts, "free Market Insight")
+	end
+	return table.concat(parts, " · ")
+end
+
+local function renderRank(o: Open, parent: Instance, order: number)
+	local R = SHOP.RANKS
+	local st = Perks.state()
+	local rank = Perks.rank()
+	local spent = tonumber(st.spent) or 0
+	local cur = R[rank]
+	local nxt = R[rank + 1]
+	local f = box({ Top = K.heroTop, Mid = K.heroMid, Bottom = K.heroBot, Line = K.heroLine, Size = CENTER.Size, AnchorPoint = CENTER.AnchorPoint, Position = CENTER.Position, Clip = true, Parent = slot(parent, order, 150) })
+	glowSpot(f, rgb(214, 170, 255), 380, UDim2.fromOffset(80, 70), 0.6)
+	UI.label({ Text = cur and (string.upper(cur.name) .. " SUPPORTER") or "SUPPORTER RANK", TextSize = 28, Color = cur and cur.color or K.white, StrokeColor = K.heroLine, Stroke = 4, Size = UDim2.new(1, -250, 0, 32), Position = UDim2.fromOffset(14, 8), XAlign = Enum.TextXAlignment.Left, ZIndex = 3, Parent = f })
+	UI.label({ Text = cur and rankPerks(cur) or "Spend Robux to earn a rank: a tag and aura everyone sees, a daily gift and perks.", TextSize = 15, Color = K.white, StrokeColor = K.heroLine, Stroke = 2, Wrap = true, Size = UDim2.new(1, -250, 0, 40), Position = UDim2.fromOffset(14, 44), XAlign = Enum.TextXAlignment.Left, ZIndex = 3, Parent = f })
+	local from = cur and cur.at or 0
+	local frac = nxt and math.clamp((spent - from) / math.max(1, nxt.at - from), 0, 1) or 1
+	local bar = Instance.new("Frame")
+	bar.BorderSizePixel = 0
+	bar.BackgroundColor3 = K.heroLine
+	bar.Size = UDim2.new(1, -250, 0, 16)
+	bar.Position = UDim2.fromOffset(14, 94)
+	bar.ZIndex = 3
+	UI.corner(8).Parent = bar
+	bar.Parent = f
+	local fill = Instance.new("Frame")
+	fill.BorderSizePixel = 0
+	fill.BackgroundColor3 = nxt and nxt.color or K.goldText
+	fill.Size = UDim2.fromScale(frac, 1)
+	fill.ZIndex = 4
+	UI.corner(8).Parent = fill
+	fill.Parent = bar
+	UI.label({ Text = nxt and string.format("%d / %d R$ to %s: %s", spent, nxt.at, nxt.name, rankPerks(nxt)) or "Top rank reached. Thank you for supporting the game!", TextSize = 14, Color = K.white, StrokeColor = K.heroLine, Stroke = 2, Wrap = true, Size = UDim2.new(1, -250, 0, 34), Position = UDim2.fromOffset(14, 114), XAlign = Enum.TextXAlignment.Left, ZIndex = 3, Parent = f })
+	local left = Perks.giftLeft()
+	local ready = left <= 0
+	local k = (cur and cur.gift or SHOP.GIFT_BASE) + (Perks.has("founder") and 0.05 or 0)
+	UI.label({ Text = "DAILY GIFT", TextSize = 22, Color = K.goldText, StrokeColor = K.heroLine, Stroke = 3, Size = UDim2.fromOffset(200, 26), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 14), XAlign = Enum.TextXAlignment.Right, ZIndex = 3, Parent = f })
+	UI.label({ Text = "+" .. Num.short(Config.shopCoins(Backend.data, k)) .. " coins", TextSize = 18, Color = K.white, StrokeColor = K.heroLine, Stroke = 2, Size = UDim2.fromOffset(200, 22), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 42), XAlign = Enum.TextXAlignment.Right, ZIndex = 3, Parent = f })
+	local btn = UI.button({ Text = ready and "CLAIM" or fmtWait(left), TextSize = 22, Color = ready and K.green or rgb(96, 96, 120), Size = UDim2.fromOffset(190, 44), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 74), Sound = "press" }, function()
+		local fn = ShopFn
+		if ready and fn then
+			task.spawn(function()
+				pcall(function()
+					fn:InvokeServer("claimGift")
+				end)
+			end)
+		end
+	end)
+	btn.ZIndex = 4
+	btn.Parent = f
+	table.insert(o.shiny, f)
+	introPop(o, f)
+end
+
 local function renderBody(o: Open)
 	local scroll = o.scroll
 	for _, c in scroll:GetChildren() do
@@ -1039,10 +1129,19 @@ local function renderBody(o: Open)
 	if starterVisible() then
 		renderHero(o, scroll, nextOrder())
 	end
+	renderRank(o, scroll, nextOrder())
 	sectionBar(o, scroll, "Game Passes", nextOrder())
 	local passes = grid(scroll, 3, 212, nextOrder())
-	for i, it in SHOP.PASSES do
-		renderTile(o, passes, it, i, "pass")
+	local n = 0
+	for _, it in SHOP.PASSES do
+		if it.key ~= "founder" then
+			n += 1
+			renderTile(o, passes, it, n, "pass")
+		end
+	end
+	local founder = Config.SHOP_BY_KEY.founder
+	if founder then
+		renderBanner(o, scroll, founder, nextOrder())
 	end
 	sectionBar(o, scroll, "Boosts", nextOrder())
 	local server: any = nil

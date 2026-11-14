@@ -643,12 +643,16 @@ Config.SHOP = {
 		{ key = "smith", id = 0, price = 399, name = "Master Smith", desc = "Forge levels 6 and 7. Forging costs 25% less." },
 		{ key = "wrap", id = 0, price = 249, name = "Master Wrapper", desc = "Tie one bow and your whole bag is wrapped." },
 		{ key = "vip", id = 0, price = 449, name = "VIP Hunter", desc = "Sell from anywhere. Gold VIP tag. +15% XP." },
+		-- Лимитированный Founder показывается баннером (в сетке пассов его нет).
+		{ key = "founder", id = 0, price = 799, name = "Founder's Edition", desc = "Purple FOUNDER tag, Starlight aura and a bigger daily gift. Limited edition." },
 	},
 	PRODUCTS = {
 		{ key = "starter", id = 0, price = 79, kind = "starter", name = "Starter Pack" },
 		{ key = "fortune20", id = 0, price = 79, kind = "boost", boosts = { "fortune" }, dur = 1200, name = "Golden Hour", desc = "Gold and Rainbow mutations come up much more often for 20 min of play." },
 		{ key = "jackpot20", id = 0, price = 99, kind = "boost", boosts = { "jackpot" }, dur = 1200, name = "Jackpot Hour", desc = "Rare animal chances +100% for 20 min of play." },
 		{ key = "fair30", id = 0, price = 59, kind = "boost", boosts = { "fair" }, dur = 1800, name = "Trade Fair", desc = "No price drops from selling and no weak-demand hours for 30 min." },
+		-- Набор: 3 буста на 30 минут. По частям то же стоит 79 x1.5 + 99 x1.5 + 59 = 326 R$.
+		{ key = "hour_bundle", id = 0, price = 199, kind = "boost", boosts = { "fortune", "jackpot", "fair" }, dur = 1800, name = "Hunter's Bundle", desc = "Golden Hour, Jackpot Hour and Trade Fair together for 30 min of play." },
 		{ key = "server15", id = 0, price = 149, kind = "server", dur = 900, name = "Server Luck", desc = "Luck x2 and rare chances +25% for everyone on the server for 15 min." },
 		{ key = "coins1", id = 0, price = 49, kind = "coins", k = 0.3, name = "Coin Pouch" },
 		{ key = "coins2", id = 0, price = 99, kind = "coins", k = 0.8, name = "Coin Sack" },
@@ -656,6 +660,17 @@ Config.SHOP = {
 		{ key = "coins4", id = 0, price = 399, kind = "coins", k = 5, name = "Hunter's Hoard", best = true },
 	},
 	STARTER = { spear = "iron", coins = 4000, bagLvl = 3, boost = "fortune", dur = 1800 },
+	-- V26: ранг поддержки по сумме потраченных Robux (пассы считаются по владению, товары по чекам).
+	-- Плюшки без бесплатного пути: слоты сумки сверх бесплатных 100, быстрое восстановление цен на рынке,
+	-- ежедневный подарок (доля цены следующего копья) и бесплатный Market Insight у Diamond.
+	GIFT_BASE = 0.02, -- подарок без ранга
+	GIFT_HOURS = 20,
+	RANKS = {
+		{ name = "Bronze", at = 50, color = Color3.fromRGB(214, 140, 70), bag = 0, gift = 0.04, recover = 1.25 },
+		{ name = "Silver", at = 200, color = Color3.fromRGB(214, 224, 238), bag = 20, gift = 0.08, recover = 1.5 },
+		{ name = "Gold", at = 500, color = Color3.fromRGB(255, 204, 64), bag = 40, gift = 0.15, recover = 2 },
+		{ name = "Diamond", at = 1000, color = Color3.fromRGB(120, 224, 255), bag = 60, gift = 0.25, recover = 3, insight = true },
+	},
 	-- Бонусы одной характеристики складываются, а не перемножаются.
 	PERK = {
 		charmLuck = 1, charmCaps = 0.5,
@@ -838,6 +853,9 @@ function Config.marketQuote(items: { any }, d: any, now: number, flags: any?): (
 	flags = flags or {}
 	local M = Config.MARKET
 	local S = flags.broker and M.SAT_BROKER or M.SAT
+	if flags.recover and flags.recover ~= 1 then
+		S = { per = S.per, floor = S.floor, recover = S.recover / flags.recover } -- ранг поддержки: цена восстанавливается быстрее
+	end
 	local sold = d and d.market and d.market.sold or {}
 	local order = table.clone(items)
 	table.sort(order, function(a, b)

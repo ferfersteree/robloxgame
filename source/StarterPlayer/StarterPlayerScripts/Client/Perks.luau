@@ -10,7 +10,7 @@ local K = Config.SHOP.PERK
 local Perks = {}
 Perks.Changed = Instance.new("BindableEvent")
 
-local state: any = { passes = {}, boosts = {}, server = 0, starter = false, studio = false, loaded = false, pending = {} }
+local state: any = { passes = {}, boosts = {}, server = 0, starter = false, studio = false, loaded = false, pending = {}, spent = 0, rank = 0, gift = 0 }
 local stamp = os.clock()
 
 function Perks.set(s: any)
@@ -25,6 +25,9 @@ function Perks.set(s: any)
 		studio = s.studio == true,
 		loaded = s.loaded == true,
 		pending = type(s.pending) == "table" and s.pending or {},
+		spent = tonumber(s.spent) or 0,
+		rank = tonumber(s.rank) or 0,
+		gift = tonumber(s.gift) or 0,
 	}
 	stamp = os.clock()
 	Perks.Changed:Fire()
@@ -35,7 +38,24 @@ function Perks.state(): any
 end
 
 function Perks.has(key: string): boolean
+	if key == "insight" and Perks.rankInfo() and Perks.rankInfo().insight then
+		return true -- Diamond получает Market Insight бесплатно
+	end
 	return state.passes[key] == true
+end
+
+-- Ранг поддержки (0 = нет) и его плюшки; считает сервер по сумме Robux.
+function Perks.rank(): number
+	return math.clamp(math.floor(tonumber(state.rank) or 0), 0, #Config.SHOP.RANKS)
+end
+
+function Perks.rankInfo(): any
+	return Config.SHOP.RANKS[Perks.rank()]
+end
+
+-- Секунд до следующего ежедневного подарка (0 = можно забрать).
+function Perks.giftLeft(): number
+	return math.max(0, (tonumber(state.gift) or 0) - (os.clock() - stamp))
 end
 
 function Perks.serverLeft(): number
@@ -103,8 +123,9 @@ function Perks.mutMul(): number
 end
 
 -- Рынок: Silver Broker смягчает насыщение, Trade Fair его убирает.
-function Perks.marketFlags(): { broker: boolean, fair: boolean }
-	return { broker = Perks.has("broker"), fair = Perks.boostLeft("fair") > 0 }
+function Perks.marketFlags(): { broker: boolean, fair: boolean, recover: number }
+	local rk = Perks.rankInfo()
+	return { broker = Perks.has("broker"), fair = Perks.boostLeft("fair") > 0, recover = rk and rk.recover or 1 }
 end
 
 -- Продажа из любого места, а также панель рынка: пасс VIP Hunter.
@@ -130,8 +151,10 @@ function Perks.repMult(): number
 	return 1
 end
 
+-- Слоты сумки сверх бесплатных 100: только у рангов поддержки.
 function Perks.bagBonus(): number
-	return 0
+	local rk = Perks.rankInfo()
+	return rk and rk.bag or 0
 end
 
 return Perks

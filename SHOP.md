@@ -1,3 +1,39 @@
+# Supporter ranks and exclusives (V26)
+
+Open `SpearHunt V26 - Supporters.rbxl`. V26 is V25 plus a donation ladder. Not run in Studio yet; the new code blocks compile in Studio's Luau.
+
+## Supporter rank
+The server adds up Robux spent: owned passes by price (so a purchase made on the website counts) plus Developer Product receipts (`CurrencySpent`). In Studio, a test purchase adds the item's price, so ranks can be tried with all ids at 0.
+
+| Rank | Spent | Perks with no free route |
+|---|---|---|
+| Bronze | 50 R$ | tag and aura, prices recover x1.25 after selling, daily gift 4% |
+| Silver | 200 R$ | + 20 bag slots (the free bag stops at 100), recover x1.5, gift 8% |
+| Gold | 500 R$ | + 40 bag slots, recover x2, gift 15% |
+| Diamond | 1000 R$ | + 60 bag slots, recover x3, gift 25%, Market Insight for free |
+
+Everyone gets a daily gift of 2%. Gift size is a share of the price of your next spear (`Config.shopCoins`), so it stays meaningful at every stage. The timer lives on the server (`prof.shop.lastGift`, 20 hours) and the coins arrive through the same `pending` queue as coin packs, so they are acknowledged and saved once.
+
+## What others see
+Every player with a rank, VIP or Founder gets a tag over the head and an aura (particles) on the character, in the rank colour. VIP and rank share one tag. Founder is purple. Done in code, no uploaded assets.
+
+## Founder's Edition (Game Pass, 799 R$)
+Purple FOUNDER tag, the strongest aura and +5% on the daily gift. It costs 799 R$, so it also counts as Gold rank. It is a pass on purpose: a pass can be taken off sale, a product can be bought twice. No stock counter or countdown is shown. If you want a cutoff, pick a date and take the pass off sale then.
+
+## Hunter's Bundle (199 R$)
+Golden Hour, Jackpot Hour and Trade Fair together for 30 minutes. Bought separately the same time is 79 x1.5 + 99 x1.5 + 59 = 326 R$, so the bundle saves about 40%. It is a normal boost product, so no new purchase code was needed.
+
+## Pace check
+Ranks add no coin multipliers. Daily gift at Diamond is 25% of the next spear's price per day, about a quarter of a spear a day, and the extra bag slots only help with big bags. The free-versus-paid table from V25 is unchanged.
+
+## Known limits
+- Not run in Studio. Check that the tag and aura show for a ranked player, that "CLAIM" pays out, and that the rank card fits in the shop window.
+- Rank bag slots are applied through `Backend.applyPerks()` when the server pushes the shop state; confirm the bag size in the Bag window after a test purchase.
+- Pass ids and product ids are still 0. Create the Founder pass and the bundle product too (see "Before launch" below).
+- Shop art for Founder and the bundle is not drawn; the shop uses simple 3D icons.
+
+---
+
 # Robux shop and market economy (V25)
 
 Open `SpearHunt V25 - Market.rbxl`. V25 is V24 plus the changes below. It has **not been run in Studio** (see "Known limits"). The older V17/V18 notes further down still describe the shop's look and the pre-launch steps; the passes and products listed there were replaced by V25.
