@@ -1,6 +1,6 @@
 # Supporter ranks and exclusives (V26)
 
-Open `SpearHunt V26 - Supporters.rbxl`. V26 is V25 plus a donation ladder. Not run in Studio yet; the new code blocks compile in Studio's Luau.
+Open `SpearHunt V26 - Supporters.rbxl`. V26 is V25 plus a donation ladder. Tested in a live Studio session (Play): test purchases give the right rank, tag, aura and bag slots, the daily gift pays once and is then locked for 20 hours, and the shop window shows the rank card, Founder banner and bundle. Not tested: real purchases, saving, and how it looks on small screens.
 
 ## Supporter rank
 The server adds up Robux spent: owned passes by price (so a purchase made on the website counts) plus Developer Product receipts (`CurrencySpent`). In Studio, a test purchase adds the item's price, so ranks can be tried with all ids at 0.

@@ -870,6 +870,9 @@ local function boostLeftFor(item: any): number
 	if item.kind == "server" then
 		return Perks.serverLeft()
 	end
+	if not item.boosts then
+		return 0 -- пассы (Founder) не бусты
+	end
 	local left = math.huge
 	for _, id in item.boosts do
 		left = math.min(left, Backend.boostLeft(id))
