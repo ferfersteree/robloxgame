@@ -169,6 +169,7 @@ local function prepare(info: any, seed: number, low: boolean): any
 	end
 	-- the pieces (with a lit rim so they read as chunks of shell)
 	local pieces = {}
+	local okPieces, errPieces = pcall(function()
 	for i = 1, n do
 		local bw, bh = maxx[i] - minx[i] + 1, maxy[i] - miny[i] + 1
 		if bw >= 3 and bh >= 3 then
@@ -198,6 +199,16 @@ local function prepare(info: any, seed: number, low: boolean): any
 			task.wait()
 		end
 	end
+	end)
+	if not okPieces then
+		-- e.g. the EditableImage memory budget ran out half way: do not leave the finished pieces behind
+		for _, pc in pieces do
+			pcall(function()
+				pc.img:Destroy()
+			end)
+		end
+		error(errPieces)
+	end
 	return { pieces = pieces, buckets = buckets, NB = NB }
 end
 
@@ -220,6 +231,7 @@ local function start(ctx: any, info: any)
 	local vw, vh = cam.ViewportSize.X, cam.ViewportSize.Y
 
 	local sg = newI("ScreenGui", { Name = "EggHatch", DisplayOrder = 60, ResetOnSpawn = false, IgnoreGuiInset = true }, UI.top.Parent)
+	ctx._sg = sg -- so play() can remove it if building the scene fails half way
 	local bg = newI("Frame", { BackgroundColor3 = Color3.fromRGB(8, 5, 24), BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1) }, sg)
 	local hit = newI("TextButton", { Text = "", AutoButtonColor = false, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 2 }, sg)
 	local stage = newI("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), ZIndex = 3 }, sg)
@@ -274,7 +286,7 @@ local function start(ctx: any, info: any)
 	end)
 
 	-- particles: one pool, reused for everything (sparks, dust pulled into the egg, confetti)
-	local nP = low and 46 or 100
+	local nP = low and 70 or 150
 	local pool = {}
 	for i = 1, nP do
 		pool[i] = { on = false, f = newI("Frame", { BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), Visible = false, ZIndex = 9 }, stage) }
@@ -330,8 +342,8 @@ local function start(ctx: any, info: any)
 	local flash = newI("Frame", { BackgroundColor3 = WHITE, BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), ZIndex = 50, Active = false }, sg)
 
 	-- reveal group (built now, shown after the burst)
-	local side = math.floor(vh * 0.36)
-	local pcy = vh * 0.34
+	local side = math.floor(vh * 0.32)
+	local pcy = vh * 0.30
 	local revRays: any = nil
 	pcall(function()
 		revRays = UI.rays(stage, col:Lerp(WHITE, 0.25), 16, math.floor(vh * 1.9), 12)
@@ -370,6 +382,8 @@ local function start(ctx: any, info: any)
 	local tag = UI.label({ Text = tagText, TextSize = 28, Color = ctx.dupe and Color3.fromRGB(160, 220, 255) or Color3.fromRGB(255, 216, 74), StrokeColor = BLACK, Stroke = 5, Size = UDim2.new(1, 0, 0, 36), Position = UDim2.fromOffset(0, ly + 6), ZIndex = 13, Parent = info2 })
 	local tagScale = newI("UIScale", { Scale = 0 }, tag)
 	panel.Size = UDim2.new(1, 0, 0, ly + 52)
+	-- the text block must fit between the portrait and the CONTINUE button on any screen height
+	local fit = math.clamp((vh - 96 - ry) / (ly + 52), 0.4, 1)
 
 	local finished = false
 	local conn: RBXScriptConnection? = nil
@@ -389,6 +403,7 @@ local function start(ctx: any, info: any)
 			end
 		end)
 	end
+	ctx._cleanup = cleanup
 	local finish: () -> () = function() end
 	local cont = UI.button({ Text = "CONTINUE", TextSize = 24, Color = Color3.fromRGB(84, 214, 52), Size = UDim2.fromOffset(220, 50), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromOffset(cx, vh - 76), ZIndex = 40, Sound = "press" }, function()
 		finish()
@@ -406,7 +421,16 @@ local function start(ctx: any, info: any)
 	task.spawn(function()
 		local ok, res = pcall(prepare, info, math.floor(os.clock() * 1000) % 100000 + 7, low)
 		if ok and res then
-			prep = res
+			if finished then
+				-- the scene was closed or failed while we were cutting: free the pieces
+				for _, pc in res.pieces do
+					pcall(function()
+						pc.img:Destroy()
+					end)
+				end
+			else
+				prep = res
+			end
 		else
 			prepFailed = true
 			warn("[EggScene] prepare failed: " .. tostring(res))
@@ -514,13 +538,18 @@ local function start(ctx: any, info: any)
 		ring(cx, cy, dispH * 0.15, vh * 0.95, 0.9, WHITE)
 		ring(cx, cy, dispH * 0.1, vh * 0.75, 0.8, accent(clock), 0.08)
 		ring(cx, cy, dispH * 0.1, vh * 0.55, 0.7, col:Lerp(WHITE, 0.4), 0.16)
-		burstSparks(46, 900)
+		-- the charge particles are done: free the whole pool so the confetti and sparks of the burst always fit
+		for _, q in pool do
+			q.on = false
+			q.f.Visible = false
+		end
 		for _ = 1, low and 18 or 46 do
 			local a = math.random() * math.pi * 2
 			local s = 250 + math.random() * 650
 			local cc = rank >= 6 and Color3.fromHSV(math.random(), 0.6, 1) or (math.random() < 0.5 and col or col:Lerp(WHITE, 0.6))
 			emit("conf", cx, cy, math.cos(a) * s, math.sin(a) * s - 500, 1.6 + math.random() * 1.2, 10 + math.random() * 8, cc, (math.random() - 0.5) * 720, 900)
 		end
+		burstSparks(46, 900)
 		shake = low and 10 or 22
 		task.spawn(function()
 			UI.tween(zoom, 0.1, { Scale = 1.09 })
@@ -545,7 +574,7 @@ local function start(ctx: any, info: any)
 			revRays.Visible = true
 		end
 		UI.tween(holderScale, 0.7, { Scale = 1 }, Enum.EasingStyle.Back)
-		UI.tween(infoScale, 0.55, { Scale = 1 }, Enum.EasingStyle.Back)
+		UI.tween(infoScale, 0.55, { Scale = fit }, Enum.EasingStyle.Back)
 		UI.tween(info2, 0.5, { Position = UDim2.fromOffset(cx, ry) }, Enum.EasingStyle.Quad)
 		Sfx.play("sparkle", 1 + rank * 0.04, 0.9)
 		task.delay(0.6, function()
@@ -600,6 +629,9 @@ local function start(ctx: any, info: any)
 	onSkip = function()
 		if phase == "intro" or phase == "charge" then
 			p = 1
+			for k = 1, #stageHits do
+				stageHits[k] = true -- no stack of five thumps and rings at once
+			end
 			if phase == "intro" then
 				phase = "charge"
 				pt = 0
@@ -812,6 +844,14 @@ function EggScene.play(ctx: any)
 		local ok, err = pcall(start, ctx, info)
 		if not ok then
 			warn("[EggScene] " .. tostring(err))
+			if ctx._sg then
+				pcall(function()
+					ctx._sg:Destroy()
+				end)
+			end
+			if ctx._cleanup then
+				pcall(ctx._cleanup)
+			end
 			if ctx.onFail then
 				ctx.onFail()
 			end

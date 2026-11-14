@@ -11,6 +11,8 @@ How it works: `tools/render_eggs.py --clean` renders one clean egg sprite per eg
 
 The glow colour before the crack does hint the rarity, as in popular egg games. The odds are fixed and shown before purchase; the scene only visualises a result the server already rolled. The ideas from the Adopt Me article that claim hidden luck changes (resting between eggs, locations, "egg fatigue") were **not** implemented: they would be hidden odds, which the project rules forbid.
 
+Review fixes (checker agent): the burst confetti used to be starved by the charge sparks (the pool is now cleared at the burst and confetti is emitted first), the reveal text now scales to fit above CONTINUE on short screens, SKIP no longer fires all five crack stages at once, and a failed scene start or a failed piece cut now frees the screen and the images it already made. Known and accepted: the four hatch sprites stay in memory (about 4.4 MB) for every player after the 3 s preload even if they never hatch an egg.
+
 Debug: set the attribute `EggSceneSpeed` (for example 0.2) on PlayerGui to run the scene in slow motion.
 
 Checked in Studio with screenshots of the drop-in, the charge with cracks, the flying shell pieces and the reveal for Legendary, Epic and Rare results; frames 35-60 ms with a 40 ms Studio baseline, one 84 ms frame while the egg is cut at the start. Not checked: low graphics mode, a touch screen, several eggs in a row beyond the existing queue, sound by ear.
