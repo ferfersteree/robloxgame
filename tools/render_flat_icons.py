@@ -228,12 +228,12 @@ def gem(cv, cx, cy, r, color):
 
 def icon_coins4():
     cv = Canvas()
-    chest(cv, 50, 48, 1.0)
-    stack(cv, 22, 88, 3)
-    stack(cv, 78, 88, 4)
-    stack(cv, 50, 90, 2)
-    gem(cv, 34, 78, 8, (80, 210, 255))
-    gem(cv, 64, 76, 8, (255, 90, 130))
+    chest(cv, 50, 42, 1.0)
+    stack(cv, 22, 80, 3)
+    stack(cv, 78, 80, 4)
+    stack(cv, 50, 82, 2)
+    gem(cv, 34, 70, 8, (80, 210, 255))
+    gem(cv, 64, 68, 8, (255, 90, 130))
     sparkle(cv, 12, 30, 6, GOLD_L)
     sparkle(cv, 90, 22, 8, WHITE)
     sparkle(cv, 50, 8, 5, GOLD_L)
@@ -303,11 +303,11 @@ def icon_smith():
     cv.part(poly([(38, 62), (62, 62), (66, 80), (34, 80)]), GRAY)
     cv.part(poly([(24, 46), (24, 62), (4, 56), (4, 50)]), (150, 156, 180), band=1.6)
     cv.part(rrect(20, 44, 62, 18, 4), (166, 172, 198))
-    cv.part(cap(64, 16, 74, 38, 7.5), BROWN, band=1.4)
-    cv.part(rrect(52, 6, 34, 16, 4, ang=-20), (200, 206, 224), band=1.8)
-    cv.fill(star4(34, 34, 7, 10), (255, 170, 60))
-    cv.fill(star4(30, 34, 3.2, 0), WHITE)
-    sparkle(cv, 14, 28, 4, GOLD_L)
+    cv.part(cap(64, 22, 74, 42, 7.5), BROWN, band=1.4)
+    cv.part(rrect(52, 12, 34, 16, 4, ang=-20), (200, 206, 224), band=1.8)
+    cv.fill(star4(34, 36, 7, 10), (255, 170, 60))
+    cv.fill(star4(30, 36, 3.2, 0), WHITE)
+    sparkle(cv, 14, 30, 4, GOLD_L)
     return cv
 
 
