@@ -1024,5 +1024,4 @@ function Config.exoticUpgradeCost(ex: any, level: number): number
 	return Config.EXOTIC.UPGRADE[ex.rarity] * (level + 1)
 end
 
-
 return Config

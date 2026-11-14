@@ -127,10 +127,13 @@ function Backend.boostMult(id: string): number
 	elseif id == "coins" then
 		return Perks.coinMult(on)
 	end
-	if on then
-		return Config.BOOSTS[id].mult
+	local m = on and Config.BOOSTS[id].mult or 1
+	if id == "range" then
+		m *= Perks.rangeMul()
+	elseif id == "tension" then
+		m *= Perks.gripMul()
 	end
-	return 1
+	return m
 end
 
 -- Множитель потолков редкостей от Robux-магазина (для подсказки шансов)

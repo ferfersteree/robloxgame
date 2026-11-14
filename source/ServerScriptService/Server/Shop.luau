@@ -42,7 +42,7 @@ for _, it in SHOP.PRODUCTS do
 end
 
 local function newShop(): any
-	return { boosts = {}, starter = false, receipts = {}, pending = {}, test = {}, spent = 0, lastGift = 0 }
+	return { boosts = {}, starter = false, receipts = {}, pending = {}, test = {}, spent = 0, lastGift = 0, exotic = { owned = {}, equipped = {}, level = {}, shards = 0, hatch = {} } }
 end
 
 local function deepCopy(t: any): any
@@ -92,6 +92,7 @@ local function stateOf(prof: any): any
 		starter = prof.shop.starter == true,
 		spent = spentOf(prof),
 		rank = rankOf(prof),
+		exotic = prof.shop.exotic,
 		gift = math.max(0, (tonumber(prof.shop.lastGift) or 0) + SHOP.GIFT_HOURS * 3600 - os.time()),
 		pending = prof.shop.pending,
 		studio = IS_STUDIO,
@@ -164,7 +165,7 @@ local function vipTag(player: Player)
 	l.Text = label
 	l.TextScaled = true
 	l.TextColor3 = color
-	l.TextStrokeColor3 = Color3.fromRGB(40, 20, 0)
+	l.TextStrokeColor3 = Color3.fromRGB(74, 38, 0)
 	l.TextStrokeTransparency = 0
 	l.Parent = bb
 	bb.Parent = head
@@ -268,6 +269,32 @@ local function loadProfile(player: Player)
 				shop.starter = s.starter == true
 				shop.spent = tonumber(s.spent) or 0
 				shop.lastGift = tonumber(s.lastGift) or 0
+				-- V28: экзотика (купленная, надетая, уровни, осколки, очередь вылупления): берём только значимые поля
+				local ex = s.exotic
+				if type(ex) == "table" then
+					local E = shop.exotic
+					for id, n in (type(ex.owned) == "table" and ex.owned or {}) do
+						if type(id) == "string" and Config.EXOTIC_BY_ID[id] and type(n) == "number" and n > 0 then
+							E.owned[id] = n
+						end
+					end
+					for id, n in (type(ex.level) == "table" and ex.level or {}) do
+						if type(id) == "string" and E.owned[id] and type(n) == "number" then
+							E.level[id] = math.clamp(math.floor(n), 0, Config.EXOTIC.MAX_LEVEL)
+						end
+					end
+					for _, id in (type(ex.equipped) == "table" and ex.equipped or {}) do
+						if type(id) == "string" and E.owned[id] and not table.find(E.equipped, id) and #E.equipped < Config.EXOTIC.EQUIP_MAX then
+							table.insert(E.equipped, id)
+						end
+					end
+					E.shards = math.max(0, tonumber(ex.shards) or 0)
+					for _, h in (type(ex.hatch) == "table" and ex.hatch or {}) do
+						if type(h) == "table" and type(h.id) == "string" and type(h.sp) == "string" and Config.EXOTIC_BY_ID[h.sp] then
+							table.insert(E.hatch, h)
+						end
+					end
+				end
 				if type(s.receipts) == "table" then
 					shop.receipts = s.receipts
 				end
@@ -310,12 +337,37 @@ end
 ---------------------------------------------------------------------
 -- Выдача товара
 ---------------------------------------------------------------------
+-- V28: яйцо. Бросок только здесь, на сервере, по таблице Config.EGGS (той же, что видит игрок). Вызывается из applyProduct,
+-- а значит внутри processReceipt: чек и выдача сохраняются вместе, повтор чека не даст второе животное.
+local eggRng = Random.new()
+local function rollEgg(prof: any, item: any, purchaseId: string)
+	local id = Config.eggRoll(item.key, eggRng)
+	local ex = id and Config.EXOTIC_BY_ID[id]
+	if not ex then
+		return
+	end
+	local E = prof.shop.exotic
+	local dupe = (E.owned[id] or 0) > 0
+	E.owned[id] = (E.owned[id] or 0) + 1
+	local shards = 0
+	if dupe then
+		shards = Config.EXOTIC.SHARDS[ex.rarity]
+		E.shards += shards
+	end
+	table.insert(E.hatch, { id = purchaseId, sp = id, dupe = dupe, shards = shards, egg = item.key })
+	while #E.hatch > 20 do
+		table.remove(E.hatch, 1)
+	end
+end
+
 local function applyProduct(prof: any, item: any, purchaseId: string)
 	local s = prof.shop
 	if item.kind == "boost" then
 		for _, id in item.boosts do
 			s.boosts[id] = (s.boosts[id] or 0) + item.dur
 		end
+	elseif item.kind == "egg" then
+		rollEgg(prof, item, purchaseId)
 	elseif item.kind == "server" then
 		serverLuck += item.dur
 	elseif item.kind == "coins" then
@@ -464,6 +516,62 @@ local function onInvoke(player: Player, action: any, a: any, b: any): ...any
 		prof.dirty = true
 		saveProfile(player, prof)
 		push(player)
+		return true
+	elseif action == "exoticEquip" or action == "exoticUnequip" then
+		-- V28: надеть / снять экзотику (только купленную, не больше EQUIP_MAX)
+		local E = prof.shop.exotic
+		if type(a) ~= "string" or (E.owned[a] or 0) <= 0 then
+			return false
+		end
+		local i = table.find(E.equipped, a)
+		if action == "exoticEquip" then
+			if i or #E.equipped >= Config.EXOTIC.EQUIP_MAX then
+				return false
+			end
+			table.insert(E.equipped, a)
+		else
+			if not i then
+				return false
+			end
+			table.remove(E.equipped, i)
+		end
+		prof.dirty = true
+		push(player)
+		return true
+	elseif action == "exoticUpgrade" then
+		-- улучшить вид за осколки (их дают повторы)
+		local E = prof.shop.exotic
+		local ex = type(a) == "string" and Config.EXOTIC_BY_ID[a] or nil
+		if not ex or (E.owned[a] or 0) <= 0 then
+			return false
+		end
+		local lvl = E.level[a] or 0
+		if lvl >= Config.EXOTIC.MAX_LEVEL then
+			return false
+		end
+		local cost = Config.exoticUpgradeCost(ex, lvl)
+		if E.shards < cost then
+			return false
+		end
+		E.shards -= cost
+		E.level[a] = lvl + 1
+		prof.dirty = true
+		saveProfile(player, prof)
+		push(player)
+		return true
+	elseif action == "hatchAck" then
+		-- клиент показал вылупление: убираем из очереди (само животное уже выдано)
+		local E = prof.shop.exotic
+		if type(a) == "table" then
+			for _, hid in a do
+				for i = #E.hatch, 1, -1 do
+					if E.hatch[i].id == hid then
+						table.remove(E.hatch, i)
+					end
+				end
+			end
+			prof.dirty = true
+		end
 		return true
 	end
 	return false

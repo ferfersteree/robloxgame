@@ -10,7 +10,7 @@ local K = Config.SHOP.PERK
 local Perks = {}
 Perks.Changed = Instance.new("BindableEvent")
 
-local state: any = { passes = {}, boosts = {}, server = 0, starter = false, studio = false, loaded = false, pending = {}, spent = 0, rank = 0, gift = 0 }
+local state: any = { passes = {}, boosts = {}, server = 0, starter = false, studio = false, loaded = false, pending = {}, spent = 0, rank = 0, gift = 0, exotic = { owned = {}, equipped = {}, level = {}, shards = 0, hatch = {} } }
 local stamp = os.clock()
 
 function Perks.set(s: any)
@@ -28,6 +28,7 @@ function Perks.set(s: any)
 		spent = tonumber(s.spent) or 0,
 		rank = tonumber(s.rank) or 0,
 		gift = tonumber(s.gift) or 0,
+		exotic = type(s.exotic) == "table" and s.exotic or { owned = {}, equipped = {}, level = {}, shards = 0, hatch = {} },
 	}
 	stamp = os.clock()
 	Perks.Changed:Fire()
@@ -82,7 +83,8 @@ function Perks.luckMult(boostOn: boolean): number
 	if Perks.serverLeft() > 0 then
 		m += K.serverLuck
 	end
-	return m
+	m += Perks.exotic().luck or 0 -- V28: экзотика складывается с пассами и бустами
+	return math.max(0.2, m)
 end
 
 -- Множитель потолков редкостей (Config.RARITY_CHANCE_CAPS).
@@ -102,6 +104,7 @@ function Perks.capMul(boostOn: boolean, luck: number?): number
 	if Perks.serverLeft() > 0 then
 		m += K.serverCaps
 	end
+	m = math.max(0.2, m + (Perks.exotic().caps or 0))
 	if luck then
 		m *= Config.capLuckMul(luck)
 	end
@@ -110,11 +113,11 @@ end
 
 -- Монеты от продажи: только зелье за монеты. Постоянных множителей монет в магазине больше нет.
 function Perks.coinMult(boostOn: boolean): number
-	return boostOn and 2 or 1
+	return math.max(0.5, (boostOn and 2 or 1) + (Perks.exotic().coins or 0))
 end
 
 function Perks.xpMult(): number
-	return Perks.has("vip") and (1 + K.vipXp) or 1
+	return math.max(0.5, (Perks.has("vip") and (1 + K.vipXp) or 1) + (Perks.exotic().xp or 0))
 end
 
 -- Золотой час: шанс мутаций x3.
@@ -140,21 +143,34 @@ end
 
 function Perks.forgeCost(id: string, lvl: number): number
 	local c = Config.forgeCost(id, lvl)
-	if Perks.has("smith") then
-		c = math.floor(c * (1 - K.smithDiscount))
-	end
-	return c
+	local disc = (Perks.has("smith") and K.smithDiscount or 0) + (Perks.exotic().forge or 0)
+	return math.floor(c * (1 - math.clamp(disc, 0, 0.6)))
 end
 
 -- Оставлено для совместимости (товаров с этим эффектом больше нет).
 function Perks.repMult(): number
-	return 1
+	return 1 + (Perks.exotic().train or 0)
+end
+
+-- V28: экзотика. Бонусы надетых видов (с уровнями и потолками) считает Config.exoticTotals по состоянию с сервера.
+function Perks.exotic(): { [string]: number }
+	local e = state.exotic
+	return Config.exoticTotals(e.owned, e.equipped, e.level)
+end
+
+-- дальность броска и устойчивость натяжения (alpha x gripMul: меньше = дальше тянуть)
+function Perks.rangeMul(): number
+	return math.max(0.5, 1 + (Perks.exotic().range or 0))
+end
+
+function Perks.gripMul(): number
+	return math.clamp(1 - (Perks.exotic().grip or 0), 0.5, 1.5)
 end
 
 -- Слоты сумки сверх бесплатных 100: только у рангов поддержки.
 function Perks.bagBonus(): number
 	local rk = Perks.rankInfo()
-	return rk and rk.bag or 0
+	return (rk and rk.bag or 0) + math.floor(Perks.exotic().bag or 0)
 end
 
 return Perks

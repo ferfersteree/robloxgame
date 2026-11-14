@@ -73,17 +73,21 @@ local function boostMult(id: string): number
 	elseif id == "coins" then
 		return Perks.coinMult(on)
 	end
-	if on then
-		return Config.BOOSTS[id].mult
+	local m = on and Config.BOOSTS[id].mult or 1
+	-- V28: экзотика меняет дальность броска и устойчивость натяжения
+	if id == "range" then
+		m *= Perks.rangeMul()
+	elseif id == "tension" then
+		m *= Perks.gripMul()
 	end
-	return 1
+	return m
 end
 
 -- Вместимость сумки = уровень сумки + бонус пасса Big Game Bag
 local function applyPerks()
 	local lvl = math.clamp(math.floor(tonumber(d.bagLvl) or 1), 1, #Config.BAG)
 	d.bagLvl = lvl
-	d.bagCap = Config.BAG[lvl].cap + Perks.bagBonus()
+	d.bagCap = math.max(6, Config.BAG[lvl].cap + Perks.bagBonus())
 end
 
 local function addBoost(id: string, dur: number)
