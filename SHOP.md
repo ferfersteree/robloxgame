@@ -1,3 +1,11 @@
+# Cartoon shop icons (V27)
+
+Open `SpearHunt V27 - Cartoon Shop.rbxl`. The shop item icons are no longer small 3D models in a viewport (blocky and soft). They are drawn from UI shapes (rounded frames with a gradient, a thick dark outline, glints and sparkles), so they stay sharp at any size and need no uploaded images. Code: `drawCartoon` in `Client/Shop.luau`; the table `CARTOON_KEYS` lists the icons (coin packs, Lucky Charm clover, Market Insight crystal ball, Silver Broker scales, Master Smith anvil and hammer, Master Wrapper gift, VIP and Founder crowns, Golden Hour flask, Jackpot slot machine, Trade Fair stall, Hunter's Bundle, Server Luck globe, bag). To add one, add a key to `CARTOON_KEYS` and a branch in `drawCartoon` (canvas 100 x 100). Spear icons still use the game's 3D spear models. Hunter's Bundle is now a wide banner under Server Luck.
+
+Checked in a live Studio session by looking at screenshots of every section of the shop window. Not checked on small screens.
+
+---
+
 # Supporter ranks and exclusives (V26)
 
 Open `SpearHunt V26 - Supporters.rbxl`. V26 is V25 plus a donation ladder. Tested in a live Studio session (Play): test purchases give the right rank, tag, aura and bag slots, the daily gift pays once and is then locked for 20 hours, and the shop window shows the rank card, Founder banner and bundle. Not tested: real purchases, saving, and how it looks on small screens.

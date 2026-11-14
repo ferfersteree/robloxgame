@@ -309,8 +309,294 @@ local function buildIcon(kind: string): Model
 	return m
 end
 
+---------------------------------------------------------------------
+-- V27: мультяшные иконки магазина. Рисуются фигурами (Frame + UICorner + UIGradient + толстая UIStroke),
+-- поэтому всегда чёткие и без загрузки картинок. Холст условный 100 x 100.
+---------------------------------------------------------------------
+local CARTOON_KEYS = {
+	coins1 = true, coins2 = true, coins3 = true, coins4 = true, charm = true, insight = true, broker = true, smith = true,
+	wrap = true, vip = true, founder = true, fortune20 = true, jackpot20 = true, fair30 = true, hour_bundle = true,
+	server15 = true, bag = true, luck30 = true,
+}
+
+local function drawCartoon(parent: Instance, kind: string): boolean
+	if not CARTOON_KEYS[kind] then
+		return false
+	end
+	local W, BLACK = Color3.new(1, 1, 1), Color3.new(0, 0, 0)
+	local function c(r: number, g: number, b: number): Color3
+		return Color3.fromRGB(r, g, b)
+	end
+	local GOLD, RED, GREEN, BLUE, BROWN = c(255, 196, 36), c(236, 66, 72), c(76, 206, 92), c(84, 150, 255), c(176, 108, 52)
+	local root = Instance.new("Frame")
+	root.Name = "Cartoon"
+	root.BackgroundTransparency = 1
+	root.AnchorPoint = Vector2.new(0.5, 0.5)
+	root.Position = UDim2.fromScale(0.5, 0.5)
+	root.Size = UDim2.fromScale(1.1, 1.1)
+	local ar = Instance.new("UIAspectRatioConstraint")
+	ar.AspectRatio = 1
+	ar.Parent = root
+	local z = 1
+	-- фигура с градиентом и толстой тёмной обводкой; shape: "circle" | "round" | "rect"
+	local function S(shape: string, x: number, y: number, w: number, h: number, col: Color3, rot: number?, rad: number?): Frame
+		z += 1
+		local f = Instance.new("Frame")
+		f.BorderSizePixel = 0
+		f.AnchorPoint = Vector2.new(0.5, 0.5)
+		f.Position = UDim2.fromScale(x / 100, y / 100)
+		f.Size = UDim2.fromScale(w / 100, h / 100)
+		f.Rotation = rot or 0
+		f.BackgroundColor3 = W
+		f.ZIndex = z
+		local cr = Instance.new("UICorner")
+		cr.CornerRadius = UDim.new(rad or (shape == "circle" and 0.5 or (shape == "round" and 0.3 or 0.06)), 0)
+		cr.Parent = f
+		local g = Instance.new("UIGradient")
+		g.Rotation = 90
+		g.Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, col:Lerp(W, 0.42)),
+			ColorSequenceKeypoint.new(0.5, col),
+			ColorSequenceKeypoint.new(1, col:Lerp(BLACK, 0.2)),
+		})
+		g.Parent = f
+		local st = Instance.new("UIStroke")
+		st.Thickness = 3
+		st.Color = col:Lerp(BLACK, 0.74)
+		st.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		st.Parent = f
+		f.Parent = root
+		return f
+	end
+	-- блик
+	local function H(x: number, y: number, w: number, h: number, rot: number?)
+		z += 1
+		local f = Instance.new("Frame")
+		f.BorderSizePixel = 0
+		f.AnchorPoint = Vector2.new(0.5, 0.5)
+		f.Position = UDim2.fromScale(x / 100, y / 100)
+		f.Size = UDim2.fromScale(w / 100, h / 100)
+		f.Rotation = rot or 0
+		f.BackgroundColor3 = W
+		f.BackgroundTransparency = 0.45
+		f.ZIndex = z
+		local cr = Instance.new("UICorner")
+		cr.CornerRadius = UDim.new(0.5, 0)
+		cr.Parent = f
+		f.Parent = root
+	end
+	-- надпись с обводкой
+	local function T(text: string, x: number, y: number, size: number, col: Color3)
+		z += 1
+		local l = Instance.new("TextLabel")
+		l.BackgroundTransparency = 1
+		l.AnchorPoint = Vector2.new(0.5, 0.5)
+		l.Position = UDim2.fromScale(x / 100, y / 100)
+		l.Size = UDim2.fromScale(size / 100, size / 100)
+		l.Font = Enum.Font.FredokaOne
+		l.Text = text
+		l.TextScaled = true
+		l.TextColor3 = col
+		l.ZIndex = z
+		local st = Instance.new("UIStroke")
+		st.Thickness = 2.5
+		st.Color = col:Lerp(BLACK, 0.72)
+		st.Parent = l
+		l.Parent = root
+	end
+	-- искорка
+	local function SP(x: number, y: number, s: number, col: Color3?)
+		S("rect", x, y, s, s, col or c(255, 244, 150), 45, 0.12)
+	end
+	local function coin(x: number, y: number, s: number)
+		S("circle", x, y, s, s, GOLD)
+		S("circle", x, y, s * 0.68, s * 0.68, c(255, 226, 96))
+		T("$", x, y, s * 0.5, c(196, 124, 8))
+		H(x - s * 0.18, y - s * 0.22, s * 0.22, s * 0.12, -30)
+	end
+	local function flask(x: number, y: number, sc: number, col: Color3)
+		S("round", x, y - 30 * sc, 18 * sc, 26 * sc, c(206, 232, 255), 0, 0.3)
+		S("round", x, y - 44 * sc, 16 * sc, 10 * sc, BROWN, 0, 0.3)
+		S("circle", x, y, 56 * sc, 56 * sc, col)
+		S("circle", x, y + 4 * sc, 40 * sc, 36 * sc, col:Lerp(W, 0.25))
+		H(x - 14 * sc, y - 8 * sc, 12 * sc, 18 * sc, 20)
+	end
+	local function crown(body: Color3, gem1: Color3, gem2: Color3, gem3: Color3)
+		S("rect", 24, 40, 22, 22, body, 45, 0.14)
+		S("rect", 50, 30, 26, 26, body, 45, 0.14)
+		S("rect", 76, 40, 22, 22, body, 45, 0.14)
+		S("round", 50, 62, 66, 34, body, 0, 0.2)
+		S("round", 50, 80, 70, 12, body:Lerp(BLACK, 0.12), 0, 0.5)
+		S("circle", 24, 28, 12, 12, W)
+		S("circle", 50, 17, 14, 14, W)
+		S("circle", 76, 28, 12, 12, W)
+		S("circle", 30, 62, 12, 12, gem1)
+		S("circle", 50, 62, 14, 14, gem2)
+		S("circle", 70, 62, 12, 12, gem3)
+		H(36, 54, 22, 6, 0)
+	end
+	local function chest(extra: boolean)
+		if extra then
+			coin(22, 36, 22)
+			coin(78, 34, 24)
+			S("rect", 50, 22, 20, 20, c(110, 226, 255), 45, 0.12)
+			H(46, 18, 6, 6, 0)
+		end
+		S("round", 50, 68, 72, 38, c(168, 98, 44), 0, 0.14)
+		S("round", 50, 46, 72, 34, c(196, 124, 58), 0, 0.42)
+		S("rect", 50, 56, 72, 7, GOLD)
+		S("rect", 28, 56, 7, 38, GOLD)
+		S("rect", 72, 56, 7, 38, GOLD)
+		S("round", 50, 62, 14, 16, c(255, 226, 96), 0, 0.25)
+		S("circle", 50, 62, 5, 5, c(120, 70, 10))
+		H(34, 38, 26, 7, -8)
+	end
+
+	if kind == "coins1" then
+		coin(50, 52, 62)
+		coin(22, 78, 26)
+		coin(80, 80, 22)
+		SP(80, 22, 11)
+	elseif kind == "coins2" then
+		S("round", 50, 30, 28, 20, BROWN, 0, 0.3)
+		S("circle", 50, 64, 66, 60, c(196, 124, 62))
+		S("round", 50, 38, 38, 9, RED, 0, 0.5)
+		coin(50, 68, 34)
+		H(30, 56, 12, 20, 20)
+		SP(82, 24, 10)
+	elseif kind == "coins3" then
+		chest(false)
+		SP(84, 22, 11)
+		SP(16, 30, 8)
+	elseif kind == "coins4" then
+		chest(true)
+		SP(10, 14, 9)
+		SP(92, 54, 8)
+	elseif kind == "charm" then
+		for _, p in { { 38, 36 }, { 62, 36 }, { 38, 60 }, { 62, 60 } } do
+			S("circle", p[1], p[2], 32, 32, GREEN)
+			H(p[1] - 6, p[2] - 7, 9, 6, -30)
+		end
+		S("circle", 50, 48, 18, 18, GOLD)
+		S("round", 58, 86, 8, 22, c(52, 160, 70), 14, 0.5)
+		SP(84, 22, 11)
+		SP(16, 78, 8)
+	elseif kind == "insight" then
+		S("round", 50, 88, 56, 12, c(122, 80, 48), 0, 0.5)
+		S("round", 50, 80, 40, 12, c(160, 108, 62), 0, 0.5)
+		S("circle", 50, 44, 66, 66, c(118, 146, 255))
+		S("circle", 50, 46, 46, 46, c(176, 202, 255))
+		S("rect", 50, 46, 14, 14, c(255, 240, 140), 0, 0.1)
+		S("rect", 50, 46, 14, 14, c(255, 240, 140), 45, 0.1)
+		H(34, 28, 16, 9, -35)
+		SP(84, 16, 9)
+	elseif kind == "broker" then
+		S("round", 50, 90, 44, 10, c(150, 160, 182), 0, 0.5)
+		S("round", 50, 56, 9, 70, c(176, 186, 206), 0, 0.4)
+		S("round", 50, 22, 78, 9, GOLD, 0, 0.5)
+		S("circle", 50, 22, 14, 14, c(255, 226, 96))
+		S("rect", 20, 38, 4, 24, c(176, 186, 206))
+		S("rect", 80, 38, 4, 24, c(176, 186, 206))
+		S("round", 20, 56, 32, 11, c(214, 224, 240), 0, 0.5)
+		S("round", 80, 56, 32, 11, c(214, 224, 240), 0, 0.5)
+		coin(20, 48, 16)
+		coin(80, 48, 16)
+	elseif kind == "smith" then
+		S("round", 40, 84, 52, 12, c(86, 92, 108), 0, 0.3)
+		S("round", 40, 70, 26, 16, c(70, 76, 92), 0, 0.3)
+		S("round", 40, 56, 66, 18, c(110, 118, 136), 0, 0.25)
+		S("round", 8, 56, 20, 12, c(110, 118, 136), 0, 0.4)
+		S("round", 70, 38, 8, 50, BROWN, 34, 0.4)
+		S("round", 80, 20, 32, 18, c(160, 168, 186), 34, 0.25)
+		S("circle", 30, 38, 11, 11, c(255, 170, 40))
+		S("circle", 18, 30, 7, 7, c(255, 236, 110))
+		S("circle", 44, 28, 6, 6, c(255, 236, 110))
+		H(30, 52, 20, 5, 0)
+	elseif kind == "wrap" then
+		S("round", 50, 66, 62, 46, c(240, 92, 172), 0, 0.14)
+		S("rect", 50, 66, 12, 46, GOLD)
+		S("round", 50, 42, 68, 18, c(252, 116, 188), 0, 0.3)
+		S("rect", 50, 42, 12, 18, GOLD)
+		S("circle", 37, 26, 22, 15, GOLD, -25)
+		S("circle", 63, 26, 22, 15, GOLD, 25)
+		S("circle", 50, 31, 11, 11, c(255, 226, 96))
+		H(28, 62, 8, 22, 0)
+	elseif kind == "vip" then
+		crown(GOLD, RED, BLUE, GREEN)
+		SP(90, 20, 10)
+	elseif kind == "founder" then
+		local glow = S("circle", 50, 48, 92, 92, c(255, 226, 120))
+		glow.BackgroundTransparency = 0.6
+		glow:FindFirstChildOfClass("UIStroke").Transparency = 0.6
+		crown(c(160, 86, 238), c(255, 226, 96), c(110, 232, 255), c(255, 226, 96))
+		SP(10, 20, 10)
+		SP(92, 12, 8)
+	elseif kind == "fortune20" then
+		flask(50, 64, 1, GOLD)
+		SP(18, 36, 11)
+		SP(84, 44, 9)
+		SP(76, 16, 7)
+	elseif kind == "jackpot20" then
+		S("round", 50, 54, 74, 66, c(226, 52, 74), 0, 0.14)
+		S("round", 50, 20, 44, 16, GOLD, 0, 0.4)
+		S("round", 50, 52, 60, 34, c(255, 250, 236), 0, 0.12)
+		T("7", 33, 52, 24, RED)
+		T("7", 50, 52, 24, RED)
+		T("7", 67, 52, 24, RED)
+		S("round", 90, 40, 6, 32, c(180, 190, 210), 0, 0.5)
+		S("circle", 90, 24, 13, 13, RED)
+		coin(28, 88, 17)
+		coin(72, 88, 17)
+	elseif kind == "fair30" then
+		S("round", 22, 66, 8, 48, BROWN, 0, 0.3)
+		S("round", 78, 66, 8, 48, BROWN, 0, 0.3)
+		S("round", 50, 84, 70, 14, c(214, 156, 84), 0, 0.3)
+		for i = 0, 4 do
+			S("round", 20 + i * 15, 42, 16, 30, (i % 2 == 0) and RED or c(255, 252, 244), 0, 0.3)
+		end
+		S("round", 50, 24, 80, 14, RED, 0, 0.5)
+		S("rect", 50, 10, 4, 12, c(190, 190, 200))
+		S("rect", 58, 8, 14, 8, GOLD)
+		coin(50, 70, 20)
+	elseif kind == "hour_bundle" then
+		flask(24, 66, 0.72, GOLD)
+		flask(76, 66, 0.72, c(90, 220, 200))
+		flask(50, 58, 0.92, c(255, 96, 150))
+		SP(86, 22, 10)
+		SP(14, 24, 8)
+	elseif kind == "server15" then
+		S("circle", 50, 52, 70, 70, c(70, 150, 255))
+		S("circle", 38, 42, 26, 22, GREEN)
+		S("circle", 62, 64, 24, 20, GREEN)
+		S("circle", 66, 36, 12, 12, GREEN)
+		T("x2", 50, 54, 34, c(255, 226, 96))
+		H(34, 30, 14, 8, -35)
+		SP(14, 18, 10)
+		SP(88, 84, 9)
+	elseif kind == "bag" then
+		S("round", 24, 60, 8, 36, BROWN, 0, 0.4)
+		S("round", 76, 60, 8, 36, BROWN, 0, 0.4)
+		S("round", 50, 64, 54, 56, c(84, 176, 96), 0, 0.3)
+		S("round", 50, 38, 54, 28, c(72, 156, 84), 0, 0.5)
+		S("round", 50, 72, 34, 22, c(62, 134, 74), 0, 0.25)
+		S("round", 50, 48, 12, 12, GOLD, 0, 0.25)
+		H(34, 58, 8, 18, 0)
+	elseif kind == "luck30" then
+		flask(50, 64, 1, c(90, 220, 110))
+		SP(80, 20, 9)
+	end
+	root.Parent = parent
+	return true
+end
+
+Shop.cartoon = drawCartoon
+
 -- Ставит иконку товара в parent. Копья и звери берутся из самой игры.
 local function icon(parent: Instance, kind: string, spin: number?)
+	-- V27: мультяшные иконки (чёткие, из фигур) важнее картинок и 3D-моделей
+	if drawCartoon(parent, kind) then
+		return
+	end
 	-- нарисованная иллюстрация (ART) важнее 3D-модели
 	if artImage(parent, kind:sub(1, 6) == "spear:" and "spear" or kind) then
 		return
@@ -1148,11 +1434,14 @@ local function renderBody(o: Open)
 	end
 	sectionBar(o, scroll, "Boosts", nextOrder())
 	local server: any = nil
+	local bundle: any = nil
 	local brews: { any } = {}
 	local packs: { any } = {}
 	for _, it in SHOP.PRODUCTS do
 		if it.kind == "server" then
 			server = it
+		elseif it.kind == "boost" and it.key == "hour_bundle" then
+			bundle = it
 		elseif it.kind == "boost" then
 			table.insert(brews, it)
 		elseif it.kind == "coins" then
@@ -1161,6 +1450,9 @@ local function renderBody(o: Open)
 	end
 	if server then
 		renderBanner(o, scroll, server, nextOrder())
+	end
+	if bundle then
+		renderBanner(o, scroll, bundle, nextOrder())
 	end
 	local boosts = grid(scroll, 3, 212, nextOrder())
 	for i, it in brews do
