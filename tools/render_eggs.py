@@ -64,7 +64,7 @@ def ring_layers(h, w, cx, cy, rx, ry, thick, colors):
     return out
 
 
-def render(key):
+def render(key, clean=False):
     p = PAL[key]
     w, h = W * SS, H * SS
     cx, cy = w * 0.5, h * 0.47
@@ -207,6 +207,23 @@ def render(key):
     bloom = cv2.GaussianBlur(bl, (0, 0), 12) * 0.9 + cv2.GaussianBlur(bl, (0, 0), 28) * 0.7
     egg_p = np.clip(rgb * alpha[..., None] + bloom * alpha[..., None] * 0.4, 0, 255)
 
+    if clean:
+        # hatch-scene sprite: only the egg (no pedestal, glow, ring or sparks), tightly cropped, 440 px tall
+        dp = egg_p.copy(); da = alpha.copy()
+        for (gx, gy, gs) in [(-0.45, 0.45, 26), (0.5, 0.15, 17)]:
+            m = star(h, w, int(cx + gx * R), int(cy - gy * half_h), gs, SS) * alpha
+            over(dp, da, 255 * m[..., None], np.clip(m, 0, 1))
+        ys, xs = np.nonzero(da > 0.02)
+        pad = 6 * SS
+        y0, y1 = max(ys.min() - pad, 0), min(ys.max() + pad + 1, h)
+        x0, x1 = max(xs.min() - pad, 0), min(xs.max() + pad + 1, w)
+        crop = np.dstack([dp, da * 255])[y0:y1, x0:x1].astype(np.float32)
+        sc = 440.0 / (y1 - y0)
+        small = cv2.resize(crop, (int((x1 - x0) * sc), 440), interpolation=cv2.INTER_AREA)
+        al = np.maximum(small[..., 3:4] / 255, 1e-4)
+        straight = np.clip(small[..., :3] / al, 0, 255)
+        return np.clip(np.dstack([straight, small[..., 3]]), 0, 255).astype(np.uint8)
+
     # ---- compose layers back to front (premultiplied)
     dp = np.zeros((h, w, 3), np.float32); da = np.zeros((h, w), np.float32)
     glow_col = np.array(p["glow"], np.float32)
@@ -265,17 +282,21 @@ def render(key):
 
 
 def main():
-    out_dir = sys.argv[1]
-    keys = sys.argv[2:] or list(PAL)
+    args = sys.argv[1:]
+    clean = "--clean" in args
+    args = [a for a in args if a != "--clean"]
+    out_dir = args[0]
+    keys = args[1:] or list(PAL)
     os.makedirs(out_dir, exist_ok=True)
     for key in keys:
-        img = render(key)
-        cv2.imwrite(os.path.join(out_dir, key + ".png"), cv2.cvtColor(img, cv2.COLOR_RGBA2BGRA))
-        bg = np.zeros((H, W, 3), np.float32); bg[:] = (40, 20, 70)
+        img = render(key, clean=clean)
+        name = ("hatch_" + key) if clean else key
+        cv2.imwrite(os.path.join(out_dir, name + ".png"), cv2.cvtColor(img, cv2.COLOR_RGBA2BGRA))
+        bg = np.zeros(img.shape[:2] + (3,), np.float32); bg[:] = (40, 20, 70)
         a = img[..., 3:4].astype(np.float32) / 255
         prev = (img[..., :3].astype(np.float32) * a + bg * (1 - a)).astype(np.uint8)
-        cv2.imwrite(os.path.join(out_dir, key + "_preview.png"), cv2.cvtColor(prev, cv2.COLOR_RGB2BGR))
-        print(key, "ok", flush=True)
+        cv2.imwrite(os.path.join(out_dir, name + "_preview.png"), cv2.cvtColor(prev, cv2.COLOR_RGB2BGR))
+        print(name, img.shape[1], img.shape[0], "ok", flush=True)
 
 
 if __name__ == "__main__":

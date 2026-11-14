@@ -1,3 +1,24 @@
+# Egg opening cinematic (V31)
+
+Buying an egg now plays a full scene (`Client/EggScene`, started from `playHatch` in `Client/Shop`). It is built from UI objects, nothing is uploaded to Roblox.
+
+1. **Drop-in.** The screen darkens, the egg falls with a bounce onto a glowing floor, a ripple runs over the floor, sparks fly.
+2. **Charge (about 5 s, or faster by tapping).** The egg shakes harder and harder and glows in the colour of the rarity inside it (white common, blue rare, purple epic, gold legendary, pink mythic, rainbow absolute), rays grow, sparks are pulled into it, a tick sound speeds up and rises in pitch. **Cracks grow from an impact point** along irregular lines and light up. Five crack stages each give a ring, sparks, a thump and a screen shake. The player can tap the egg to crack it faster, or press SKIP.
+3. **Burst.** White flash, **the shell breaks into 13 real pieces along those same cracks** and they fly out with gravity and spin, shockwave rings, a punch zoom, screen shake, a spray of sparks and confetti in the rarity colours.
+4. **Reveal.** The animal pops out on a glowing stage with rotating rays, a rarity ribbon, its name, description, bonuses, a NEW EXOTIC or DUPLICATE tag, falling confetti, and a CONTINUE button. Legendary and above get a second flash and a fanfare.
+
+How it works: `tools/render_eggs.py --clean` renders one clean egg sprite per egg (`hatch_egg_*`, 315x440). At the start of a scene the sprite is cut into pieces in Luau (a warped Voronoi), the crack overlay is drawn along the piece borders into a second EditableImage, and the pieces are separate images (destroyed when the scene ends). Everything is created up front and reused (one particle pool, a ring pool), and low graphics uses fewer particles and pieces. The sprites are unpacked 3 s after the game starts so the scene does not wait for them. If EditableImage or a sprite is not available, the old simple hatch plays instead.
+
+The glow colour before the crack does hint the rarity, as in popular egg games. The odds are fixed and shown before purchase; the scene only visualises a result the server already rolled. The ideas from the Adopt Me article that claim hidden luck changes (resting between eggs, locations, "egg fatigue") were **not** implemented: they would be hidden odds, which the project rules forbid.
+
+Debug: set the attribute `EggSceneSpeed` (for example 0.2) on PlayerGui to run the scene in slow motion.
+
+Checked in Studio with screenshots of the drop-in, the charge with cracks, the flying shell pieces and the reveal for Legendary, Epic and Rare results; frames 35-60 ms with a 40 ms Studio baseline, one 84 ms frame while the egg is cut at the start. Not checked: low graphics mode, a touch screen, several eggs in a row beyond the existing queue, sound by ear.
+
+The non-egg shop icons went back to the flat cartoon set (the 3D-rendered ones were not liked); only eggs use rendered pictures.
+
+---
+
 # Eggs, high detail (V30)
 
 The four eggs were redone at 336x426 (was 240x304) with much more detail, and the egg banners got life.

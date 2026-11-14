@@ -10,6 +10,7 @@ local cache: { [string]: any } = {}
 local waiting: { [string]: { () -> () } } = {}
 local failed: { [string]: boolean } = {}
 local busy = false
+local rawCache: { [string]: any } = {} -- key -> { raw = buffer, w, h } (the egg scene cuts the hatch sprite into pieces)
 local available: boolean? = nil -- can this client create an EditableImage at all? asked once, before any decoding
 
 local function checkAvailable(): boolean
@@ -255,6 +256,9 @@ local function build(key: string): any?
 	end
 	local img = AssetService:CreateEditableImage({ Size = Vector2.new(data.w, data.h) })
 	img:WritePixelsBuffer(Vector2.zero, Vector2.new(data.w, data.h), raw)
+	if string.sub(key, 1, 6) == "hatch_" then
+		rawCache[key] = { raw = raw, w = data.w, h = data.h }
+	end
 	return img
 end
 
@@ -323,6 +327,17 @@ function EggArt.preload(keys: { string })
 	for _, k in keys do
 		whenReady(k, function() end)
 	end
+end
+
+-- cb(info or nil, image or nil): info = { raw, w, h } for the hatch sprites
+function EggArt.whenRaw(key: string, cb: (any?, any?) -> ())
+	whenReady(key, function(img)
+		cb(img and rawCache[key] or nil, img)
+	end)
+end
+
+function EggArt.imageOf(key: string): any?
+	return cache[key]
 end
 
 function EggArt.has(key: string): boolean

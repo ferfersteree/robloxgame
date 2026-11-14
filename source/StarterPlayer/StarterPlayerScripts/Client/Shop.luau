@@ -34,6 +34,11 @@ local EggArt: any = nil
 pcall(function()
 	EggArt = require(script.Parent.EggArt)
 end)
+-- V31: киношная сцена открытия яйца (нет модуля или EditableImage: старое простое вылупление)
+local EggScene: any = nil
+pcall(function()
+	EggScene = require(script.Parent.EggScene)
+end)
 
 -- Палитра окна: «небо» — голубой градиент, облака, циановая шапка-баннер.
 -- Ключи winLine/winGlow/deepRed/cream/... нужны экрану «получено» (unlock).
@@ -619,7 +624,7 @@ Shop.cartoon = drawCartoon
 -- Ставит иконку товара в parent. Копья и звери берутся из самой игры.
 local function icon(parent: Instance, kind: string, spin: number?)
 	-- V29: отрисованные 3D-иконки (tools/render_icons.py, рисуются через EditableImage) важнее мультяшных; не вышло - старая мультяшная
-	if EggArt and EggArt.has(kind) then
+	if EggArt and string.sub(kind, 1, 4) == "egg_" and EggArt.has(kind) then
 		local img = Instance.new("ImageLabel")
 		img.BackgroundTransparency = 1
 		img.ScaleType = Enum.ScaleType.Fit
@@ -2052,7 +2057,7 @@ local hatchSeen: { [string]: boolean } = {}
 local hatchAck: { string } = {}
 local hatchBusy = false
 
-local function playHatch(h: any, done: () -> ())
+local function playHatchBasic(h: any, done: () -> ())
 	local ex = Config.EXOTIC_BY_ID[h.sp]
 	if not ex then
 		done()
@@ -2178,6 +2183,44 @@ local function playHatch(h: any, done: () -> ())
 			finish()
 		end
 	end)
+end
+
+-- V31: киношная сцена (Client/EggScene); если картинки яйца недоступны - простое вылупление выше
+local function playHatch(h: any, done: () -> ())
+	local ex = Config.EXOTIC_BY_ID[h.sp]
+	if not ex then
+		done()
+		return
+	end
+	if EggScene and EggArt and h.egg and EggScene.available(h.egg) then
+		local doneOnce = false
+		local function finishOnce()
+			if not doneOnce then
+				doneOnce = true
+				done()
+			end
+		end
+		EggScene.play({
+			eggKey = h.egg,
+			ex = ex,
+			rar = Config.EXOTIC.RARITIES[ex.rarity],
+			low = lowFx(),
+			dupe = h.dupe,
+			shards = h.shards,
+			lines = fxLines(ex),
+			portrait = function(parent: Instance)
+				exoticPortrait(parent, ex, false, lowFx() and 0 or 0.6, 12)
+			end,
+			onDone = finishOnce,
+			onFail = function()
+				if not doneOnce then
+					playHatchBasic(h, finishOnce)
+				end
+			end,
+		})
+		return
+	end
+	playHatchBasic(h, done)
 end
 
 local function nextHatch()
@@ -2785,7 +2828,7 @@ function Shop.init()
 	-- яйца распаковываются заранее, чтобы окно вылупления не ждало картинку (все четыре занимают около 1 с кадров по частям)
 	if EggArt then
 		task.delay(3, function()
-			EggArt.preload({ "egg_mystic", "egg_royal", "egg_cosmic", "egg_absolute" })
+			EggArt.preload({ "egg_mystic", "egg_royal", "egg_cosmic", "egg_absolute", "hatch_egg_mystic", "hatch_egg_royal", "hatch_egg_cosmic", "hatch_egg_absolute" })
 		end)
 	end
 
