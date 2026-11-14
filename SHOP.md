@@ -1,3 +1,16 @@
+# Shop restyle with rendered 3D art (V29, on the eggs branch)
+
+The shop now looks like the reference: a deep purple crystal hall instead of the meadow, dark tiles with a bright coloured outline, wide egg banners and glossy 3D pictures instead of the flat cartoon icons.
+
+- **Eggs.** Each egg is a wide banner: a faceted crystal egg on the left (own colours: Mystic blue, Royal purple, Cosmic gold, Absolute rainbow), the rarity cards with exact percentages and the best animal of each rarity, the big green Robux button bottom right and an ODDS button for the full list. Percentages come from `Config.eggOdds`, so they match the server roll. The hatch window shows the same egg.
+- **Icons.** Coin packs (4), the three potions, gift, crowns (VIP and Founder), crystal ball, clover, globe, anvil with hammer and scales are rendered glossy 3D pictures. Items without a rendered picture (Hunter's Bundle banner, spears, bag) keep their old icons.
+- **How it is made, nothing uploaded to Roblox.** The pictures are rendered offline by `tools/render_eggs.py` and `tools/render_icons.py` (numpy and OpenCV: faceted shards with lighting for eggs, ray marching of simple shapes for icons). `tools/pack_eggs.py` packs each PNG as deflate + base64 into a ModuleScript under `Client/EggArt`. At runtime `Client/EggArt` unpacks the data (about 0.1 s per picture, yielding every 40,000 steps) and draws it into an `EditableImage` shown in an `ImageLabel`. A checksum guards the unpacking. If `EditableImage` is unavailable (the experience setting, an older device), every spot falls back to the old cartoon icon.
+- **Caveat to check before launch.** In live experiences `EditableImage` may need an experience setting or player eligibility on Roblox's side that I could not test in Studio. The fallback keeps the shop working either way, but without it the shop would look like V28 again. If you would rather upload the same PNGs as normal images, they are in the repo's rebuild path (`tools/render_*.py`) and `shop-art/` flow; I was not allowed to upload.
+- **Seen in Studio.** Screenshots of the shop window in Play: eggs, passes, boosts, bundle banner and Founder banner. The world render in screenshots worked this time, so the animal portraits in the egg cards were seen too.
+- **Not done.** Spear icons, the bag icon and the rank card art were not redone. The coins and other icons are rendered at 176 px (about 1x on a normal screen; they look soft on very high-DPI screens). No multi-buy bundles (x3, x10) like in the reference: that needs new products.
+
+---
+
 # Donate eggs and exotic animals (V28)
 
 Open `SpearHunt V28 - Eggs.rbxl`. Four eggs (Robux Developer Products, id = 0, simulated in Studio) hatch 16 exotic animals that cannot be found while hunting.
