@@ -492,7 +492,7 @@ Config.ACTIVITY = {
 
 -- Обучение: шаги подсказок (стрелка ведёт к цели)
 Config.TUTORIAL = {
-	{ text = "Go to the hunting shelter at the forest edge", target = "ambush" },
+	{ text = "Go to the Throwing Grounds at the forest edge", target = "ambush" },
 	{ text = "Hold to charge your throw! Release before your grip slips", target = "throw" },
 	{ text = "Sell your catch to the Merchant in the plaza", target = "market" },
 	{ text = "Buy a new spear at the Armory", target = "armory" },

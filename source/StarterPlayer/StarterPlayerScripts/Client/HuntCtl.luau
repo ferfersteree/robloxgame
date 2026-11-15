@@ -2,10 +2,13 @@
 -- Охота «Натяжение»: засада → зажал (множитель растёт e^t) → копьё дрожит перед СРЫВОМ → отпустил вовремя →
 -- бросок по ступени (×1…×100) → камера летит за копьём через зоны → раскрытие добычи → снова в засаду.
 -- ПК: ЛКМ/Пробел — держать, Q — выйти. Телефон: кнопка 🗡️, «Выйти».
+-- V36: вместо пяти одиночных засад одна зона «Throwing Grounds» (Workspace/Map/Ambushes/ThrowingGrounds) с несколькими
+-- дорожками: подсказка одна, сервер выдаёт свободную дорожку (Stands/StandN), лампа дорожки зелёная/красная.
 local Players = game:GetService("Players")
 local RS = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
 
 local Config = require(RS.Shared.Config)
 local Num = require(RS.Shared.Num)
@@ -58,61 +61,88 @@ local function setState(s: string)
 end
 
 ---------------------------------------------------------------------
--- Маскировка засад: открыта, когда пусто; закрывается, когда кто-то сел (видят все)
+-- Зона для кидания: лампы дорожек (зелёная - свободна, красная - занята) и подсказка со счётом свободных
 ---------------------------------------------------------------------
-local camoBase: { [BasePart]: CFrame } = {}
-local function camoSet(m: Model, closed: boolean, instant: boolean?)
-	local f = m:FindFirstChild("Camo")
-	if not f then
-		return
-	end
-	for _, p in f:GetChildren() do
-		if p:IsA("BasePart") then
-			local base = camoBase[p]
-			if not base then
-				base = p.CFrame
-				camoBase[p] = base
-			end
-			local off = Vector3.new(p:GetAttribute("ox") or 0, p:GetAttribute("oy") or 0, p:GetAttribute("oz") or 0)
-			local target = closed and base or (base + off)
-			if instant then
-				p.CFrame = target
-			else
-				Fx.tween(p, 0.5, { CFrame = target }, Enum.EasingStyle.Back)
-			end
-		end
-	end
-	if not instant then
-		Sfx.at((m:GetPivot()).Position, "rustle", closed and 1.1 or 0.9, 0.5)
-	end
-end
+local LAMP_FREE = Color3.fromRGB(70, 220, 110)
+local LAMP_BUSY = Color3.fromRGB(235, 70, 60)
 
 local function promptOf(m: Model): ProximityPrompt?
 	local p = m:FindFirstChild("Prompt")
 	return p and p:FindFirstChildOfClass("ProximityPrompt") or nil
 end
 
-local function watchAmbush(m: Instance)
+local function watchZone(m: Instance)
 	if not m:IsA("Model") then
 		return
 	end
 	local model = m :: Model
-	local function upd(instant: boolean?)
-		local occ = model:GetAttribute("Occupant")
-		camoSet(model, occ ~= nil, instant)
-		local pr = promptOf(model)
-		if pr then
-			pr.Enabled = occ == nil
-			pr.ObjectText = occ and ("Occupied: " .. tostring(model:GetAttribute("OccupantName") or "")) or tostring(model:GetAttribute("Title") or "Hunting Blind")
+	task.spawn(function()
+		local stands = model:WaitForChild("Stands", 15)
+		if not stands then
+			return
 		end
-	end
-	model:GetAttributeChangedSignal("Occupant"):Connect(function()
-		upd(false)
+		local lamps = model:FindFirstChild("Lamps")
+		local function upd(instant: boolean?)
+			local free, total = 0, 0
+			for _, s in stands:GetChildren() do
+				if s:IsA("BasePart") then
+					total += 1
+					local occ = s:GetAttribute("Occupant")
+					if occ == nil then
+						free += 1
+					end
+					local lamp = lamps and lamps:FindFirstChild("Lamp" .. tostring(s:GetAttribute("Index"))) :: BasePart?
+					if lamp then
+						local col = occ == nil and LAMP_FREE or LAMP_BUSY
+						if instant then
+							lamp.Color = col
+						else
+							TweenService:Create(lamp, TweenInfo.new(0.3), { Color = col }):Play()
+						end
+						local pl = lamp:FindFirstChildOfClass("PointLight")
+						if pl then
+							pl.Color = col
+						end
+					end
+				end
+			end
+			local pr = promptOf(model)
+			if pr then
+				pr.Enabled = free > 0
+				local title = tostring(model:GetAttribute("Title") or "Throwing Grounds")
+				pr.ObjectText = free > 0 and string.format("%s · %d free", title, free) or (title .. " · full")
+			end
+		end
+		for _, s in stands:GetChildren() do
+			s:GetAttributeChangedSignal("Occupant"):Connect(function()
+				upd(false)
+			end)
+		end
+		upd(true)
 	end)
-	upd(true)
 end
 for _, m in ambushFolder:GetChildren() do
-	watchAmbush(m)
+	watchZone(m)
+end
+ambushFolder.ChildAdded:Connect(watchZone)
+
+-- Высокие части въездного домика (крыша, фронтон, вывеска) могут закрыть камеру полёта копья в первые секунды:
+-- пока игрок на дорожке, они у него невидимы (LocalTransparencyModifier и SurfaceGui только на этом клиенте).
+local function fadeTall(zone: Model?, on: boolean)
+	local g = zone and zone:FindFirstChild("Gatehouse")
+	if not g then
+		return
+	end
+	for _, p in g:GetDescendants() do
+		if p:IsA("BasePart") and p.Position.Y > 8.3 then
+			p.LocalTransparencyModifier = on and 1 or 0
+			for _, gui in p:GetChildren() do
+				if gui:IsA("SurfaceGui") then
+					gui.Enabled = not on
+				end
+			end
+		end
+	end
 end
 
 ---------------------------------------------------------------------
@@ -186,24 +216,30 @@ function HuntCtl.enter(model: Model)
 	if HuntCtl.state ~= "idle" then
 		return
 	end
-	local idx = model:GetAttribute("Index")
 	local h = hum()
-	if not h or h.Health <= 0 or type(idx) ~= "number" then
+	if not h or h.Health <= 0 then
 		return
 	end
 	setState("entering")
-	local ok, err = AmbushFn:InvokeServer("enter", idx)
+	-- сервер выбирает свободную дорожку (ближайшую к игроку) и возвращает её номер
+	local ok, lane = AmbushFn:InvokeServer("enter")
 	if not ok then
-		UI.toast(tostring(err or "This hunting blind is occupied"), "warn")
+		UI.toast(tostring(lane or "The Throwing Grounds are full"), "warn")
+		setState("idle")
+		return
+	end
+	local stands = model:FindFirstChild("Stands")
+	local st = stands and stands:FindFirstChild("Stand" .. tostring(lane)) :: BasePart?
+	if not st then
+		task.spawn(function()
+			AmbushFn:InvokeServer("leave")
+		end)
 		setState("idle")
 		return
 	end
 	cur = model
-	stand = model:FindFirstChild("Stand") :: BasePart?
-	if not stand then
-		setState("idle")
-		return
-	end
+	stand = st
+	fadeTall(model, true)
 	saved = { ws = h.WalkSpeed, jp = h.JumpPower, jh = h.JumpHeight, ar = h.AutoRotate, fov = camera.FieldOfView }
 	h.WalkSpeed = 0
 	h.JumpPower = 0
@@ -236,6 +272,7 @@ function HuntCtl.leave()
 	stopChargeSound()
 	setState("leaving")
 	holding = false
+	fadeTall(cur, false)
 	task.spawn(function()
 		AmbushFn:InvokeServer("leave")
 	end)
@@ -251,7 +288,11 @@ function HuntCtl.leave()
 	local c = player.Character
 	local hrp = c and c:FindFirstChild("HumanoidRootPart") :: BasePart?
 	local pr = cur and cur:FindFirstChild("Prompt") :: BasePart?
-	if hrp and pr then
+	local ex = cur and cur:FindFirstChild("Exit") :: BasePart?
+	if hrp and ex then
+		hrp.AssemblyLinearVelocity = Vector3.zero
+		hrp.CFrame = CFrame.lookAt(ex.Position, ex.Position + Vector3.new(0, 0, 10))
+	elseif hrp and pr then
 		hrp.CFrame = CFrame.lookAt(pr.Position + Vector3.new(0, 1.5, 3), pr.Position + Vector3.new(0, 1.5, 10))
 	end
 	camera.CameraType = Enum.CameraType.Custom
@@ -547,6 +588,7 @@ end)
 player.CharacterAdded:Connect(function()
 	if HuntCtl.state ~= "idle" then
 		stopChargeSound()
+		fadeTall(cur, false)
 		cur = nil
 		stand = nil
 		followFlight = nil

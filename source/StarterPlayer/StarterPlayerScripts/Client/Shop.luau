@@ -39,6 +39,16 @@ local EggScene: any = nil
 pcall(function()
 	EggScene = require(script.Parent.EggScene)
 end)
+-- V35: анимации питомцев пака (суставы Motor6D): питомцы рядом с игроком дышат, осматриваются, идут вместе с хозяином
+local PetAnim: any = nil
+pcall(function()
+	PetAnim = require(script.Parent.PetAnim)
+end)
+-- V35: настоящее 3D-открытие яйца (сцена на клиенте, модели из PetModels, анимации Client/PetAnim). Нет модуля или моделей: старое вылупление
+local EggOpen3D: any = nil
+pcall(function()
+	EggOpen3D = require(script.Parent.EggOpen3D)
+end)
 
 -- Палитра окна: «небо» — голубой градиент, облака, циановая шапка-баннер.
 -- Ключи winLine/winGlow/deepRed/cream/... нужны экрану «получено» (unlock).
@@ -1677,7 +1687,7 @@ function Pets.build(ex: any, low: boolean): any?
 	local best = 0
 	for _, d in m:GetDescendants() do
 		if d:IsA('BasePart') then
-			d.Anchored = true
+			d.Anchored = not (ex.model and PetAnim and d.Name ~= 'Root') -- V35: у моделей пака якорь только у Root, остальное держится на Motor6D
 			d.CanCollide = false
 			d.CanQuery = false
 			d.CanTouch = false
@@ -1734,7 +1744,14 @@ function Pets.build(ex: any, low: boolean): any?
 			exoConn = RunService.Heartbeat:Connect(exoTick)
 		end
 	end
-	return { model = m, slot = 1, cf = nil }
+	local anim: any = nil
+	if ex.model and PetAnim then
+		local okA, a = pcall(PetAnim.new, m, ex.model)
+		if okA then
+			anim = a
+		end
+	end
+	return { model = m, slot = 1, cf = nil, anim = anim }
 end
 
 function Pets.clear(p: Player)
@@ -1812,6 +1829,14 @@ function Pets.step(dt: number)
 					pt.cf = pt.cf:Lerp(target, k)
 				end
 				pt.model:PivotTo(pt.cf * CFrame.Angles(0, Pets.yaw, 0))
+				if pt.anim then
+					-- V35: идёт - цикл ходьбы, стоит - покой (дыхание, взгляд, уши, хвост)
+					local moving = (pt.cf.Position - target.Position).Magnitude > 0.3
+					pt.anim:setMode(moving and 'move' or 'idle')
+					pcall(function()
+						pt.anim:update(dt)
+					end)
+				end
 			end
 		end
 	end
@@ -2241,6 +2266,58 @@ local function playHatch(h: any, done: () -> ())
 	local ex = Config.EXOTIC_BY_ID[h.sp]
 	if not ex then
 		done()
+		return
+	end
+	-- V35: 3D-сцена открытия (яйцо раскрывается, питомец выпрыгивает с анимацией). Не вышло до раскрытия: простое вылупление ниже.
+	local eggDef = h.egg and Config.EGGS[h.egg]
+	if EggOpen3D and eggDef and ex.model and EggOpen3D.available(eggDef.family, ex.model) then
+		local doneOnce = false
+		local function finishOnce()
+			if not doneOnce then
+				doneOnce = true
+				done()
+			end
+		end
+		local rar = Config.EXOTIC.RARITIES[ex.rarity]
+		EggOpen3D.play({
+			eggModel = eggDef.model,
+			petModel = ex.model,
+			family = eggDef.family,
+			rank = ex.rarity,
+			color = rar.color,
+			low = lowFx(),
+			sfx = function(name: string, pitch: number, vol: number)
+				Sfx.play(name, pitch, vol)
+			end,
+			buildReveal = function(sg: ScreenGui, finish: () -> ())
+				-- карточка внизу: питомец остаётся живым в 3D над ней, тап по нему - реакция
+				local card = newI('Frame', { BackgroundColor3 = rgb(10, 20, 70), BackgroundTransparency = 0.08, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -18), Size = UDim2.fromOffset(520, 238), ZIndex = 20 }, sg)
+				UI.corner(16).Parent = card
+				newI('UIStroke', { Color = rar.color, Thickness = 4 }, card)
+				local scale = newI('UIScale', { Scale = 0.2 }, card)
+				UI.tween(scale, 0.45, { Scale = 1 }, Enum.EasingStyle.Back)
+				UI.label({ Text = string.upper(rar.name), TextSize = 20, Color = rar.color, StrokeColor = Color3.new(0, 0, 0), Stroke = 3, Size = UDim2.new(1, 0, 0, 26), Position = UDim2.fromOffset(0, 8), ZIndex = 21, Parent = card })
+				UI.label({ Text = ex.name, TextSize = 36, Color = K.white, StrokeColor = rar.color:Lerp(Color3.new(0, 0, 0), 0.6), Stroke = 5, Scaled = true, MaxSize = 36, Size = UDim2.new(1, -20, 0, 42), Position = UDim2.fromOffset(10, 34), ZIndex = 21, Parent = card })
+				UI.label({ Text = ex.desc, TextSize = 15, Color = K.white, StrokeColor = Color3.new(0, 0, 0), Stroke = 3, Wrap = true, Size = UDim2.new(1, -40, 0, 36), Position = UDim2.fromOffset(20, 78), ZIndex = 21, Parent = card })
+				for i, l in fxLines(ex) do
+					UI.label({ Text = l[1], TextSize = 17, Color = l[2], StrokeColor = Color3.new(0, 0, 0), Stroke = 3, Size = UDim2.new(1, 0, 0, 20), Position = UDim2.fromOffset(0, 114 + (i - 1) * 20), ZIndex = 21, Parent = card })
+				end
+				local tag = h.dupe and string.format('DUPLICATE  +%d shards', h.shards or 0) or 'NEW PET!'
+				UI.label({ Text = tag, TextSize = 20, Color = h.dupe and rgb(160, 220, 255) or K.goldText, StrokeColor = Color3.new(0, 0, 0), Stroke = 3, Size = UDim2.new(1, -170, 0, 26), Position = UDim2.new(0, 10, 1, -38), XAlign = Enum.TextXAlignment.Left, ZIndex = 21, Parent = card })
+				local cont = UI.button({ Text = 'CONTINUE', TextSize = 20, Color = K.green, Size = UDim2.fromOffset(160, 42), AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -12, 1, -10), Sound = 'press' }, function()
+					finish()
+				end)
+				cont.ZIndex = 25
+				cont.Parent = card
+				newI('TextLabel', { Text = 'Tap the pet', Font = Enum.Font.GothamBold, TextSize = 14, TextColor3 = rgb(201, 210, 255), BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 0, -6), Size = UDim2.fromOffset(200, 18), ZIndex = 21 }, card)
+			end,
+			onDone = finishOnce,
+			onFail = function()
+				if not doneOnce then
+					playHatchBasic(h, finishOnce)
+				end
+			end,
+		})
 		return
 	end
 	if EggScene and EggArt and h.egg and EggScene.available(h.egg) then
