@@ -315,3 +315,15 @@ Status: syntax-checked and the file decodes with `rbx_binary`, but it has not be
 
 ## Art ids
 Shop art ids are now read from `Client/AudioIds` (keys `art_<name>`). `tools/upload_to_roblox.py` uploads the PNGs from `shop-art/` together with the sounds and writes the ids there.
+
+## V34: яйца и питомцы из пака, дизайн из Claude Design
+
+Файл места: `SpearHunt V34 - Pet Eggs.rbxl` (ветка `donate-eggs`).
+
+- 5 яиц вместо 4: Forest Talisman 59, Amber Heart 149, Tide Pearl 299, Storm Heart 599, Astral Core 999 R$ (все `id = 0`, в Studio покупка имитируется). 25 питомцев, редкостей 7: Common, Uncommon, Rare, Epic, Legendary, Mythic, Divine. Шансы из прототипа, сумма каждого яйца 100%, `Config.EGGS` одна таблица для сервера и окна ODDS.
+- Старые 16 экзотиков в яйцах не выпадают, но остаются у тех, у кого есть (`legacy = true`, редкость пересчитана через `OLD_RARITY`); в окне Exotic их видят только владельцы.
+- Бонусы 25 питомцев придуманы здесь (в паке их не было): `Config.NEW_PETS` в `Config.luau`. Верхняя граница удача×монеты×шанс редкого для набора из трёх: ×4,11 (уровень 0), ×5,12 (уровень 5).
+- Окно ODDS и карточки редкостей в баннерах яиц в стиле прототипа (тёмно-синее, рамка цвета редкости, портрет в строке). Прототип: `design/eggs-shop.dc.html`, `design/eggs-shop.png`.
+- `Client/Shop` берёт модели питомцев и яиц из `ReplicatedStorage/PetModels/<id>`.
+- ВАЖНО, не сделано: модели из `pets/Models/*.rbxmx` в место НЕ вставлены (Studio загружает их только перетаскиванием файлов). Пока их нет, портреты питомцев пустые, а яйца в баннерах рисуются плоскими иконками. Чтобы закончить: перетащить 30 файлов в Studio и перенести в `ReplicatedStorage/PetModels`.
+- Тесты: `tests/eggs_pool_exclusion.luau` проходит (5 яиц, утечек в охоту 0 из 15 000, бросок против шансов до 0,31 п.п.). `tests/eggs_persistence.server.luau` обновлён на ключ `egg_forest`, после смены яиц не запускался.

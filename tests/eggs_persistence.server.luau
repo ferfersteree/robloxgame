@@ -36,7 +36,7 @@ function fake:SetAsync(k, v)
 end
 T.setStore(fake)
 local item = {}
-for k, v in Config.SHOP_BY_KEY.egg_mystic do
+for k, v in Config.SHOP_BY_KEY.egg_forest do
 	item[k] = v
 end
 item.id = 990001
@@ -126,9 +126,9 @@ local ok, err = pcall(function()
 	load()
 	check("equip limit and level clamp on load", #prof.shop.exotic.equipped == 3 and prof.shop.exotic.level.candy_hopper == 5)
 	prof.eggsOff = true
-	check("testBuy egg refused when region-restricted", T.invoke(player, "testBuy", "egg_mystic") == false)
+	check("testBuy egg refused when region-restricted", T.invoke(player, "testBuy", "egg_forest") == false)
 	prof.eggsOff = false
-	check("testBuy egg allowed otherwise", T.invoke(player, "testBuy", "egg_mystic") == true)
+	check("testBuy egg allowed otherwise", T.invoke(player, "testBuy", "egg_forest") == true)
 end)
 if not ok then
 	table.insert(results, "ERROR " .. tostring(err))

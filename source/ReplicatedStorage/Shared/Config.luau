@@ -654,10 +654,11 @@ Config.SHOP = {
 		-- Набор: 3 буста на 30 минут. По частям то же стоит 79 x1.5 + 99 x1.5 + 59 = 326 R$.
 		{ key = "hour_bundle", id = 0, price = 199, kind = "boost", boosts = { "fortune", "jackpot", "fair" }, dur = 1800, name = "Hunter's Bundle", desc = "Golden Hour, Jackpot Hour and Trade Fair together for 30 min of play." },
 		-- V28: яйца (бросок на сервере, шансы в Config.EGGS). id = 0: в Studio покупка имитируется.
-		{ key = "egg_mystic", id = 0, price = 99, kind = "egg", name = "Mystic Egg", desc = "Common and Rare exotic animals." },
-		{ key = "egg_royal", id = 0, price = 249, kind = "egg", name = "Royal Egg", desc = "Common to Mythic exotic animals." },
-		{ key = "egg_cosmic", id = 0, price = 499, kind = "egg", name = "Cosmic Egg", desc = "Rare to Absolute exotic animals." },
-		{ key = "egg_absolute", id = 0, price = 999, kind = "egg", name = "Absolute Egg", desc = "Epic to Absolute exotic animals." },
+		{ key = "egg_forest", id = 0, price = 59, kind = "egg", name = "Forest Talisman Egg", desc = "Common to Epic pets." },
+		{ key = "egg_amber", id = 0, price = 149, kind = "egg", name = "Amber Heart Egg", desc = "Uncommon to Legendary pets." },
+		{ key = "egg_tide", id = 0, price = 299, kind = "egg", name = "Tide Pearl Egg", desc = "Rare to Mythic pets." },
+		{ key = "egg_storm", id = 0, price = 599, kind = "egg", name = "Storm Heart Egg", desc = "Epic to Divine pets." },
+		{ key = "egg_astral", id = 0, price = 999, kind = "egg", name = "Astral Core Egg", desc = "Legendary to Divine pets." },
 		{ key = "server15", id = 0, price = 149, kind = "server", dur = 900, name = "Server Luck", desc = "Luck x2 and rare chances +25% for everyone on the server for 15 min." },
 		{ key = "coins1", id = 0, price = 49, kind = "coins", k = 0.3, name = "Coin Pouch" },
 		{ key = "coins2", id = 0, price = 99, kind = "coins", k = 0.8, name = "Coin Sack" },
@@ -917,15 +918,17 @@ Config.EXOTIC = {
 	FLOOR_BAG = -40,
 	STATS = { luck = "Luck", caps = "Rare chance", coins = "Sale coins", xp = "XP", range = "Throw range", grip = "Steady grip", bag = "Bag slots", train = "Training power", forge = "Forge discount" },
 	RARITIES = {
-		{ id = "common", name = "Common", color = Color3.fromRGB(205, 210, 218) },
-		{ id = "rare", name = "Rare", color = Color3.fromRGB(64, 160, 255) },
-		{ id = "epic", name = "Epic", color = Color3.fromRGB(180, 86, 255) },
-		{ id = "legendary", name = "Legendary", color = Color3.fromRGB(255, 186, 30) },
-		{ id = "mythic", name = "Mythic", color = Color3.fromRGB(255, 80, 150) },
-		{ id = "absolute", name = "Absolute", color = Color3.fromRGB(90, 240, 255) },
+		-- V34: 7 ступеней как у питомцев из пака (цвета из прототипа Claude Design)
+		{ id = "common", name = "Common", color = Color3.fromRGB(195, 202, 214) },
+		{ id = "uncommon", name = "Uncommon", color = Color3.fromRGB(134, 223, 114) },
+		{ id = "rare", name = "Rare", color = Color3.fromRGB(108, 188, 255) },
+		{ id = "epic", name = "Epic", color = Color3.fromRGB(204, 152, 255) },
+		{ id = "legendary", name = "Legendary", color = Color3.fromRGB(255, 198, 80) },
+		{ id = "mythic", name = "Mythic", color = Color3.fromRGB(255, 141, 156) },
+		{ id = "divine", name = "Divine", color = Color3.fromRGB(255, 240, 168) },
 	},
-	SHARDS = { 5, 12, 30, 80, 200, 500 }, -- осколки за повтор, по редкости
-	UPGRADE = { 10, 25, 60, 160, 400, 1000 }, -- цена уровня N = UPGRADE[редкость] * N осколков
+	SHARDS = { 5, 8, 14, 30, 80, 200, 500 }, -- осколки за повтор, по редкости
+	UPGRADE = { 10, 16, 28, 60, 160, 400, 1000 }, -- цена уровня N = UPGRADE[редкость] * N осколков
 }
 Config.EXOTICS = {
 	{ id = "candy_hopper", name = "Candy Hopper", base = "rabbit", rarity = 1, scale = 1.5, style = "rainbow", desc = "A bunny made of sprinkles. Hops out of nowhere.", fx = { luck = 0.06 } },
@@ -945,6 +948,44 @@ Config.EXOTICS = {
 	{ id = "leviathan_prime", name = "Leviathan Prime", base = "abyss_leviathan", rarity = 5, scale = 1.5, style = "neon_cyan", desc = "The deep, but glowing.", fx = { range = 0.25, grip = 0.15, luck = -0.10 } },
 	{ id = "prismatic_overlord", name = "Prismatic Overlord", base = "void_behemoth", rarity = 6, scale = 1.9, style = "rainbow_neon", desc = "The wildest creature in the game. Everything bends around it.", fx = { luck = 0.55, caps = 0.30, coins = 0.25, xp = 0.25, range = 0.15, bag = -20 } },
 }
+-- V34: питомцы из пака блочных моделей (ReplicatedStorage/PetModels/<id>). Редкость 1..7: Common, Uncommon, Rare, Epic, Legendary, Mythic, Divine.
+-- Старые 16 в яйцах больше не выпадают, но остаются у тех, у кого уже есть (legacy = true); их шкала пересчитана по OLD_RARITY.
+local OLD_RARITY = { 1, 3, 4, 5, 6, 7 }
+for _, ex in Config.EXOTICS do
+	ex.rarity = OLD_RARITY[ex.rarity]
+	ex.legacy = true
+end
+-- { id, имя, семейство (яйцо), редкость, бонусы, описание }. Минус = компромисс.
+local NEW_PETS: { { any } } = {
+	{ "clover_beetle", "Clover Beetle", "forest", 1, { luck = 0.06 }, "Finds four-leaf clovers without even looking." },
+	{ "moss_bunny", "Mossy Bunny", "forest", 1, { xp = 0.10 }, "Hops on mossy rocks and learns from every jump." },
+	{ "hazelnut_squirrel", "Hazelnut Squirrel", "forest", 2, { bag = 12 }, "Hides spare nuts and spare animals in its fluffy tail." },
+	{ "flower_hedgehog", "Flower Hedgehog", "forest", 3, { caps = 0.12, range = -0.05 }, "Sniffs out rare animals. Slow to curl up for a throw." },
+	{ "guardian_fawn", "Guardian Fawn", "forest", 4, { luck = 0.18, xp = 0.08, range = -0.08 }, "The forest sends it to watch over lucky hunters." },
+	{ "sand_jerboa", "Sand Jerboa", "amber", 2, { range = 0.10 }, "Jumps three dunes at a time." },
+	{ "amber_armadillo", "Amber Armadillo", "amber", 2, { grip = 0.12 }, "Its amber shell never rattles. Neither do your hands." },
+	{ "sun_lion_cub", "Sun Lion Cub", "amber", 3, { coins = 0.14, luck = -0.05 }, "Shines on every sale. Naps through the lucky moments." },
+	{ "honey_griffin", "Honey Griffin", "amber", 4, { coins = 0.16, xp = 0.10, grip = -0.08 }, "Sweet deals, sticky wings." },
+	{ "amber_basilisk", "Amber Basilisk", "amber", 5, { caps = 0.25, coins = 0.15, range = -0.10 }, "One glance from it turns a rare find into gold." },
+	{ "bubble_crab", "Bubble Crab", "tide", 3, { train = 0.15, luck = -0.05 }, "Pops bubbles to a training rhythm." },
+	{ "coral_turtle", "Coral Turtle", "tide", 3, { bag = 20, range = -0.06 }, "Carries a whole reef on its back. Heavy, but roomy." },
+	{ "pearl_axolotl", "Pearl Axolotl", "tide", 4, { luck = 0.18, caps = 0.10, coins = -0.10 }, "Collects pearls instead of coins." },
+	{ "tide_ray", "Tide Ray", "tide", 5, { range = 0.22, xp = 0.15, grip = -0.12 }, "Rides the current farther than any spear flies." },
+	{ "little_leviathan", "Little Leviathan", "tide", 6, { range = 0.28, grip = 0.15, luck = -0.10 }, "Small for a leviathan. Big for everything else." },
+	{ "spark_salamander", "Spark Salamander", "storm", 4, { train = 0.20, grip = -0.10 }, "Every workout leaves it crackling." },
+	{ "cloud_lamb", "Cloud Lamb", "storm", 4, { bag = 25, forge = 0.10, range = -0.08 }, "Soft as a cloud, stores as much as one." },
+	{ "storm_falcon", "Storm Falcon", "storm", 5, { range = 0.20, grip = 0.10, coins = -0.12 }, "Dives straight through the thunder." },
+	{ "storm_dragon", "Storm Dragonling", "storm", 6, { luck = 0.40, range = 0.15, coins = -0.15 }, "Calls lightning to land where it likes." },
+	{ "heavenly_kitsune", "Heavenly Kitsune", "storm", 7, { luck = 0.55, caps = 0.30, xp = 0.25, grip = -0.15 }, "A sky spirit. Fortune follows wherever it walks." },
+	{ "comet_kitten", "Comet Kitten", "astral", 5, { luck = 0.28, grip = -0.12 }, "Leaves a trail of stardust and happy accidents." },
+	{ "moon_owlet", "Moon Owlet", "astral", 5, { caps = 0.18, train = 0.20, coins = -0.10 }, "Studies at night, spots rare animals by day." },
+	{ "nebula_moth", "Nebula Moth", "astral", 6, { luck = 0.40, caps = 0.22, coins = -0.15 }, "Wings full of unborn stars." },
+	{ "eclipse_dragon", "Eclipse Dragonling", "astral", 6, { coins = 0.35, xp = 0.20, range = -0.15 }, "Swallows the sun and pays in gold." },
+	{ "astral_phoenix", "Astral Phoenix", "astral", 7, { coins = 0.45, caps = 0.25, xp = 0.20, range = 0.10, bag = -20 }, "Reborn every night. Everything bends toward its light." },
+}
+for _, p in NEW_PETS do
+	table.insert(Config.EXOTICS, { id = p[1], name = p[2], family = p[3], rarity = p[4], fx = p[5], desc = p[6], model = p[1] })
+end
 Config.EXOTIC_BY_ID = {} :: { [string]: any }
 for i, ex in Config.EXOTICS do
 	ex.index = i
@@ -954,11 +995,13 @@ end
 -- Яйца. weights - ОДНА таблица и для сервера (бросок), и для интерфейса (Config.eggOdds). Шансы = вес / сумма весов.
 -- ВАЖНО: изменение весов автоматически меняет и бросок, и проценты в окне яйца: ничего дублировать не нужно.
 -- Правила Roblox для платных случайных предметов требуют показывать шансы до покупки: окно яйца это делает.
+-- V34: 5 яиц из пака (веса = проценты из прототипа, сумма каждого = 100). model = модель яйца в ReplicatedStorage/PetModels.
 Config.EGGS = {
-	egg_mystic = { name = "Mystic Egg", color = Color3.fromRGB(120, 200, 255), weights = { { "candy_hopper", 26 }, { "neon_fox", 26 }, { "bubble_boar", 28 }, { "glow_wolf", 5 }, { "frost_bear", 5 }, { "ruby_stag", 5 }, { "prism_otter", 5 } } },
-	egg_royal = { name = "Royal Egg", color = Color3.fromRGB(190, 120, 255), weights = { { "candy_hopper", 8 }, { "neon_fox", 8 }, { "bubble_boar", 8 }, { "glow_wolf", 11 }, { "frost_bear", 11 }, { "ruby_stag", 11 }, { "prism_otter", 11 }, { "storm_kitsune", 6 }, { "magma_titan", 6 }, { "ghost_lynx", 6 }, { "solar_lion", 4 }, { "void_mammoth", 4 }, { "aurora_phoenix", 4 }, { "astral_wyrm", 1 }, { "leviathan_prime", 1 } } },
-	egg_cosmic = { name = "Cosmic Egg", color = Color3.fromRGB(255, 150, 60), weights = { { "glow_wolf", 6 }, { "frost_bear", 6 }, { "ruby_stag", 6 }, { "prism_otter", 6 }, { "storm_kitsune", 14 }, { "magma_titan", 14 }, { "ghost_lynx", 14 }, { "solar_lion", 8 }, { "void_mammoth", 8 }, { "aurora_phoenix", 8 }, { "astral_wyrm", 4 }, { "leviathan_prime", 4 }, { "prismatic_overlord", 2 } } },
-	egg_absolute = { name = "Absolute Egg", color = Color3.fromRGB(90, 240, 255), weights = { { "storm_kitsune", 5 }, { "magma_titan", 5 }, { "ghost_lynx", 5 }, { "solar_lion", 15 }, { "void_mammoth", 15 }, { "aurora_phoenix", 15 }, { "astral_wyrm", 15 }, { "leviathan_prime", 15 }, { "prismatic_overlord", 10 } } },
+	egg_forest = { name = "Forest Talisman Egg", family = "forest", model = "forest_talisman_egg", color = Color3.fromRGB(111, 208, 74), weights = { { "clover_beetle", 40 }, { "moss_bunny", 28 }, { "hazelnut_squirrel", 20 }, { "flower_hedgehog", 10 }, { "guardian_fawn", 2 } } },
+	egg_amber = { name = "Amber Heart Egg", family = "amber", model = "amber_heart_egg", color = Color3.fromRGB(255, 176, 46), weights = { { "sand_jerboa", 35 }, { "amber_armadillo", 30 }, { "sun_lion_cub", 22 }, { "honey_griffin", 11 }, { "amber_basilisk", 2 } } },
+	egg_tide = { name = "Tide Pearl Egg", family = "tide", model = "tide_pearl_egg", color = Color3.fromRGB(63, 214, 196), weights = { { "bubble_crab", 36 }, { "coral_turtle", 29 }, { "pearl_axolotl", 22 }, { "tide_ray", 11 }, { "little_leviathan", 2 } } },
+	egg_storm = { name = "Storm Heart Egg", family = "storm", model = "storm_heart_egg", color = Color3.fromRGB(63, 169, 255), weights = { { "spark_salamander", 35 }, { "cloud_lamb", 30 }, { "storm_falcon", 23 }, { "storm_dragon", 10 }, { "heavenly_kitsune", 2 } } },
+	egg_astral = { name = "Astral Core Egg", family = "astral", model = "astral_core_egg", color = Color3.fromRGB(169, 139, 255), weights = { { "comet_kitten", 35 }, { "moon_owlet", 30 }, { "nebula_moth", 18 }, { "eclipse_dragon", 12 }, { "astral_phoenix", 5 } } },
 }
 
 -- Шансы яйца в процентах (список в порядке weights). Из этой же таблицы бросает сервер.

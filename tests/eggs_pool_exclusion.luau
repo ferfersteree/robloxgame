@@ -25,7 +25,7 @@ end
 check("no exotic id in Config.SPECIES", overlap == 0, overlap)
 local missing = 0
 for _, ex in Config.EXOTICS do
-	if not speciesIds[ex.base] then
+	if not ex.model and not speciesIds[ex.base] then -- V34: питомцы из пака (ex.model) берут модель из PetModels, а не у вида
 		missing += 1
 	end
 end

@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>SpearHunt — яйца и питомцы</title>
+<script src="./vendor/react.js"></script>
+<script src="./vendor/react-dom.js"></script>
+<script src="./support.js"></script>
+<script src="./assets/b9c1bba8ace106923eb233bf5429e401.js"></script>
+<script src="./assets/9790a78911cc87108f515a24dfc2af21.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#220E54}
+button{font-family:inherit;cursor:pointer}
+button:focus-visible{outline:3px solid #FFD84A;outline-offset:2px}
+a{color:#FFD84A}a:hover{color:#ffffff}
+.sh-btn{border:3px solid #1E0850;border-radius:14px;box-shadow:0 5px 0 #1E0850;transition:transform .06s,box-shadow .06s;font-weight:900}
+.sh-btn:active{transform:translateY(4px);box-shadow:0 1px 0 #1E0850}
+.sh-ol{text-shadow:-2px 0 0 #1E0850,2px 0 0 #1E0850,0 -2px 0 #1E0850,0 2px 0 #1E0850,-1.5px -1.5px 0 #1E0850,1.5px -1.5px 0 #1E0850,-1.5px 1.5px 0 #1E0850,1.5px 1.5px 0 #1E0850,0 4px 0 #1E0850}
+</style>
+</helmet>
+<div style="min-height: 100vh; box-sizing: border-box; background: linear-gradient(180deg, #6832BC 0%, #421C86 48%, #220E54 100%); color: #ffffff; font-family: Nunito, system-ui, sans-serif; font-weight: 800; display: flex; flex-direction: column; gap: 16px; padding: 16px">
+  <header style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; padding: 12px 16px 14px; border-radius: 18px; border: 4px solid #1E0850; background: linear-gradient(180deg, #DE74FF 0%, #7428D6 100%); box-shadow: 0 6px 0 #1E0850, 0 0 26px #E29CFF">
+    <div style="display: flex; flex-direction: column; gap: 4px; margin-right: auto">
+      <h1 class="sh-ol" style="margin: 0; font-size: 26px; font-weight: 900; letter-spacing: 0.3px; color: #ffffff">SpearHunt · Яйца и питомцы</h1>
+      <p class="sh-ol" style="margin: 0; font-size: 14px; font-weight: 900; color: #FFD84A">Интерактивный 3D-прототип в браузере · Robux не списываются</p>
+    </div>
+    <nav aria-label="Разделы" style="display: flex; gap: 10px; flex-wrap: wrap; padding-bottom: 5px">
+      <sc-for list="{{tabs}}" as="tb" hint-placeholder-count="3">
+        <button type="button" class="sh-btn" onClick="{{tb.pick}}" aria-pressed="{{tb.on}}" style="min-height: 46px; padding: 0 20px; background: {{tb.bg}}; color: {{tb.fg}}; font-size: 16px">{{tb.label}}</button>
+      </sc-for>
+    </nav>
+  </header>
+
+  <main style="display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-start">
+    <section aria-label="3D-сцена" style="flex: 999 1 520px; min-width: 0; position: relative; aspect-ratio: 1 / 1; max-height: 640px; min-height: 340px; border-radius: 20px; overflow: hidden; background: {{stageBg}}; border: 4px solid #1E0850; box-shadow: 0 6px 0 #1E0850">
+      <canvas ref="{{view}}" role="img" aria-label="Трёхмерная сцена с яйцами и питомцами" style="position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none"></canvas>
+      <sc-if value="{{hasErr}}" hint-placeholder-val="{{ false }}">
+        <p style="position: absolute; left: 16px; right: 16px; top: 16px; margin: 0; padding: 12px 14px; border-radius: 12px; border: 3px solid #1E0850; background: #E83238; color: #ffffff; font-size: 14px; font-weight: 900">{{err}}</p>
+      </sc-if>
+      <sc-if value="{{showPhase}}" hint-placeholder-val="{{ false }}">
+        <p class="sh-ol" style="position: absolute; left: 0; right: 0; top: 14px; margin: 0; text-align: center; font-size: 18px; font-weight: 900; color: #ffffff; pointer-events: none">{{phaseText}}</p>
+      </sc-if>
+      <sc-if value="{{showHint}}" hint-placeholder-val="{{ true }}">
+        <p class="sh-ol" style="position: absolute; left: 0; right: 0; bottom: 14px; margin: 0; text-align: center; font-size: 14px; font-weight: 900; color: #ffffff; pointer-events: none">{{hint}}</p>
+      </sc-if>
+      <sc-if value="{{showPlaque}}" hint-placeholder-val="{{ false }}">
+        <div style="position: absolute; left: 0; right: 0; bottom: 14px; display: flex; justify-content: center; pointer-events: none">
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 22px 10px; border-radius: 12px; background: #0A1446; border: 3px solid #1E0850; box-shadow: 0 4px 0 #1E0850">
+            <span style="font-size: 20px; font-weight: 900; color: #ffffff">{{gal.name}}</span>
+            <span style="font-size: 12px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; color: {{gal.color}}">{{gal.rarity}}</span>
+          </div>
+        </div>
+      </sc-if>
+      <sc-if value="{{revealed}}" hint-placeholder-val="{{ false }}">
+        <div style="position: absolute; left: 12px; right: 12px; bottom: 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 12px 14px 16px; border-radius: 16px; background: #0A1446; border: 4px solid {{res.color}}; box-shadow: 0 5px 0 #1E0850">
+          <div style="display: flex; flex-direction: column; gap: 2px; margin-right: auto; min-width: 0">
+            <span style="font-size: 12px; font-weight: 900; letter-spacing: 1.2px; text-transform: uppercase; color: {{res.color}}">{{res.rarity}} · шанс {{res.chance}}%</span>
+            <span class="sh-ol" style="font-size: 24px; font-weight: 900; line-height: 1.2; color: #ffffff">{{res.name}}</span>
+            <span style="font-size: 13px; font-weight: 800; color: #C9D2FF">Из яйца «{{res.egg}}» · нажмите на питомца — он отреагирует</span>
+          </div>
+          <div style="display: flex; flex-wrap: wrap; gap: 10px">
+            <button type="button" class="sh-btn" onClick="{{again}}" style="min-height: 46px; padding: 0 16px; background: #54D634; color: #0B2A05; font-size: 15px">Открыть ещё</button>
+            <button type="button" class="sh-btn" onClick="{{toGallery}}" style="min-height: 46px; padding: 0 16px; background: #FABA1A; color: #2A1A00; font-size: 15px">В галерею</button>
+            <button type="button" class="sh-btn" onClick="{{closeOpen}}" style="min-height: 46px; padding: 0 16px; background: #E83238; color: #ffffff; font-size: 15px">Назад</button>
+          </div>
+        </div>
+      </sc-if>
+    </section>
+
+    <aside style="flex: 1 1 340px; min-width: 0; display: flex; flex-direction: column; gap: 14px">
+      <sc-if value="{{isShop}}" hint-placeholder-val="{{ true }}">
+        <div style="display: flex; flex-direction: column; gap: 14px">
+          <h2 class="sh-ol" style="margin: 0; font-size: 20px; font-weight: 900; color: #ffffff">Витрина яиц</h2>
+          <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; padding-bottom: 5px">
+            <sc-for list="{{eggs}}" as="eg" hint-placeholder-count="5">
+              <button type="button" class="sh-btn" onClick="{{eg.pick}}" aria-pressed="{{eg.on}}" aria-label="{{eg.name}}, {{eg.price}} Robux" style="min-height: 84px; padding: 6px 2px; background: {{eg.bg}}; outline: {{eg.ring}}; outline-offset: -6px; color: #FFD84A; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px">
+                <svg aria-hidden="true" width="34" height="40" viewBox="0 0 34 40"><path d="M12 2h10v5h5v6h4v15h-4v6h-5v4H12v-4H7v-6H3V13h4V7h5z" fill="{{eg.theme}}" style="stroke: #1E0850; stroke-width: 3px; stroke-linejoin: round"></path><path d="M4.5 22h25v6h-4v6h-5v2.5h-7V34h-5v-6h-4z" fill="#1E0850" opacity="0.22"></path><path d="M11 10h5v5h-5z" fill="#ffffff" opacity="0.65"></path></svg>
+                <span class="sh-ol" style="font-size: 15px; font-weight: 900">{{eg.price}} R$</span>
+              </button>
+            </sc-for>
+          </div>
+          <div style="padding: 14px 14px 18px; border-radius: 16px; background: #0A1446; border: 4px solid #1E0850; box-shadow: 0 6px 0 #1E0850; display: flex; flex-direction: column; gap: 10px">
+            <div style="display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap">
+              <h3 class="sh-ol" style="margin: 0; font-size: 22px; font-weight: 900; margin-right: auto; color: #ffffff">«{{cur.name}}»</h3>
+              <span class="sh-ol" style="font-size: 20px; font-weight: 900; color: #FABA1A">{{cur.price}} Robux</span>
+            </div>
+            <p style="margin: 0; font-size: 13px; font-weight: 800; color: #C9D2FF">Содержимое и точные шансы</p>
+            <ul style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px">
+              <sc-for list="{{contents}}" as="p" hint-placeholder-count="5">
+                <li style="display: flex; align-items: center; gap: 10px; padding: 5px 12px 5px 5px; border-radius: 12px; background: #101C5C; border: 3px solid {{p.color}}">
+                  <span aria-hidden="true" style="flex: 0 0 48px; height: 48px; border-radius: 8px; border: 2px solid #1E0850; background-color: #1B2A78; background-image: {{p.thumb}}; background-size: cover; background-position: center"></span>
+                  <span style="display: flex; flex-direction: column; min-width: 0; margin-right: auto">
+                    <span style="font-size: 15px; font-weight: 900; color: #ffffff">{{p.name}}</span>
+                    <span style="font-size: 12px; font-weight: 900; letter-spacing: 0.8px; text-transform: uppercase; color: {{p.color}}">{{p.rarity}}</span>
+                  </span>
+                  <span class="sh-ol" style="font-size: 18px; font-weight: 900; color: #FFD84A">{{p.chance}}%</span>
+                </li>
+              </sc-for>
+            </ul>
+            <button type="button" class="sh-btn" onClick="{{openDemo}}" style="min-height: 54px; background: #54D634; color: #0B2A05; font-size: 18px">Открыть — демо, без списания</button>
+            <p style="margin: 4px 0 0; font-size: 12px; font-weight: 800; color: #C9D2FF">Результат выбирается случайно по шансам из списка. Сумма шансов — 100%.</p>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{isGallery}}" hint-placeholder-val="{{ false }}">
+        <div style="display: flex; flex-direction: column; gap: 14px">
+          <div style="padding: 14px 14px 18px; border-radius: 16px; background: #0A1446; border: 4px solid {{gal.color}}; box-shadow: 0 6px 0 #1E0850; display: flex; flex-direction: column; gap: 10px">
+            <div style="display: flex; flex-direction: column; gap: 2px">
+              <span style="font-size: 12px; font-weight: 900; letter-spacing: 1.2px; text-transform: uppercase; color: {{gal.color}}">{{gal.rarity}} · «{{gal.egg}}» · {{gal.chance}}%</span>
+              <h2 class="sh-ol" style="margin: 0; font-size: 24px; font-weight: 900; color: #ffffff">{{gal.name}}</h2>
+              <span style="font-size: 13px; font-weight: 800; color: #C9D2FF">Передвижение: {{gal.gait}}</span>
+            </div>
+            <div role="group" aria-label="Анимация" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding-bottom: 5px">
+              <sc-for list="{{anims}}" as="an" hint-placeholder-count="4">
+                <button type="button" class="sh-btn" onClick="{{an.pick}}" aria-pressed="{{an.on}}" style="min-height: 46px; background: {{an.bg}}; color: {{an.fg}}; font-size: 15px">{{an.label}}</button>
+              </sc-for>
+            </div>
+            <button type="button" class="sh-btn" onClick="{{toggleSpin}}" aria-pressed="{{spin}}" style="min-height: 46px; background: #1B2A78; color: #ffffff; font-size: 15px">{{spinLabel}}</button>
+            <p style="margin: 4px 0 0; font-size: 12px; font-weight: 800; color: #C9D2FF">Тяните сцену — вращение камеры · нажмите на питомца — реакция</p>
+          </div>
+          <h3 class="sh-ol" style="margin: 0; font-size: 17px; font-weight: 900; color: #ffffff">Все 25 питомцев · ряд = одно яйцо</h3>
+          <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 7px">
+            <sc-for list="{{pets}}" as="p" hint-placeholder-count="25">
+              <button type="button" onClick="{{p.pick}}" aria-pressed="{{p.on}}" aria-label="{{p.name}}, {{p.rarity}}" title="{{p.name}}" style="aspect-ratio: 1 / 1; min-height: 44px; padding: 0; border-radius: 12px; border: 3px solid {{p.color}}; outline: {{p.ring}}; outline-offset: 0; background-color: #0A1446; background-image: {{p.thumb}}; background-size: cover; background-position: center"></button>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{isTest}}" hint-placeholder-val="{{ false }}">
+        <div style="padding: 14px 14px 18px; border-radius: 16px; background: #0A1446; border: 4px solid #1E0850; box-shadow: 0 6px 0 #1E0850; display: flex; flex-direction: column; gap: 12px">
+          <h2 class="sh-ol" style="margin: 0; font-size: 20px; font-weight: 900; color: #ffffff">Режим проверки</h2>
+          <p style="margin: 0; font-size: 13px; font-weight: 800; color: #C9D2FF">Выберите яйцо и точный результат — шансы не участвуют.</p>
+          <div role="group" aria-label="Яйцо" style="display: flex; flex-direction: column; gap: 9px; padding-bottom: 5px">
+            <sc-for list="{{testEggs}}" as="eg" hint-placeholder-count="5">
+              <button type="button" class="sh-btn" onClick="{{eg.pick}}" aria-pressed="{{eg.on}}" style="min-height: 46px; padding: 0 12px; background: {{eg.bg}}; color: {{eg.fg}}; font-size: 15px; display: flex; align-items: center; gap: 10px; text-align: left">
+                <svg aria-hidden="true" width="20" height="24" viewBox="0 0 34 40" style="flex: 0 0 20px"><path d="M12 2h10v5h5v6h4v15h-4v6h-5v4H12v-4H7v-6H3V13h4V7h5z" fill="{{eg.theme}}" style="stroke: #1E0850; stroke-width: 4px; stroke-linejoin: round"></path></svg>
+                <span style="margin-right: auto">{{eg.name}}</span>
+                <span>{{eg.price}} R$</span>
+              </button>
+            </sc-for>
+          </div>
+          <div role="group" aria-label="Результат открытия" style="display: flex; flex-direction: column; gap: 7px">
+            <sc-for list="{{testPets}}" as="p" hint-placeholder-count="5">
+              <button type="button" onClick="{{p.pick}}" aria-pressed="{{p.on}}" style="min-height: 50px; padding: 3px 12px 3px 3px; border-radius: 12px; border: 3px solid {{p.color}}; outline: {{p.ring}}; outline-offset: 0; background: {{p.bg}}; color: #ffffff; font-size: 15px; font-weight: 900; display: flex; align-items: center; gap: 10px; text-align: left">
+                <span aria-hidden="true" style="flex: 0 0 40px; height: 40px; border-radius: 8px; border: 2px solid #1E0850; background-color: #1B2A78; background-image: {{p.thumb}}; background-size: cover; background-position: center"></span>
+                <span style="margin-right: auto">{{p.name}}</span>
+                <span style="font-size: 12px; letter-spacing: 0.8px; text-transform: uppercase; color: {{p.color}}">{{p.rarity}}</span>
+              </button>
+            </sc-for>
+          </div>
+          <button type="button" class="sh-btn" onClick="{{runTest}}" style="min-height: 54px; background: #54D634; color: #0B2A05; font-size: 18px">Запустить открытие</button>
+          <p style="margin: 4px 0 0; font-size: 13px; font-weight: 800; color: #C9D2FF">Активных эффектов в сцене: <span style="color: #FFD84A">{{fxCount}}</span> · после затухания должно быть 0</p>
+        </div>
+      </sc-if>
+    </aside>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1360,"height":900}}'>
+var RAR_COL=['#c3cad6','#86df72','#6cbcff','#cc98ff','#ffc650','#ff8d9c','#fff0a8'];
+var PHASE={prep:'Яйцо пробуждается…',emerge:'Питомец появляется…',land:'Питомец появляется…'};
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.view = React.createRef();
+    this.state = { tab: 'shop', egg: 0, opening: false, phase: '', result: null, galPet: 'clover_beetle', anim: 'idle', spin: true, testEgg: 0, testPet: 'clover_beetle', thumbs: {}, err: '', dim: 0, fx: 0 };
+    this.tries = 0;
+  }
+  componentDidMount() { this.boot(); }
+  componentWillUnmount() {
+    clearTimeout(this.bootT); clearInterval(this.fxT);
+    if (this.stage) { this.stage.dispose(); this.stage = null; }
+  }
+  boot() {
+    var self = this, SP = window.SpearPets;
+    if (!SP || !window.THREE || !this.view.current) {
+      if (this.tries++ < 40) { this.bootT = setTimeout(function () { self.boot(); }, 150); }
+      else this.setState({ err: 'Не удалось загрузить 3D-модуль. Обновите страницу.' });
+      return;
+    }
+    try {
+      this.stage = SP.create(this.view.current, { on: function (t, d) { self.onStage(t, d); } });
+      this.stage.setSpin(true);
+      this.bootT = setTimeout(function () { if (self.stage) self.stage.thumbs(112, function (m) { if (self.stage) self.setState({ thumbs: m }); }); }, 500);
+      this.fxT = setInterval(function () { if (self.stage && self.state.tab === 'test') { var n = self.stage.fx.count(); if (n !== self.state.fx) self.setState({ fx: n }); } }, 400);
+    } catch (e) {
+      this.setState({ err: 'Браузер не смог запустить WebGL: ' + (e && e.message ? e.message : e) });
+    }
+  }
+  onStage(t, d) {
+    if (t === 'select') {
+      if (this.state.tab === 'test') this.setState({ testEgg: d.index, testPet: window.SpearPets.eggList[d.index].pets[0] });
+      else this.setState({ egg: d.index });
+    } else if (t === 'phase') this.setState({ phase: d.name });
+  }
+  setTab(tab) {
+    var s = this.state, st = this.stage;
+    if (st) {
+      if (tab === 'shop') st.shop(s.egg);
+      else if (tab === 'test') st.shop(s.testEgg);
+      else { st.gallery(s.galPet); st.anim(s.anim === 'move' ? 'move' : 'idle'); }
+    }
+    this.setState({ tab: tab, opening: false, phase: '', anim: s.anim === 'move' ? 'move' : 'idle' });
+  }
+  pickEgg(i) { if (this.stage) { if (this.state.opening) this.stage.shop(i); else this.stage.select(i); } this.setState({ egg: i, opening: false, phase: '' }); }
+  roll(egg) {
+    var SP = window.SpearPets, r = Math.random() * 100, acc = 0, ids = egg.pets;
+    for (var i = 0; i < ids.length; i++) { acc += SP.pets[ids[i]].chance; if (r < acc) return ids[i]; }
+    return ids[ids.length - 1];
+  }
+  start(eggIndex, petId) {
+    var egg = window.SpearPets.eggList[eggIndex];
+    if (this.stage) this.stage.open(egg.id, petId);
+    this.setState({ opening: true, phase: 'prep', result: petId });
+  }
+  openDemo() { var egg = window.SpearPets.eggList[this.state.egg]; this.start(this.state.egg, this.roll(egg)); }
+  runTest() { this.start(this.state.testEgg, this.state.testPet); }
+  again() { if (this.state.tab === 'test') this.runTest(); else this.openDemo(); }
+  closeOpen() { var s = this.state; if (this.stage) this.stage.shop(s.tab === 'test' ? s.testEgg : s.egg); this.setState({ opening: false, phase: '' }); }
+  toGallery() {
+    var id = this.state.result; if (!id) return;
+    if (this.stage) { this.stage.gallery(id); this.stage.anim('idle'); }
+    this.setState({ tab: 'gallery', galPet: id, opening: false, phase: '', anim: 'idle' });
+  }
+  pickPet(id) { if (this.stage) { this.stage.gallery(id); this.stage.anim('idle'); } this.setState({ galPet: id, anim: 'idle' }); }
+  setAnim(n) { if (this.stage) this.stage.anim(n); this.setState({ anim: n }); }
+  toggleSpin() { var v = !this.state.spin; if (this.stage) this.stage.setSpin(v); this.setState({ spin: v }); }
+  renderVals() {
+    var self = this, s = this.state, SP = window.SpearPets || { eggList: [], petList: [], pets: {}, eggs: {}, RAR: [] };
+    var sel = function (on) { return on ? { bg: '#FABA1A', fg: '#2A1A00', ring: '3px solid #FFD84A' } : { bg: '#0A1446', fg: '#ffffff', ring: '0 solid transparent' }; };
+    var thumb = function (id) { return s.thumbs[id] ? 'url(' + s.thumbs[id] + ')' : 'none'; };
+    var pet = function (id) { var p = SP.pets[id]; return { id: id, name: p.name, rarity: SP.RAR[p.rar], color: RAR_COL[p.rar], chance: p.chance, thumb: thumb(id), gait: p.gait, egg: SP.eggs[p.egg].name }; };
+    var tabs = [['shop', 'Магазин'], ['gallery', 'Галерея'], ['test', 'Тест']].map(function (q) { var on = s.tab === q[0], c = sel(on); return { label: q[1], on: on, bg: c.bg, fg: c.fg, pick: function () { self.setTab(q[0]); } }; });
+    var eggs = SP.eggList.map(function (e, i) { var on = s.egg === i; return { name: e.name, price: e.price, theme: e.theme, on: on, bg: on ? '#2A3CA8' : '#0A1446', ring: on ? '3px solid #FFD84A' : '0 solid transparent', pick: function () { self.pickEgg(i); } }; });
+    var curEgg = SP.eggList[s.egg], cur = curEgg ? { name: curEgg.name, price: curEgg.price } : { name: '', price: '' };
+    var contents = curEgg ? curEgg.pets.map(pet) : [];
+    var pets = SP.petList.map(function (p) { var o = pet(p.id), on = s.galPet === p.id; o.on = on; o.ring = on ? '4px solid #FFD84A' : '0 solid transparent'; o.pick = function () { self.pickPet(p.id); }; return o; });
+    var gal = SP.pets[s.galPet] ? pet(s.galPet) : { name: '', rarity: '', color: '#fff', chance: '', gait: '', egg: '' };
+    var anims = [['idle', 'Покой'], ['move', 'Движение'], ['hatch', 'Появление'], ['react', 'Реакция']].map(function (q) { var on = s.anim === q[0], c = sel(on); return { label: q[1], on: on, bg: c.bg, fg: c.fg, pick: function () { self.setAnim(q[0]); } }; });
+    var testEggs = SP.eggList.map(function (e, i) { var on = s.testEgg === i, c = sel(on); return { name: e.name, price: e.price, theme: e.theme, on: on, bg: c.bg, fg: c.fg, pick: function () { if (self.stage && !s.opening) self.stage.select(i); self.setState({ testEgg: i, testPet: e.pets[0] }); } }; });
+    var tEgg = SP.eggList[s.testEgg];
+    var testPets = tEgg ? tEgg.pets.map(function (id) { var o = pet(id), on = s.testPet === id, c = sel(on); o.on = on; o.ring = on ? '4px solid #FFD84A' : '0 solid transparent'; o.bg = on ? '#2A3CA8' : '#101C5C'; o.pick = function () { self.setState({ testPet: id }); }; return o; }) : [];
+    var revealed = s.opening && s.phase === 'reveal' && !!SP.pets[s.result];
+    var res = revealed ? pet(s.result) : { name: '', rarity: '', color: '#ffd35a', chance: '', egg: '' };
+    var showPhase = s.opening && !revealed;
+    return {
+      view: this.view, tabs: tabs, eggs: eggs, cur: cur, contents: contents, pets: pets, gal: gal, anims: anims, testEggs: testEggs, testPets: testPets,
+      isShop: s.tab === 'shop', isGallery: s.tab === 'gallery', isTest: s.tab === 'test',
+      revealed: revealed, res: res, showPhase: showPhase, phaseText: PHASE[s.phase] || '',
+      showHint: !s.opening && s.tab !== 'gallery', hint: 'Нажмите на яйцо, чтобы выбрать', showPlaque: !s.opening && s.tab === 'gallery',
+      stageBg: s.tab === 'gallery' && !s.opening ? 'linear-gradient(180deg, #4FB0F0 0%, #A9DBFF 62%, #DDF2FF 100%)' : 'linear-gradient(180deg, #5326A8 0%, #32147A 55%, #1C0B4A 100%)',
+      spin: s.spin, spinLabel: s.spin ? 'Автовращение камеры: вкл.' : 'Автовращение камеры: выкл.',
+      hasErr: !!s.err, err: s.err, fxCount: s.fx,
+      openDemo: function () { self.openDemo(); }, runTest: function () { self.runTest(); }, again: function () { self.again(); },
+      closeOpen: function () { self.closeOpen(); }, toGallery: function () { self.toGallery(); }, toggleSpin: function () { self.toggleSpin(); }
+    };
+  }
+}
+</script>
+</body>
+</html>

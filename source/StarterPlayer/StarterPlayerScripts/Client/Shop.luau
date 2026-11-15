@@ -68,7 +68,7 @@ local TILE = {
 	wrap = rgb(236, 82, 170), vip = rgb(255, 170, 20),
 	fortune20 = rgb(255, 172, 20), jackpot20 = rgb(226, 56, 120), fair30 = rgb(24, 188, 196), server15 = rgb(52, 196, 96),
 	founder = rgb(132, 62, 214), hour_bundle = rgb(226, 120, 20),
-	egg_mystic = rgb(60, 150, 230), egg_royal = rgb(150, 80, 230), egg_cosmic = rgb(230, 120, 30), egg_absolute = rgb(30, 190, 210),
+	egg_forest = rgb(84, 190, 60), egg_amber = rgb(240, 150, 30), egg_tide = rgb(30, 190, 176), egg_storm = rgb(52, 130, 240), egg_astral = rgb(140, 100, 230),
 	coins1 = rgb(132, 214, 36), coins2 = rgb(132, 214, 36), coins3 = rgb(40, 190, 140), coins4 = rgb(80, 130, 255),
 }
 
@@ -86,10 +86,11 @@ local PITCH: { [string]: { string } } = {
 	server15 = { "LUCK ×2 FOR EVERYONE", "15 min · whole server" },
 	founder = { "FOUNDER TAG + AURA", "limited · bigger daily gift" },
 	hour_bundle = { "3 BOOSTS, SAVE 40%", "30 min · mutations, rare, fair" },
-	egg_mystic = { "EXOTIC PET", "Common · Rare" },
-	egg_royal = { "EXOTIC PET", "Common up to Mythic" },
-	egg_cosmic = { "EXOTIC PET", "Rare up to Absolute" },
-	egg_absolute = { "EXOTIC PET", "Epic up to Absolute" },
+	egg_forest = { "BLOCK PET", "Common up to Epic" },
+	egg_amber = { "BLOCK PET", "Uncommon up to Legendary" },
+	egg_tide = { "BLOCK PET", "Rare up to Mythic" },
+	egg_storm = { "BLOCK PET", "Epic up to Divine" },
+	egg_astral = { "BLOCK PET", "Legendary up to Divine" },
 }
 
 -- Мультяшные иллюстрации магазина (папка shop-art/ в репозитории). Номера берутся из Client/AudioIds (art_<имя>).
@@ -621,8 +622,45 @@ end
 
 Shop.cartoon = drawCartoon
 
+-- V34: модели питомцев и яиц из пака блочных моделей лежат в ReplicatedStorage/PetModels/<id>.
+-- packSource отдаёт саму модель (для ViewportFrame: UI.viewport клонирует сам), packModel - чистую копию без скриптов.
+local function packSource(id: string?): Model?
+	local folder = RS:FindFirstChild("PetModels")
+	local src = id and folder and folder:FindFirstChild(id)
+	if src and src:IsA("Model") then
+		return src
+	end
+	return nil
+end
+
+local function packModel(id: string?): Model?
+	local src = packSource(id)
+	if not src then
+		return nil
+	end
+	local m = src:Clone()
+	for _, d in m:GetDescendants() do
+		if d:IsA("LuaSourceContainer") or d:IsA("Humanoid") then
+			d:Destroy()
+		end
+	end
+	return m
+end
+
 -- Ставит иконку товара в parent. Копья и звери берутся из самой игры.
 local function icon(parent: Instance, kind: string, spin: number?)
+	-- V34: яйца из пака рисуются своей 3D-моделью (блочное яйцо во ViewportFrame)
+	local eggDef = Config.EGGS[kind]
+	local eggSrc = eggDef and packSource(eggDef.model)
+	if eggSrc then
+		local okE = pcall(function()
+			local vpE = UI.viewport(eggSrc, { ZIndex = 3 }, math.rad(-30), spin or 0)
+			vpE.Parent = parent
+		end)
+		if okE then
+			return
+		end
+	end
 	-- V29: отрисованные 3D-иконки (tools/render_icons.py, рисуются через EditableImage) важнее мультяшных; не вышло - старая мультяшная
 	if EggArt and EggArt.has(kind) then
 		local img = Instance.new("ImageLabel")
@@ -1428,6 +1466,13 @@ end
 
 -- Безумный вариант обычного животного: модель берём у Fauna150 и красим/увеличиваем. Радужные цвета крутит exoTick.
 local function exoticModel(ex: any): Model?
+	local pm = packModel(ex.model)
+	if pm then
+		return pm
+	end
+	if ex.model then
+		return nil -- модель пака не вставлена в ReplicatedStorage/PetModels: лучше пусто, чем чужое животное
+	end
 	local base = Card.model(ex.base, nil)
 	if not base then
 		return nil
@@ -1498,12 +1543,15 @@ end
 
 -- Портрет животного во ViewportFrame. locked = чёрный силуэт.
 local function exoticPortrait(parent: Instance, ex: any, locked: boolean?, spin: number?, z: number?): ViewportFrame?
-	local m = exoticModel(ex)
+	local src = packSource(ex.model) -- модель пака: UI.viewport клонирует её сам, лишней копии не делаем
+	local m = src or exoticModel(ex)
 	if not m then
 		return nil
 	end
 	local vp = UI.viewport(m, { ZIndex = z or 4 }, math.rad(-30), spin)
-	m:Destroy()
+	if not src then
+		m:Destroy()
+	end
 	vp.Parent = parent
 	local vm = vp:FindFirstChildWhichIsA('Model')
 	local st = EXO_STYLE[ex.style]
@@ -1898,7 +1946,7 @@ local function renderEggBanner(o: Open, parent: Instance, item: any, order: numb
 			minR = ex0.rarity
 		end
 	end
-	local ribText = if minR >= 3 then string.upper(Config.EXOTIC.RARITIES[minR].name) .. " OR BETTER" elseif minR == 2 then "RARE OR BETTER" else "ALL RARITIES"
+	local ribText = if minR >= 2 and minR < 99 then string.upper(Config.EXOTIC.RARITIES[minR].name) .. " OR BETTER" else "ALL RARITIES"
 	local rib = box({ Top = base:Lerp(Color3.new(1, 1, 1), 0.2), Bottom = base:Lerp(Color3.new(0, 0, 0), 0.4), Line = Color3.new(1, 1, 1), LineThick = 2, Radius = 8, Size = UDim2.fromOffset(196, 26), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -16, 0, 12), ZIndex = 6, Parent = f })
 	UI.label({ Text = ribText, TextSize = 15, Color = K.white, StrokeColor = base:Lerp(Color3.new(0, 0, 0), 0.7), Stroke = 3, Size = UDim2.fromScale(1, 1), ZIndex = 7, Parent = rib })
 	UI.label({ Text = string.upper(item.name), TextSize = 36, Color = K.white, StrokeColor = base:Lerp(Color3.new(0, 0, 0), 0.6), Stroke = 5, Size = UDim2.new(1, -420, 0, 42), Position = UDim2.fromOffset(190, 6), XAlign = Enum.TextXAlignment.Left, ZIndex = 5, Parent = f })
@@ -1928,7 +1976,7 @@ local function renderEggBanner(o: Open, parent: Instance, item: any, order: numb
 		local rar = Config.EXOTIC.RARITIES[g.r]
 		local top = gi == #groups and #groups > 1
 		local w, h = top and 100 or 82, top and 112 or 98
-		local card = box({ Top = rgb(34, 18, 70), Bottom = rgb(20, 10, 46), Line = rar.color, LineThick = top and 4 or 3, Radius = 10, Size = UDim2.fromOffset(w, h), Position = UDim2.fromOffset(x, top and 66 or 78), ZIndex = 3, Parent = f })
+		local card = box({ Top = rgb(16, 30, 100), Bottom = rgb(10, 20, 70), Line = rar.color, LineThick = top and 4 or 3, Radius = 10, Size = UDim2.fromOffset(w, h), Position = UDim2.fromOffset(x, top and 66 or 78), ZIndex = 3, Parent = f })
 		if top then
 			glowSpot(card, rar.color, 150, UDim2.fromScale(0.5, 0.5), 0.55)
 			local stroke = card:FindFirstChildOfClass("UIStroke")
@@ -2000,9 +2048,11 @@ openOdds = function(key: string)
 	end
 	local sg = newI('ScreenGui', { Name = 'EggOdds', DisplayOrder = 40, ResetOnSpawn = false, IgnoreGuiInset = true }, UI.top.Parent)
 	local dim = newI('TextButton', { Text = '', AutoButtonColor = false, BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 0.45, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1) }, sg)
-	local panel = box({ Top = K.heroTop, Mid = K.heroMid, Bottom = K.heroBot, Line = K.heroLine, Size = UDim2.fromOffset(560, 560), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Parent = dim })
-	UI.label({ Text = string.upper(egg.name) .. ' ODDS', TextSize = 30, Color = egg.color, StrokeColor = K.heroLine, Stroke = 4, Size = UDim2.new(1, -20, 0, 36), Position = UDim2.fromOffset(10, 8), ZIndex = 3, Parent = panel })
-	UI.label({ Text = 'Exact chances. The server rolls with this same table, so what you see here is what you get.', TextSize = 14, Color = K.white, StrokeColor = K.heroLine, Stroke = 2, Wrap = true, Size = UDim2.new(1, -30, 0, 36), Position = UDim2.fromOffset(15, 46), ZIndex = 3, Parent = panel })
+	-- V34 (дизайн из Claude Design): тёмно-синяя панель с толстой рамкой и нижней гранью, карточки строк с рамкой цвета редкости и портретом
+	box({ Top = K.frame, Bottom = K.frame, Radius = 16, Size = UDim2.fromOffset(560, 560), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 7), Parent = dim })
+	local panel = box({ Top = rgb(14, 26, 92), Bottom = rgb(8, 16, 66), Line = K.frame, LineThick = 4, Radius = 16, Size = UDim2.fromOffset(560, 560), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Parent = dim })
+	UI.label({ Text = string.upper(egg.name) .. ' ODDS', TextSize = 30, Color = K.white, StrokeColor = K.frame, Stroke = 4, Size = UDim2.new(1, -20, 0, 36), Position = UDim2.fromOffset(10, 8), ZIndex = 3, Parent = panel })
+	UI.label({ Text = 'Exact chances. The server rolls with this same table, so what you see here is what you get.', TextSize = 14, Color = rgb(201, 210, 255), StrokeColor = K.frame, Stroke = 2, Wrap = true, Size = UDim2.new(1, -30, 0, 36), Position = UDim2.fromOffset(15, 46), ZIndex = 3, Parent = panel })
 	local odds = Config.eggOdds(key)
 	local byRar: { [number]: number } = {}
 	for _, o in odds do
@@ -2015,7 +2065,7 @@ openOdds = function(key: string)
 			table.insert(sums, string.format('%s %.2f%%', Config.EXOTIC.RARITIES[r].name, byRar[r]))
 		end
 	end
-	UI.label({ Text = table.concat(sums, '  ·  '), TextSize = 15, Color = K.goldText, StrokeColor = K.heroLine, Stroke = 2, Wrap = true, Size = UDim2.new(1, -30, 0, 36), Position = UDim2.fromOffset(15, 84), ZIndex = 3, Parent = panel })
+	UI.label({ Text = table.concat(sums, '  ·  '), TextSize = 15, Color = K.goldText, StrokeColor = K.frame, Stroke = 3, Wrap = true, Size = UDim2.new(1, -30, 0, 36), Position = UDim2.fromOffset(15, 84), ZIndex = 3, Parent = panel })
 	local list = newI('ScrollingFrame', { BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.new(1, -20, 1, -190), Position = UDim2.fromOffset(10, 124), CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, ScrollBarThickness = 6, ZIndex = 3 }, panel)
 	newI('UIListLayout', { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }, list)
 	local sorted = table.clone(odds)
@@ -2029,18 +2079,19 @@ openOdds = function(key: string)
 	for i, o in sorted do
 		local ex = Config.EXOTIC_BY_ID[o.id]
 		local rar = Config.EXOTIC.RARITIES[ex.rarity]
-		local row = newI('Frame', { BackgroundColor3 = K.tile, BackgroundTransparency = 0.35, BorderSizePixel = 0, Size = UDim2.new(1, -8, 0, 44), LayoutOrder = i, ZIndex = 3 }, list)
-		UI.corner(8).Parent = row
-		newI('Frame', { BackgroundColor3 = rar.color, BorderSizePixel = 0, Size = UDim2.fromOffset(8, 30), Position = UDim2.fromOffset(6, 7), ZIndex = 4 }, row)
-		UI.label({ Text = ex.name, TextSize = 16, Color = rar.color, Stroke = 2, XAlign = Enum.TextXAlignment.Left, Size = UDim2.fromOffset(170, 40), Position = UDim2.fromOffset(20, 2), ZIndex = 4, Parent = row })
-		UI.label({ Text = fxOneLine(ex), TextSize = 12, Color = K.white, Stroke = 1, Wrap = true, XAlign = Enum.TextXAlignment.Left, Size = UDim2.new(1, -300, 0, 42), Position = UDim2.fromOffset(194, 1), ZIndex = 4, Parent = row })
-		UI.label({ Text = string.format('%.2f%%', o.pct), TextSize = 18, Color = K.goldText, Stroke = 2, XAlign = Enum.TextXAlignment.Right, Size = UDim2.fromOffset(80, 40), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -8, 0, 2), ZIndex = 4, Parent = row })
+		local row = box({ Top = rgb(22, 38, 112), Bottom = rgb(14, 26, 92), Line = rar.color, LineThick = 3, Radius = 12, Size = UDim2.new(1, -8, 0, 58), LayoutOrder = i, ZIndex = 3, Parent = list })
+		local thumb = box({ Top = rgb(30, 46, 130), Bottom = rgb(22, 36, 110), Line = K.frame, LineThick = 2, Radius = 8, Size = UDim2.fromOffset(46, 46), Position = UDim2.fromOffset(6, 6), ZIndex = 4, Parent = row })
+		Pets.deferPortrait(holder(thumb, UDim2.fromScale(1, 1), UDim2.new(), 4), ex)
+		UI.label({ Text = ex.name, TextSize = 16, Color = K.white, StrokeColor = K.frame, Stroke = 2, XAlign = Enum.TextXAlignment.Left, Size = UDim2.fromOffset(170, 26), Position = UDim2.fromOffset(60, 6), ZIndex = 4, Parent = row })
+		UI.label({ Text = string.upper(rar.name), TextSize = 12, Color = rar.color, StrokeColor = K.frame, Stroke = 2, XAlign = Enum.TextXAlignment.Left, Size = UDim2.fromOffset(170, 18), Position = UDim2.fromOffset(60, 32), ZIndex = 4, Parent = row })
+		UI.label({ Text = fxOneLine(ex), TextSize = 12, Color = rgb(201, 210, 255), Stroke = 1, Wrap = true, XAlign = Enum.TextXAlignment.Left, Size = UDim2.new(1, -350, 0, 46), Position = UDim2.fromOffset(234, 6), ZIndex = 4, Parent = row })
+		UI.label({ Text = string.format('%.2f%%', o.pct), TextSize = 19, Color = K.goldText, StrokeColor = K.frame, Stroke = 3, XAlign = Enum.TextXAlignment.Right, Size = UDim2.fromOffset(80, 40), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -10, 0, 9), ZIndex = 4, Parent = row })
 	end
 	local note = 'Duplicates turn into shards that upgrade your exotics.'
 	if item then
 		note = string.format('%s  ·  %d R$', note, item.price)
 	end
-	UI.label({ Text = note, TextSize = 13, Color = K.white, StrokeColor = K.heroLine, Stroke = 2, Wrap = true, Size = UDim2.new(1, -240, 0, 40), Position = UDim2.fromOffset(15, 510), XAlign = Enum.TextXAlignment.Left, ZIndex = 3, Parent = panel })
+	UI.label({ Text = note, TextSize = 13, Color = rgb(201, 210, 255), StrokeColor = K.frame, Stroke = 2, Wrap = true, Size = UDim2.new(1, -240, 0, 40), Position = UDim2.fromOffset(15, 510), XAlign = Enum.TextXAlignment.Left, ZIndex = 3, Parent = panel })
 	local close = UI.button({ Text = 'CLOSE', TextSize = 22, Color = K.red, Size = UDim2.fromOffset(150, 42), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 508), Sound = 'press' }, function()
 		sg:Destroy()
 	end)
@@ -2099,7 +2150,7 @@ local function playHatchBasic(h: any, done: () -> ())
 	for i, l in fxLines(ex) do
 		UI.label({ Text = l[1], TextSize = 20, Color = l[2], StrokeColor = Color3.new(0, 0, 0), Stroke = 3, Size = UDim2.new(1, 0, 0, 24), Position = UDim2.fromOffset(0, 386 + (i - 1) * 24), ZIndex = 12, Parent = reveal })
 	end
-	local tag = h.dupe and string.format('DUPLICATE  +%d shards', h.shards or 0) or 'NEW EXOTIC!'
+	local tag = h.dupe and string.format('DUPLICATE  +%d shards', h.shards or 0) or 'NEW PET!'
 	UI.label({ Text = tag, TextSize = 24, Color = h.dupe and rgb(160, 220, 255) or K.goldText, StrokeColor = Color3.new(0, 0, 0), Stroke = 4, Size = UDim2.new(1, 0, 0, 30), Position = UDim2.fromOffset(0, 500), ZIndex = 12, Parent = reveal })
 	local finish: () -> () = function() end -- настоящая задаётся ниже, кнопка вызывает её по имени
 	local cont = UI.button({ Text = 'CONTINUE', TextSize = 22, Color = K.green, Size = UDim2.fromOffset(200, 46), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 1, -56), Sound = 'press' }, function()
@@ -2306,6 +2357,9 @@ local function openExotic()
 		totalsLabel.Text = #parts > 0 and ('Active: ' .. table.concat(parts, ' · ')) or 'Open eggs in the Shop, then equip up to 3 exotics here.'
 		for i, ex in Config.EXOTICS do
 			local owned = (E.owned[ex.id] or 0) > 0
+			if ex.legacy and not owned then
+				continue -- V34: старые экзотики показываются только у тех, у кого они уже есть
+			end
 			local rar = Config.EXOTIC.RARITIES[ex.rarity]
 			local card = newI('Frame', { BackgroundColor3 = rar.color:Lerp(Color3.new(0.05, 0.03, 0.14), 0.78), BorderSizePixel = 0, LayoutOrder = i }, scroll)
 			UI.corner(14).Parent = card
@@ -2314,7 +2368,12 @@ local function openExotic()
 				UI.glow(card, rar.color, 200, 0.62).Position = UDim2.fromOffset(125, 80)
 			end
 			local pbox = newI('Frame', { BackgroundTransparency = 1, Size = UDim2.new(1, -16, 0, 130), Position = UDim2.fromOffset(8, 6), ZIndex = 3 }, card)
-			exoticPortrait(pbox, ex, not owned, 0, 4)
+			if owned or not ex.model then
+				exoticPortrait(pbox, ex, not owned, 0, 4)
+			else
+				-- V34: у питомцев из пака модель тяжёлая: для неполученных вместо 25 вьюпортов — большой «?»
+				UI.label({ Text = '?', TextSize = 80, Color = rar.color, StrokeColor = K.frame, Stroke = 5, Size = UDim2.fromScale(1, 1), ZIndex = 4, Parent = pbox })
+			end
 			UI.label({ Text = ex.name, TextSize = 20, Color = owned and rar.color or K.white, Stroke = 3, Scaled = true, MaxSize = 20, Size = UDim2.new(1, -12, 0, 24), Position = UDim2.fromOffset(6, 138), ZIndex = 4, Parent = card })
 			UI.label({ Text = string.upper(rar.name) .. (owned and string.format('   Lv %d/%d', E.level[ex.id] or 0, Config.EXOTIC.MAX_LEVEL) or '   NOT OWNED'), TextSize = 13, Color = K.white, Stroke = 2, Size = UDim2.new(1, -12, 0, 16), Position = UDim2.fromOffset(6, 162), ZIndex = 4, Parent = card })
 			for j, l in fxLines(ex, owned and (E.level[ex.id] or 0) or 0) do
