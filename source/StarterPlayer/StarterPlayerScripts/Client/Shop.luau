@@ -2145,7 +2145,7 @@ local function renderEggBanner(o: Open, parent: Instance, item: any, order: numb
 	local ribText = if minR >= 2 and minR < 99 then string.upper(Config.EXOTIC.RARITIES[minR].name) .. " OR BETTER" else "ALL RARITIES"
 	local rib = box({ Top = base:Lerp(Color3.new(1, 1, 1), 0.2), Bottom = base:Lerp(Color3.new(0, 0, 0), 0.4), Line = Color3.new(1, 1, 1), LineThick = 2, Radius = 8, Size = UDim2.fromOffset(196, 26), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -16, 0, 12), ZIndex = 6, Parent = f })
 	UI.label({ Text = ribText, TextSize = 15, Color = K.white, StrokeColor = base:Lerp(Color3.new(0, 0, 0), 0.7), Stroke = 3, Size = UDim2.fromScale(1, 1), ZIndex = 7, Parent = rib })
-	UI.label({ Text = string.upper(item.name), TextSize = 36, Color = K.white, StrokeColor = base:Lerp(Color3.new(0, 0, 0), 0.6), Stroke = 5, Size = UDim2.new(1, -420, 0, 42), Position = UDim2.fromOffset(190, 6), XAlign = Enum.TextXAlignment.Left, ZIndex = 5, Parent = f })
+	UI.label({ Text = string.upper(item.name), TextSize = 36, Scaled = true, MaxSize = 36, Color = K.white, StrokeColor = base:Lerp(Color3.new(0, 0, 0), 0.6), Stroke = 5, Size = UDim2.new(1, -420, 0, 42), Position = UDim2.fromOffset(190, 6), XAlign = Enum.TextXAlignment.Left, ZIndex = 5, Parent = f })
 	UI.label({ Text = "Exotic pets you cannot find while hunting", TextSize = 15, Color = K.white, StrokeColor = base:Lerp(Color3.new(0, 0, 0), 0.6), Stroke = 3, Size = UDim2.new(1, -420, 0, 18), Position = UDim2.fromOffset(192, 46), XAlign = Enum.TextXAlignment.Left, ZIndex = 5, Parent = f })
 	local groups: { any } = {}
 	local byRarity: { [number]: any } = {}
@@ -2257,7 +2257,7 @@ openOdds = function(key: string)
 		byRar[r] = (byRar[r] or 0) + o.pct
 	end
 	local sums = {}
-	for r = 6, 1, -1 do
+	for r = #Config.EXOTIC.RARITIES, 1, -1 do -- V42: было 6, и шанс Divine (7-я редкость) пропадал из верхней строки (сумма была 98%)
 		if byRar[r] then
 			table.insert(sums, string.format('%s %.2f%%', Config.EXOTIC.RARITIES[r].name, byRar[r]))
 		end

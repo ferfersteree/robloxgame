@@ -360,3 +360,8 @@ Shop art ids are now read from `Client/AudioIds` (keys `art_<name>`). `tools/upl
 - **Fixes found by opening every window in Play.** The empty-bag message sat inside the card grid (UIGridLayout forced it into a 128 px column, seven lines of text): it is a centred line now. The Reduced Effects label in Settings was 3 px too wide: it scales to fit. The "OWNED" label inside an info card was drawn under its box: ZIndex.
 - **Checked.** Every menu (Bag, Spears, Forge, Market, Animals, Quests, Potions, Settings, Demo, Shop) opens without errors and with no clipped text except the two labels above; a real click on the rank banner opens the card.
 - **Seen, not changed.** 3D shop icons draw 1-2 seconds after they first scroll into view (ViewportFrames render lazily).
+
+## V44: odds summary and egg title
+
+- **Odds summary.** The first line of the ODDS window ("Mythic 10% · Legendary 23% · Epic 65%") looped over rarities 6..1 while there are seven (Common .. Divine), so the Divine share was missing: for the Storm Heart egg the line added up to 98%, for the Astral Core egg to 95%. It loops over `#Config.EXOTIC.RARITIES` now; checked in Play for all five eggs (each line adds up to 100% and matches the table under it; the server tables also add up to 100.0000%).
+- **Egg title.** "FOREST TALISMAN EGG" ran under the "ALL RARITIES" chip; the title scales to its box now. A scan of every text label of the whole shop list (also those scrolled out of view) finds none that is cut off.
