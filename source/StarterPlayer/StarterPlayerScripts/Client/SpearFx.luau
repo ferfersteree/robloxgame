@@ -271,15 +271,19 @@ local function land(f: Flight)
 		Fx.impact("dust", p, s.trail[1], s.trail[2], 1)
 		Sfx.at(p, "hit_ground", nil, 0.7)
 	else
+		-- V46: «Reduced Effects» (Fx.lowFx) раньше не влияла на посадку копья: на слабом телефоне она строила до ~130 деталей
+		local low = Fx.lowFx == true
 		local k = 1 + 0.35 * (f.tier - 1)
-		Fx.impact(s.impact, p, s.trail[1], s.trail[2], k)
+		Fx.impact(s.impact, p, s.trail[1], s.trail[2], if low then math.min(k, 1.2) else k)
 		Fx.ring(p + Vector3.new(0, 0.2, 0), tier.color, 4 + f.tier * 2.2, 0.55 + f.tier * 0.05)
-		if f.tier >= 3 then
+		if f.tier >= 3 and not low then
 			Fx.ring(p + Vector3.new(0, 0.3, 0), s.trail[1], 2 + f.tier * 1.4, 0.4)
 			Fx.light(p + Vector3.new(0, 2, 0), tier.color, 18 + f.tier * 4, 4 + f.tier, 0.6)
 		end
 		if f.tier >= 5 then
-			Fx.lightning(p + Vector3.new(math.random(-10, 10), 70, math.random(-10, 10)), p, tier.color, 10, 0.5)
+			if not low then
+				Fx.lightning(p + Vector3.new(math.random(-10, 10), 70, math.random(-10, 10)), p, tier.color, 10, 0.5)
+			end
 			Sfx.at(p, "boom", 0.9, 1)
 		end
 		Sfx.at(p, "hit", 1.1 - f.tier * 0.06, 0.7 + f.tier * 0.05)
@@ -327,7 +331,7 @@ RunService.RenderStepped:Connect(function(dt)
 			end
 		end
 		-- молнии вдоль полёта (ГРОМ и выше)
-		if not f.v15 and not f.crashed and f.tier >= 5 and f.t >= f.nextBolt then
+		if not f.v15 and not f.crashed and f.tier >= 5 and f.t >= f.nextBolt and Fx.lowFx ~= true then
 			f.nextBolt = f.t + (f.tier >= 6 and 0.18 or 0.3)
 			local tier = Config.TIERS[f.tier]
 			Fx.lightning(p + Vector3.new(math.random(-14, 14), 45, math.random(-14, 14)), p, tier.color, 8, 0.3)

@@ -1,9 +1,10 @@
-"""Replace the Source of several ModuleScripts inside an .rbxl in one pass (patch.py does one module per run).
+"""Replace the Source of several scripts (ModuleScript, LocalScript or Script) inside an .rbxl in one pass (patch.py does one module per run).
 
-    python tools/patch_many.py in.rbxl out.rbxl <ModulePath> <new_source_file> [<ModulePath> <new_source_file> ...]
+    python tools/patch_many.py in.rbxl out.rbxl <ScriptPath> <new_source_file> [<ScriptPath> <new_source_file> ...]
 
-ModulePath is the full instance path, e.g. StarterPlayer/StarterPlayerScripts/Client/Sfx. Only the Source property chunk
-is rewritten (re-compressed with the codec it already used); every other chunk is copied byte for byte.
+ScriptPath is the full instance path, e.g. StarterPlayer/StarterPlayerScripts/Client/Sfx. Only the Source property chunks
+of the classes involved are rewritten (re-compressed with the codec they already used); every other chunk is copied
+byte for byte.
 """
 import struct
 import sys
@@ -12,6 +13,9 @@ import lz4.block
 import zstandard
 
 from rbx import accum, parse, read_ints
+
+SCRIPT_CLASSES = ("ModuleScript", "LocalScript", "Script")
+ZSTD_MAGIC = b"\x28\xb5\x2f\xfd"
 
 
 def main():
@@ -33,7 +37,7 @@ def main():
 
     by_path = {}
     for i, c in inst.items():
-        if c == "ModuleScript":
+        if c in SCRIPT_CLASSES:
             by_path.setdefault(path(i), []).append(i)
 
     # raw chunk walk
@@ -53,37 +57,43 @@ def main():
         name, cl, ul, res, raw = c
         if cl == 0:
             return raw
-        if raw[:4] == b"\x28\xb5\x2f\xfd":
+        if raw[:4] == ZSTD_MAGIC:
             return zstandard.ZstdDecompressor().decompress(raw, max_output_size=ul)
         return lz4.block.decompress(raw, uncompressed_size=ul)
 
-    cid = None
-    ids = None
+    cls_ids = {}  # class id -> (class name, instance ids in file order)
     for c in chunks:
         if c[0] == b"INST":
             b = body(c)
             k, = struct.unpack("<i", b[:4])
             l, = struct.unpack("<i", b[4:8])
-            if b[8:8 + l] == b"ModuleScript":
-                cid = k
+            cn = b[8:8 + l].decode()
+            if cn in SCRIPT_CLASSES:
                 n, = struct.unpack("<i", b[9 + l:13 + l])
-                ids = accum(read_ints(b[13 + l:13 + l + 4 * n], n))
-    assert cid is not None
+                cls_ids[k] = (cn, accum(read_ints(b[13 + l:13 + l + 4 * n], n)))
+    assert cls_ids
 
-    new_by_index = {}
+    new_by_class = {}  # class id -> {index inside that class: (target, new source bytes)}
     for target, newfile in pairs:
         hits = by_path.get(target, [])
-        assert len(hits) == 1, f"{target}: found {len(hits)} modules"
-        new_by_index[ids.index(hits[0])] = (target, open(newfile, "rb").read())
+        assert len(hits) == 1, f"{target}: found {len(hits)} scripts"
+        for k, (cn, ids) in cls_ids.items():
+            if hits[0] in ids:
+                new_by_class.setdefault(k, {})[ids.index(hits[0])] = (target, open(newfile, "rb").read())
+                break
+        else:
+            raise AssertionError(f"{target}: class not found")
 
-    done = False
+    done = 0
     for c in chunks:
         if c[0] != b"PROP":
             continue
         b = body(c)
         k, = struct.unpack("<i", b[:4])
         l, = struct.unpack("<i", b[4:8])
-        if k == cid and b[8:8 + l] == b"Source":
+        if k in new_by_class and b[8:8 + l] == b"Source":
+            new_by_index = new_by_class[k]
+            ids = cls_ids[k][1]
             q = 9 + l
             out = [b[:q]]
             for i in range(len(ids)):
@@ -96,17 +106,17 @@ def main():
                 out.append(struct.pack("<i", len(s)) + s)
             assert q == len(b)
             nb = b"".join(out)
-            if c[4][:4] == b"\x28\xb5\x2f\xfd":
+            if c[4][:4] == ZSTD_MAGIC:
                 comp = zstandard.ZstdCompressor(level=19).compress(nb)
             else:
                 comp = lz4.block.compress(nb, store_size=False, mode="high_compression", compression=9)
             c[1], c[2], c[4] = len(comp), len(nb), comp
-            done = True
-    assert done
+            done += 1
+    assert done == len(new_by_class), f"rewrote {done} Source chunks, expected {len(new_by_class)}"
     hdr = data[:32]
     outb = hdr + b"".join(c[0] + struct.pack("<iii", c[1], c[2], c[3]) + c[4] for c in chunks)
     open(dst, "wb").write(outb)
-    print("patched", len(pairs), "modules;", len(data), "->", len(outb), "bytes")
+    print("patched", len(pairs), "scripts;", len(data), "->", len(outb), "bytes")
 
 
 if __name__ == "__main__":

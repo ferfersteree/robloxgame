@@ -179,6 +179,7 @@ local function applySettings(s: any)
 	Sfx.enabled = s.sfx ~= false
 	Sfx.setMusic(s.music ~= false)
 	Fx.lowFx = s.lowFx == true
+	game:GetService("Players").LocalPlayer:SetAttribute("LowFx", s.lowFx == true) -- V46: V15SpearPresentation/LiveSpearV15 reads it on landing
 end
 
 Backend.onChange(function(d)
