@@ -820,6 +820,47 @@ local function tileHover(f: GuiObject)
 	end)
 end
 
+-- V39: подробная карточка товара (определена ниже, после окна ODDS). Плитки зовут её по клику и по значку «i».
+local openInfo: (string) -> () = function(_: string) end
+
+-- Невидимая кнопка на всю плитку (под остальными элементами, кнопка цены остаётся главнее) и значок «i» для подсказки
+local function tileInfo(f: GuiObject, item: any, chipLeft: boolean?, chipY: number?)
+	local hit = Instance.new("TextButton")
+	hit.Name = "InfoHit"
+	hit.Text = ""
+	hit.AutoButtonColor = false
+	hit.BackgroundTransparency = 1
+	hit.Size = UDim2.fromScale(1, 1)
+	hit.ZIndex = 1
+	hit.Parent = f
+	hit.Activated:Connect(function()
+		Sfx.play("shop_press", 1.1, 0.35)
+		openInfo(item.key)
+	end)
+	local chip = Instance.new("TextLabel")
+	chip.Name = "InfoChip"
+	chip.Text = "i"
+	chip.Font = Enum.Font.GothamBlack
+	chip.TextSize = 15
+	chip.TextColor3 = Color3.new(1, 1, 1)
+	chip.BackgroundColor3 = Color3.fromRGB(20, 12, 70)
+	chip.BackgroundTransparency = 0.12
+	chip.BorderSizePixel = 0
+	chip.Size = UDim2.fromOffset(22, 22)
+	local side = if chipLeft then 0 else 1
+	chip.AnchorPoint = Vector2.new(side, 0)
+	chip.Position = UDim2.new(side, if chipLeft then 8 else -8, 0, chipY or 36)
+	chip.ZIndex = 5
+	corner(CUBE_R).Parent = chip
+	local st = Instance.new("UIStroke")
+	st.Color = Color3.new(1, 1, 1)
+	st.Transparency = 0.4
+	st.Thickness = 1.5
+	st.LineJoinMode = Enum.LineJoinMode.Miter
+	st.Parent = chip
+	chip.Parent = f
+end
+
 ---------------------------------------------------------------------
 -- Кирпичики оформления
 ---------------------------------------------------------------------
@@ -938,6 +979,11 @@ local function sectionBar(o, parent: Instance, text: string, order: number)
 			end
 		end)
 	end
+end
+
+-- V39: строка-пояснение под заголовком раздела
+local function sectionNote(parent: Instance, text: string, order: number)
+	UI.label({ Text = text, TextSize = 14, Color = K.white, Stroke = 2, StrokeColor = K.navy, Wrap = true, Size = UDim2.new(1, 0, 0, 34), LayoutOrder = order, Parent = parent })
 end
 
 local function grid(parent: Instance, cols: number, cellHeight: number, order: number): Frame
@@ -1498,6 +1544,7 @@ local function renderBanner(o: Open, parent: Instance, item: any, order: number)
 	table.insert(o.shiny, f)
 	introPop(o, f)
 	tileHover(f)
+	tileInfo(f, item, false, 8) -- banner: the chip sits in the top corner, clear of the price button
 end
 
 -- Вертикальная плитка: пасс, буст или пак монет
@@ -1541,6 +1588,9 @@ local function renderTile(o: Open, parent: Instance, item: any, order: number, k
 		UI.label({ Text = "OWNED", TextSize = 19, StrokeColor = rgb(107, 61, 0), Size = UDim2.fromScale(1, 1), Parent = owned })
 	else
 		buyButton(item, kind == "egg" and UDim2.new(1, -84, 0, 34) or UDim2.new(1, -20, 0, 34), UDim2.fromOffset(10, 172), 19, f).ZIndex = 4
+	end
+	if kind ~= "egg" then
+		tileInfo(f, item, kind == "pack")
 	end
 	if kind == "boost" then
 		o.status[item.key] = UI.label({ Text = "", TextSize = 13, Color = K.goldText, Stroke = 2, StrokeColor = line, Size = UDim2.new(1, -12, 0, 16), Position = UDim2.fromOffset(6, 34), XAlign = Enum.TextXAlignment.Left, ZIndex = 4, Parent = f })
@@ -2248,6 +2298,258 @@ openOdds = function(key: string)
 	end)
 end
 
+---------------------------------------------------------------------
+-- V39: подробная карточка товара. Клик по плитке (или значок «i») открывает её: что именно даёт товар (цифры берутся из
+-- Config.SHOP, поэтому они не расходятся с игрой), сколько действует, чем отличается от бесплатного.
+---------------------------------------------------------------------
+local function pctText(v: number): string
+	return tostring(math.floor(v * 100 + 0.5)) .. "%"
+end
+
+local function minText(sec: number): string
+	return tostring(math.floor(sec / 60 + 0.5)) .. " min"
+end
+
+-- { tag, note, get = { { emoji, head, text } }, know = { { emoji, head, text } } } или nil (для яиц есть окно ODDS)
+local function infoFor(item: any): any
+	local P = SHOP.PERK
+	local k = item.key
+	local passNote = "One-time purchase. It stays on your account forever, on every server."
+	local boostNote = "Boost time runs only while you are in the game. Buy again to add more time."
+	local forever = { "⏱", "How long", "Forever. You buy it once." }
+	local stacking = { "➕", "Stacking", "Bonuses to the same stat add up; they do not multiply." }
+	if k == "charm" then
+		return {
+			tag = "GAME PASS", note = passNote,
+			get = {
+				{ "🍀", "Luck ×" .. (1 + P.charmLuck), "Your luck is doubled on every throw." },
+				{ "🎯", "Rare chances +" .. pctText(P.charmCaps), "Rare animals come up more often, on every hunt." },
+			},
+			know = {
+				forever,
+				{ "🆓", "Without it", "Luck potions bought with coins give only +" .. pctText(P.boostCaps) .. " rare chance, for a short time." },
+				stacking,
+			},
+		}
+	elseif k == "insight" then
+		return {
+			tag = "GAME PASS", note = passNote,
+			get = { { "📈", P.forecastHours .. "-hour forecast", "See which rarity is in hot demand for the next " .. P.forecastHours .. " hours, before the prices move." } },
+			know = {
+				forever,
+				{ "🆓", "Without it", "You only see the current hour." },
+				{ "💎", "Free with Diamond", "The Diamond supporter rank includes this pass." },
+			},
+		}
+	elseif k == "broker" then
+		return {
+			tag = "GAME PASS", note = passNote,
+			get = { { "📉", "Prices barely drop", "Selling many of the same animal barely lowers its price." } },
+			know = { forever, { "🆓", "Without it", "Every sale of the same animal pushes its price down." } },
+		}
+	elseif k == "smith" then
+		return {
+			tag = "GAME PASS", note = passNote,
+			get = {
+				{ "🔨", "Forge levels 6 and 7", "Two extra forge levels for your spears." },
+				{ "💰", "Forging costs " .. pctText(P.smithDiscount) .. " less", "The discount applies to every forge." },
+			},
+			know = { forever, { "🆓", "Without it", "You can forge up to level 5." } },
+		}
+	elseif k == "wrap" then
+		return {
+			tag = "GAME PASS", note = passNote,
+			get = { { "🎁", "Wrap the whole bag", "Tie one bow and every animal in your bag is wrapped." } },
+			know = { forever, { "🆓", "Without it", "You wrap one animal at a time." } },
+		}
+	elseif k == "vip" then
+		return {
+			tag = "GAME PASS", note = passNote,
+			get = {
+				{ "🏪", "Sell from anywhere", "Sell your animals from any place." },
+				{ "🏷", "Gold VIP tag", "A gold VIP tag on your name." },
+				{ "⭐", "+" .. pctText(P.vipXp) .. " XP", "You level up faster." },
+			},
+			know = { forever },
+		}
+	elseif k == "founder" then
+		return {
+			tag = "LIMITED GAME PASS", note = passNote,
+			get = {
+				{ "🏷", "FOUNDER tag", "A purple FOUNDER tag on your name." },
+				{ "✨", "Starlight aura", "A starlight aura around your character." },
+				{ "🎁", "Bigger daily gift", "Your daily gift is larger." },
+			},
+			know = { { "⏳", "Limited edition", "It is sold only for a limited time. The game owner sets the end date." }, forever },
+		}
+	elseif k == "fortune20" then
+		return {
+			tag = "BOOST · " .. minText(item.dur), note = boostNote,
+			get = { { "✨", "Mutations ×" .. P.fortuneMutMul, "Gold and Rainbow mutations come up " .. P.fortuneMutMul .. " times more often." } },
+			know = { { "⏱", "How long", minText(item.dur) .. " of play time." }, stacking },
+		}
+	elseif k == "jackpot20" then
+		return {
+			tag = "BOOST · " .. minText(item.dur), note = boostNote,
+			get = { { "🎰", "Rare chances +" .. pctText(P.jackpotCaps), "Rare animals come up much more often." } },
+			know = { { "⏱", "How long", minText(item.dur) .. " of play time." }, stacking },
+		}
+	elseif k == "fair30" then
+		return {
+			tag = "BOOST · " .. minText(item.dur), note = boostNote,
+			get = {
+				{ "🎪", "No price drops", "Selling animals does not lower their prices." },
+				{ "📊", "No weak-demand hours", "Demand stays good the whole time." },
+			},
+			know = { { "⏱", "How long", minText(item.dur) .. " of play time." } },
+		}
+	elseif k == "hour_bundle" then
+		local f, j, t = Config.SHOP_BY_KEY.fortune20, Config.SHOP_BY_KEY.jackpot20, Config.SHOP_BY_KEY.fair30
+		local apart = (f and f.price or 79) * 1.5 + (j and j.price or 99) * 1.5 + (t and t.price or 59)
+		local saved = math.floor((1 - item.price / apart) * 20 + 0.5) * 5
+		return {
+			tag = "BUNDLE · " .. minText(item.dur), note = boostNote,
+			get = {
+				{ "✨", "Golden Hour", "Gold and Rainbow mutations ×" .. P.fortuneMutMul .. "." },
+				{ "🎰", "Jackpot Hour", "Rare chances +" .. pctText(P.jackpotCaps) .. "." },
+				{ "🎪", "Trade Fair", "No price drops and no weak-demand hours." },
+			},
+			know = {
+				{ "⏱", "How long", "All three run for " .. minText(item.dur) .. " of play time." },
+				{ "💰", "Saves about " .. saved .. "%", "Bought one by one, the same three cost " .. math.floor(apart + 0.5) .. " R$. The bundle costs " .. item.price .. " R$." },
+			},
+		}
+	elseif k == "server15" then
+		return {
+			tag = "SERVER BOOST · " .. minText(item.dur), note = "The bonus applies to everyone who is on your server while it runs.",
+			get = {
+				{ "🎉", "Luck ×" .. (1 + P.serverLuck), "For every player on your server." },
+				{ "🎯", "Rare chances +" .. pctText(P.serverCaps), "For every player on your server." },
+			},
+			know = { { "⏱", "How long", minText(item.dur) .. "." }, { "👥", "Everyone benefits", "You pay once, the whole server gets the bonus." } },
+		}
+	elseif item.kind == "coins" then
+		local n = Config.shopCoins(Backend.data, item.k)
+		return {
+			tag = "COINS", note = "Coins are added to your balance right away.",
+			get = {
+				{ "💰", "+" .. Num.short(n) .. " coins", "Added to your coins right away." },
+				{ "📊", "Grows with you", "About " .. item.k .. "× the price of the next spear you can buy, so a pack is worth the same at every stage of the game." },
+			},
+			know = { { "💱", "Value", "About " .. math.floor(n / item.price + 0.5) .. " coins for every R$." } },
+		}
+	end
+	return nil
+end
+
+local infoGui: ScreenGui? = nil
+
+openInfo = function(key: string)
+	local item = Config.SHOP_BY_KEY[key]
+	local info = item and infoFor(item)
+	if not info then
+		return
+	end
+	if infoGui then
+		infoGui:Destroy()
+		infoGui = nil
+	end
+	local base = TILE[key] or rgb(70, 160, 245)
+	local line = base:Lerp(Color3.new(1, 1, 1), 0.18)
+	local W, H = 600, 664
+	-- top-level ScreenGui, order 6: above the shop window (5), below the "unlocked" screens (7) and toasts (10), so a purchase made from this card shows its result on top
+	local sg = newI("ScreenGui", { Name = "ItemInfo", DisplayOrder = 6, ResetOnSpawn = false, IgnoreGuiInset = true }, player:WaitForChild("PlayerGui"))
+	infoGui = sg
+	-- the dim layer and the "click outside" button are siblings BEHIND the panel (a child of a button would close it on any click inside)
+	newI("Frame", { BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 0.45, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), ZIndex = 1 }, sg)
+	local outside = newI("TextButton", { Text = "", AutoButtonColor = false, BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), ZIndex = 1 }, sg)
+	local cam = workspace.CurrentCamera
+	local fit = 1
+	if cam then
+		fit = math.clamp(math.min((cam.ViewportSize.X - 24) / W, (cam.ViewportSize.Y - 24) / H), 0.4, 1)
+	end
+	local shell = newI("Frame", { BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(W, H), ZIndex = 2 }, sg)
+	newI("UIScale", { Scale = fit }, shell)
+	box({ Top = K.frame, Bottom = K.frame, Radius = 16, Size = UDim2.fromScale(1, 1), Position = UDim2.fromOffset(0, 7), Parent = shell })
+	local panel = box({ Top = rgb(14, 26, 92), Bottom = rgb(8, 16, 66), Line = line, LineThick = 4, Radius = 16, Studs = 24, Size = UDim2.fromScale(1, 1), Parent = shell })
+	-- a click on an empty spot of the panel must not reach the "click outside" button: a transparent button under all content takes it
+	local sink = Instance.new("TextButton")
+	sink.Name = "Sink"
+	sink.Text = ""
+	sink.AutoButtonColor = false
+	sink.BackgroundTransparency = 1
+	sink.BorderSizePixel = 0
+	sink.Size = UDim2.fromScale(1, 1)
+	sink.ZIndex = 1
+	sink.Parent = panel
+
+	-- type tag
+	local chip = box({ Top = base, Bottom = base:Lerp(Color3.new(0, 0, 0), 0.35), Line = line, LineThick = 2, Radius = 6, Size = UDim2.fromOffset(200, 24), Position = UDim2.fromOffset(16, 16), ZIndex = 3, Parent = panel })
+	UI.label({ Text = info.tag, TextSize = 14, Stroke = 2, StrokeColor = K.frame, Size = UDim2.fromScale(1, 1), ZIndex = 4, Parent = chip })
+	-- title, benefit, the official one-line description
+	local pitch = PITCH[key] or { "", "" }
+	local pitchTop = pitch[1]
+	local pitchSub = pitch[2]
+	if item.kind == "coins" then
+		pitchTop = "+" .. Num.short(Config.shopCoins(Backend.data, item.k)) .. " COINS"
+		pitchSub = item.best and "BEST VALUE" or ""
+	end
+	UI.label({ Text = string.upper(item.name), TextSize = 32, Scaled = true, MaxSize = 32, Color = K.white, StrokeColor = K.frame, Stroke = 4, XAlign = Enum.TextXAlignment.Left, Size = UDim2.fromOffset(390, 40), Position = UDim2.fromOffset(16, 46), ZIndex = 3, Parent = panel })
+	UI.label({ Text = pitchTop, TextSize = 24, Scaled = true, MaxSize = 24, Color = K.goldText, StrokeColor = K.frame, Stroke = 4, XAlign = Enum.TextXAlignment.Left, Size = UDim2.fromOffset(390, 30), Position = UDim2.fromOffset(16, 90), ZIndex = 3, Parent = panel })
+	UI.label({ Text = pitchSub, TextSize = 15, Color = rgb(201, 210, 255), StrokeColor = K.frame, Stroke = 2, XAlign = Enum.TextXAlignment.Left, Size = UDim2.fromOffset(390, 20), Position = UDim2.fromOffset(16, 122), ZIndex = 3, Parent = panel })
+	UI.label({ Text = item.desc or "", TextSize = 15, Color = K.white, StrokeColor = K.frame, Stroke = 2, Wrap = true, XAlign = Enum.TextXAlignment.Left, YAlign = Enum.TextYAlignment.Top, Size = UDim2.fromOffset(390, 60), Position = UDim2.fromOffset(16, 150), ZIndex = 3, Parent = panel })
+
+	-- spinning 3D icon and the price button
+	local iconBox = box({ Top = base:Lerp(rgb(36, 14, 84), 0.38), Bottom = base:Lerp(rgb(18, 6, 46), 0.72), Line = line, LineThick = 3, Radius = 12, Size = UDim2.fromOffset(168, 150), Position = UDim2.new(1, -184, 0, 16), ZIndex = 3, Clip = true, Parent = panel })
+	glowSpot(iconBox, K.white, 150, UDim2.fromScale(0.5, 0.5), 0.6)
+	icon(holder(iconBox, UDim2.fromScale(1, 1), UDim2.new(), 4), key, 0.8)
+	if item.pass and Perks.has(key) then
+		local owned = box({ Top = rgb(255, 224, 102), Bottom = rgb(245, 163, 0), Line = rgb(74, 38, 0), LineThick = 2, Radius = 8, Size = UDim2.fromOffset(168, 46), Position = UDim2.new(1, -184, 0, 174), ZIndex = 3, Parent = panel })
+		UI.label({ Text = "OWNED", TextSize = 22, StrokeColor = rgb(107, 61, 0), Size = UDim2.fromScale(1, 1), Parent = owned })
+	else
+		buyButton(item, UDim2.fromOffset(168, 46), UDim2.new(1, -184, 0, 174), 22, panel).ZIndex = 4
+	end
+
+	-- the list: what you get, good to know
+	local list = newI("ScrollingFrame", { BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.new(1, -20, 0, 366), Position = UDim2.fromOffset(10, 230), CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, ScrollBarThickness = 6, ZIndex = 3 }, panel)
+	newI("UIListLayout", { Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder }, list)
+	local order = 0
+	local function header(text: string)
+		order += 1
+		UI.label({ Text = text, TextSize = 17, Color = K.goldText, StrokeColor = K.frame, Stroke = 3, XAlign = Enum.TextXAlignment.Left, Size = UDim2.new(1, -8, 0, 24), LayoutOrder = order, ZIndex = 4, Parent = list })
+	end
+	local function row(r: { string }, accent: Color3)
+		order += 1
+		local f = box({ Top = rgb(22, 38, 112), Bottom = rgb(14, 26, 92), Line = accent, LineThick = 2, Radius = 8, Size = UDim2.new(1, -8, 0, 56), LayoutOrder = order, ZIndex = 4, Parent = list })
+		local em = box({ Top = rgb(30, 46, 130), Bottom = rgb(22, 36, 110), Line = K.frame, LineThick = 2, Radius = 6, Size = UDim2.fromOffset(44, 44), Position = UDim2.fromOffset(7, 7), ZIndex = 5, Parent = f })
+		UI.label({ Text = r[1], TextSize = 26, Stroke = 0, Size = UDim2.fromScale(1, 1), ZIndex = 6, Parent = em })
+		UI.label({ Text = r[2], TextSize = 18, Scaled = true, MaxSize = 18, Color = K.white, StrokeColor = K.frame, Stroke = 2, XAlign = Enum.TextXAlignment.Left, Size = UDim2.new(1, -66, 0, 22), Position = UDim2.fromOffset(60, 4), ZIndex = 5, Parent = f })
+		UI.label({ Text = r[3], TextSize = 13, Color = rgb(201, 210, 255), Stroke = 1, Wrap = true, XAlign = Enum.TextXAlignment.Left, YAlign = Enum.TextYAlignment.Top, Size = UDim2.new(1, -70, 0, 30), Position = UDim2.fromOffset(60, 26), ZIndex = 5, Parent = f })
+	end
+	header("WHAT YOU GET")
+	for _, r in info.get do
+		row(r, line)
+	end
+	if info.know and #info.know > 0 then
+		header("GOOD TO KNOW")
+		for _, r in info.know do
+			row(r, rgb(86, 98, 190))
+		end
+	end
+
+	UI.label({ Text = info.note or "", TextSize = 13, Color = rgb(201, 210, 255), StrokeColor = K.frame, Stroke = 2, Wrap = true, XAlign = Enum.TextXAlignment.Left, Size = UDim2.new(1, -200, 0, 44), Position = UDim2.fromOffset(16, 608), ZIndex = 3, Parent = panel })
+	local function closeInfo()
+		if infoGui == sg then
+			infoGui = nil
+		end
+		sg:Destroy()
+	end
+	local close = sbutton({ Text = "CLOSE", TextSize = 22, Color = K.red, Size = UDim2.fromOffset(150, 42), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 610), Sound = "press" }, closeInfo)
+	close.ZIndex = 5
+	close.Parent = panel
+	outside.MouseButton1Click:Connect(closeInfo)
+end
+
 -- Вылупление: яйцо трясётся, трескается, вспышка, появление. Всё создаётся заранее, в кадре только меняются свойства.
 local hatchQueue: { any } = {}
 local hatchSeen: { [string]: boolean } = {}
@@ -2750,6 +3052,7 @@ local function renderBody(o: Open)
 	end
 	renderRank(o, scroll, nextOrder())
 	sectionBar(o, scroll, "Game Passes", nextOrder())
+	sectionNote(scroll, "Buy once, keep forever, on every server. Tap a card to see exactly what it gives.", nextOrder())
 	local passes = grid(scroll, 3, 212, nextOrder())
 	local n = 0
 	for _, it in SHOP.PASSES do
@@ -2763,6 +3066,7 @@ local function renderBody(o: Open)
 		renderBanner(o, scroll, founder, nextOrder())
 	end
 	sectionBar(o, scroll, "Boosts", nextOrder())
+	sectionNote(scroll, "Timed bonuses. The time runs only while you are in the game. Tap a card to see the details.", nextOrder())
 	local server: any = nil
 	local bundle: any = nil
 	local brews: { any } = {}
@@ -2801,6 +3105,7 @@ local function renderBody(o: Open)
 	end
 	UI.label({ Text = if eggsOff then "Eggs are not available in your region. Your exotic animals still work." else "Eggs hatch exotic animals you cannot find while hunting. Tap ODDS on any egg to see the exact chances.", TextSize = 14, Color = K.white, Stroke = 2, StrokeColor = K.navy, Wrap = true, Size = UDim2.new(1, 0, 0, 36), LayoutOrder = nextOrder(), Parent = scroll })
 	sectionBar(o, scroll, "Coins", nextOrder())
+	sectionNote(scroll, "Coin packs grow with you: each one is worth a share of the price of your next spear. Tap a card for details.", nextOrder())
 	local coins = grid(scroll, 4, 212, nextOrder())
 	for i, it in packs do
 		renderTile(o, coins, it, i, "pack")
@@ -2817,6 +3122,11 @@ local function refreshLive(o: Open)
 		local left = item and boostLeftFor(item) or 0
 		label.Text = left > 0 and ("ACTIVE " .. Num.time(left)) or ""
 	end
+end
+
+-- V39: подробная карточка товара по ключу (charm, insight, fortune20, coins2, ...); для яиц есть окно ODDS
+function Shop.openInfo(key: string)
+	openInfo(key)
 end
 
 function Shop.refresh()
