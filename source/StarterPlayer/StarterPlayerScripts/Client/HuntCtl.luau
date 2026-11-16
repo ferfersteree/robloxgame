@@ -222,10 +222,24 @@ function HuntCtl.enter(model: Model)
 	end
 	setState("entering")
 	-- сервер выбирает свободную дорожку (ближайшую к игроку) и возвращает её номер
-	local ok, lane = AmbushFn:InvokeServer("enter")
+	local called, ok, lane = pcall(AmbushFn.InvokeServer, AmbushFn, "enter")
+	if not called then
+		setState("idle")
+		return
+	end
 	if not ok then
 		UI.toast(tostring(lane or "The Throwing Grounds are full"), "warn")
 		setState("idle")
+		return
+	end
+	-- пока ждали сервер, персонаж мог погибнуть или состояние сброситься: возвращаем дорожку
+	if HuntCtl.state ~= "entering" or hum() ~= h or h.Health <= 0 then
+		task.spawn(function()
+			AmbushFn:InvokeServer("leave")
+		end)
+		if HuntCtl.state == "entering" then
+			setState("idle")
+		end
 		return
 	end
 	local stands = model:FindFirstChild("Stands")
@@ -350,6 +364,14 @@ local function startCharge()
 	holding = true
 	local ok, info = Backend.call("TensionStart", cur and cur:GetAttribute("Lane"))
 	starting = false
+	if HuntCtl.state ~= "ready" then
+		-- пока ждали ответ, игрок вышел или погиб: натяжение не начинаем
+		if ok then
+			Backend.call("TensionCancel")
+		end
+		holding = false
+		return
+	end
 	if not ok then
 		holding = false
 		UI.toast(tostring(info or "Cannot throw right now"), "warn")
@@ -594,6 +616,7 @@ player.CharacterAdded:Connect(function()
 		followFlight = nil
 		tension = nil
 		camera.CameraType = Enum.CameraType.Custom
+		camera.FieldOfView = saved.fov or 70
 		Hud.setMode("normal")
 		setState("idle")
 	end

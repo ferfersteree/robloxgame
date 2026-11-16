@@ -147,9 +147,13 @@ end)
 -- Занятость хранится атрибутами Occupant / OccupantName на самой дорожке, их видят все клиенты.
 local ambushFolder = workspace:WaitForChild("Map"):WaitForChild("Ambushes")
 local occupied: { [Player]: BasePart } = {}
-local MAX_DISTANCE = 60 -- вход только вблизи зоны: удалённый вызов не телепортирует на дорожку
+local MAX_DISTANCE = 30 -- вход только вблизи зоны (подсказка работает с 14 студов, остальное запас на лаг)
+local HOLD_DISTANCE = 25 -- дальше этого от своей дорожки дольше HOLD_GRACE секунд держать её нельзя
+local HOLD_GRACE = 3
+local farSince: { [Player]: number } = {}
 
 local function leaveAmbush(player: Player)
+	farSince[player] = nil
 	local s = occupied[player]
 	if s then
 		occupied[player] = nil
@@ -182,14 +186,15 @@ end
 -- action "enter": lane (необязательно) - желаемая дорожка; иначе берётся свободная ближайшая к игроку.
 -- Возвращает true и номер дорожки, либо false и текст ошибки.
 AmbushFn.OnServerInvoke = function(player: Player, action: any, lane: any)
-	if not allow(player, "ambush", 4) then
-		return false, "Please wait a moment"
-	end
+	-- выход не режем лимитером: иначе дорожка может остаться занятой
 	if action == "leave" then
 		leaveAmbush(player)
 		return true
 	end
-	if action ~= "enter" then
+	if not allow(player, "ambush", 4) then
+		return false, "Please wait a moment"
+	end
+	if action ~= "enter" or player.Parent == nil then
 		return false, "bad"
 	end
 	local char = player.Character
@@ -204,7 +209,7 @@ AmbushFn.OnServerInvoke = function(player: Player, action: any, lane: any)
 	end
 	local zone = stands[1].Parent and stands[1].Parent.Parent
 	local pr = zone and zone:FindFirstChild("Prompt") :: BasePart?
-	if pr and (hrp.Position - pr.Position).Magnitude > MAX_DISTANCE then
+	if not pr or (hrp.Position - pr.Position).Magnitude > MAX_DISTANCE then
 		return false, "You are too far from the Throwing Grounds"
 	end
 	-- уже стоит на дорожке: оставляем её
@@ -241,6 +246,29 @@ AmbushFn.OnServerInvoke = function(player: Player, action: any, lane: any)
 	pick:SetAttribute("OccupantName", player.DisplayName)
 	return true, pick:GetAttribute("Index")
 end
+
+-- Раз в секунду: дорожку освобождаем, если игрока нет, он мёртв или стоит далеко от неё дольше HOLD_GRACE секунд
+task.spawn(function()
+	while true do
+		task.wait(1)
+		for player, s in occupied do
+			local char = player.Character
+			local hrp = char and char:FindFirstChild("HumanoidRootPart") :: BasePart?
+			local hum = char and char:FindFirstChildOfClass("Humanoid")
+			local away = player.Parent == nil or not s.Parent or not hrp or not hum or hum.Health <= 0
+				or (hrp.Position - s.Position).Magnitude > HOLD_DISTANCE
+			if away then
+				local t0 = farSince[player] or os.clock()
+				farSince[player] = t0
+				if os.clock() - t0 > HOLD_GRACE then
+					leaveAmbush(player)
+				end
+			else
+				farSince[player] = nil
+			end
+		end
+	end
+end)
 
 function Relay.onLeave(player: Player)
 	leaveAmbush(player)
