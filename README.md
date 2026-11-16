@@ -1,6 +1,18 @@
 # SpearHunt
 
-**Играть:** откройте `SpearHunt V21 - Final.rbxl` в Roblox Studio (File → Open from File) и нажмите Play.
+## Последние версии: с новой картой и без неё
+
+Два файла места, открывайте любой в Roblox Studio (File → Open from File) и нажмите Play:
+
+- **`SpearHunt V37 - HTML World.rbxl`** — с новой картой. Растения, камни, кристаллы и здания зон из HTML-версии мира строятся кубиками вокруг камеры (`StarterPlayerScripts/Client/HtmlWorld`, данные в `ReplicatedStorage/HtmlWorld`). Выключатель: атрибут `Enabled` у папки `ReplicatedStorage/HtmlWorld` (поставьте false, и карта как в V36).
+- **`SpearHunt V36 - Throwing Grounds.rbxl`** — без новой карты. То же самое (зона Throwing Grounds, кубические иконки магазина, 3D-открытие яиц, питомцы), но без HtmlWorld.
+
+Исходники: ветка `donate-eggs` — с новой картой (`source/ReplicatedStorage/HtmlWorld`, `source/.../Client/HtmlWorld.luau`, генератор `tools/html_world_build.py`); ветка `donate-eggs-no-html-world` — то же без новой карты. Файл V36 лежит в обеих ветках, V37 только в `donate-eggs`.
+В файлах мест лежат настоящие номера звуков и картинок (`Client/AudioIds`), в `source/` для него шаблон с пустыми номерами.
+
+---
+
+**Играть (старая версия):** откройте `SpearHunt V21 - Final.rbxl` в Roblox Studio (File → Open from File) и нажмите Play.
 Это ветка `claude/upbeat-ritchie-4rq2ur`. Файлы в ветке `main` — только исходные загрузки.
 
 В файле уже есть: магазин в новом стиле, 150 существ с анимациями, перевёрнутые таблички, звуковая система.
