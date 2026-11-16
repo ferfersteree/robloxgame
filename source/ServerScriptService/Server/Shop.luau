@@ -22,6 +22,14 @@ local Shop = {}
 local IS_STUDIO = RunService:IsStudio()
 local MAX_SAVE_BYTES = 600000
 local AUTOSAVE = 120
+-- V45: замок сессии. Профиль в DataStore помечен номером сервера (game.JobId): второй сервер не может загрузить его
+-- и перезаписать, пока первый не отпустил (выход игрока, закрытие сервера) или не затих дольше LOCK_TTL.
+-- Раньше два сервера писали профиль через SetAsync «кто последний»: игрок, зашедший на второй сервер до сохранения
+-- на первом, мог затереть свежие покупки, чеки и экзотику.
+local JOB_ID: string = if game.JobId ~= "" then game.JobId else ("studio_" .. HttpService:GenerateGUID(false))
+local LOCK_TTL = 180 -- замок, не обновлявшийся дольше, считается брошенным (сервер упал)
+local LOCK_REFRESH = 60 -- как часто сервер подтверждает замок, даже если сохранять нечего
+local LOCK_WAIT = 30 -- сколько секунд входящий игрок ждёт, пока прежний сервер отпустит профиль
 
 local profiles: { [Player]: any } = {}
 local serverLuck = 0
@@ -226,17 +234,58 @@ local function keyOf(player: Player): string
 	return "u_" .. tostring(player.UserId)
 end
 
-local function saveProfile(player: Player, prof: any): boolean
+local function defaultKick(player: any, msg: string)
+	if player.Parent then
+		player:Kick(msg)
+	end
+end
+local kick: (any, string) -> () = defaultKick
+
+-- Держит ли профиль другой сервер (замок свежий и чужой)
+local function lockedByOther(old: any): boolean
+	if type(old) ~= "table" or type(old.lock) ~= "table" then
+		return false
+	end
+	if old.lock.id == JOB_ID then
+		return false
+	end
+	return os.time() - (tonumber(old.lock.t) or 0) < LOCK_TTL
+end
+
+-- release = true: убрать замок (игрок вышел, сервер закрывается). Если профиль уже у другого сервера, ничего не пишем.
+local function saveProfile(player: Player, prof: any, release: boolean?): boolean
 	if not prof.loaded then
 		return false
 	end
 	if prof.noStore or not store then
 		return true -- Studio без доступа к DataStore: играем без сохранения
 	end
-	local data = { v = 1, t = os.time(), save = prof.save, shop = prof.shop }
+	if prof.lockLost then
+		return false -- профиль теперь у другого сервера: не перезаписываем
+	end
+	local data: any = { v = 1, t = os.time(), save = prof.save, shop = prof.shop }
+	local lost = false
 	local ok, err = pcall(function()
-		store:SetAsync(keyOf(player), data, { player.UserId })
+		if store.UpdateAsync then
+			store:UpdateAsync(keyOf(player), function(old)
+				lost = false
+				if lockedByOther(old) then
+					lost = true
+					return nil
+				end
+				data.lock = if release then nil else { id = JOB_ID, t = os.time() }
+				return data, { player.UserId }
+			end)
+		else
+			store:SetAsync(keyOf(player), data, { player.UserId })
+		end
 	end)
+	if ok and lost then
+		prof.lockLost = true
+		warn("[Shop] profile of " .. player.Name .. " is held by another server: not saving, the player is asked to rejoin")
+		task.defer(kick, player, "Your account was opened on another server. Please rejoin.")
+		return false
+	end
 	if ok then
 		prof.dirty = false
 		prof.lastSave = os.clock()
@@ -250,20 +299,61 @@ local function loadProfile(player: Player)
 	local prof: any = { loaded = false, failed = false, noStore = false, save = nil, shop = newShop(), passes = {}, dirty = false, lastSave = os.clock(), lastReq = 0 }
 	profiles[player] = prof
 	local ok, data = false, nil
+	local lockBlocked = false
 	if store then
-		for attempt = 1, 3 do
+		local t0 = os.clock()
+		local attempt = 0
+		while true do
+			attempt += 1
+			local blocked = false
 			ok, data = pcall(function()
+				if store.UpdateAsync then
+					-- забираем замок и читаем профиль одним атомарным действием
+					return store:UpdateAsync(keyOf(player), function(old)
+						blocked = false
+						if lockedByOther(old) then
+							blocked = true
+							return nil
+						end
+						local rec: any = if type(old) == "table" then old else { v = 1 }
+						rec.lock = { id = JOB_ID, t = os.time() }
+						return rec, { player.UserId }
+					end)
+				end
 				return store:GetAsync(keyOf(player))
 			end)
-			if ok then
+			if ok and not blocked then
 				break
 			end
-			warn("[Shop] load attempt " .. attempt .. " failed for " .. player.Name .. ": " .. tostring(data))
-			task.wait(attempt * 2)
+			if ok and blocked then
+				-- прежний сервер ещё не отпустил профиль (игрок только что вышел): ждём
+				if os.clock() - t0 >= LOCK_WAIT then
+					lockBlocked = true
+					ok = false
+					break
+				end
+				task.wait(2)
+			else
+				warn("[Shop] load attempt " .. attempt .. " failed for " .. player.Name .. ": " .. tostring(data))
+				if attempt >= 3 then
+					break
+				end
+				task.wait(attempt * 2)
+			end
+			if profiles[player] ~= prof then
+				return
+			end
 		end
 	end
 	if profiles[player] ~= prof then
 		return -- игрок вышел, пока грузились
+	end
+	if lockBlocked then
+		prof.failed = true
+		prof.lockLost = true
+		warn("[Shop] profile of " .. player.Name .. " is still held by another server: asking the player to rejoin")
+		task.defer(kick, player, "Your previous session is still saving. Please rejoin in a minute.")
+		return
 	end
 	-- V28: правила Roblox для платных случайных предметов. В некоторых регионах их продавать нельзя. Спрашиваем PolicyService
 	-- ДО того, как профиль станет loaded, чтобы клиент не увидел яйца раньше проверки. Если спросить не вышло,
@@ -675,7 +765,7 @@ function Shop.start()
 			if prof.vipConn then
 				prof.vipConn:Disconnect()
 			end
-			saveProfile(player, prof)
+			saveProfile(player, prof, true)
 		end
 	end)
 	game:BindToClose(function()
@@ -683,7 +773,7 @@ function Shop.start()
 		for player, prof in profiles do
 			n += 1
 			task.spawn(function()
-				saveProfile(player, prof)
+				saveProfile(player, prof, true)
 				n -= 1
 			end)
 		end
@@ -710,7 +800,7 @@ function Shop.start()
 						prof.shop.boosts[id] = if v > 0 then v else nil
 						prof.dirty = true
 					end
-					if prof.dirty and os.clock() - prof.lastSave > AUTOSAVE then
+					if (prof.dirty and os.clock() - prof.lastSave > AUTOSAVE) or os.clock() - prof.lastSave > LOCK_REFRESH then
 						prof.lastSave = os.clock()
 						task.spawn(saveProfile, player, prof)
 					end
@@ -735,6 +825,21 @@ if IS_STUDIO then
 		invoke = onInvoke,
 		setStore = function(s: any)
 			store = s
+		end,
+		-- V45: проверка замка сессии: притвориться другим сервером и сократить время ожидания
+		setJobId = function(id: string)
+			JOB_ID = id
+		end,
+		getJobId = function(): string
+			return JOB_ID
+		end,
+		setKick = function(f: ((any, string) -> ())?)
+			kick = f or defaultKick
+		end,
+		setLockTimes = function(ttl: number?, wait: number?, refresh: number?)
+			LOCK_TTL = ttl or LOCK_TTL
+			LOCK_WAIT = wait or LOCK_WAIT
+			LOCK_REFRESH = refresh or LOCK_REFRESH
 		end,
 		addProduct = function(item: any)
 			PRODUCT_BY_ID[item.id] = item
