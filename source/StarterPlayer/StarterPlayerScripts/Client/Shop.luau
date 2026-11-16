@@ -39,6 +39,11 @@ local EggScene: any = nil
 pcall(function()
 	EggScene = require(script.Parent.EggScene)
 end)
+-- V36: кубические 3D-иконки товаров (как яйца). Нет модуля: прежние плоские иконки
+local ShopVoxels: any = nil
+pcall(function()
+	ShopVoxels = require(script.Parent.ShopVoxels)
+end)
 -- V35: анимации питомцев пака (суставы Motor6D): питомцы рядом с игроком дышат, осматриваются, идут вместе с хозяином
 local PetAnim: any = nil
 pcall(function()
@@ -668,6 +673,17 @@ local function icon(parent: Instance, kind: string, spin: number?)
 			vpE.Parent = parent
 		end)
 		if okE then
+			return
+		end
+	end
+	-- V36: кубическая 3D-модель товара из ShopVoxels во ViewportFrame, как у яиц; не вышло - прежние иконки ниже
+	local voxModel = ShopVoxels and ShopVoxels.build(kind)
+	if voxModel then
+		local okVox = pcall(function()
+			local vpVox = UI.viewport(voxModel, { ZIndex = 3 }, math.rad(-30), spin or 0)
+			vpVox.Parent = parent
+		end)
+		if okVox then
 			return
 		end
 	end

@@ -130,6 +130,15 @@ function Vox:cylX(cy, cz, r, x0, x1, c)
 	end
 end
 
+-- перекрасить уже существующие кубики по условию
+function Vox:recolor(pred, c)
+	for _, cell in self.cells do
+		if pred(cell[1], cell[2], cell[3]) then
+			cell[4] = c
+		end
+	end
+end
+
 -- рисунок из строк (вид спереди, x вправо, верхняя строка сверху) на плоскости z
 function Vox:glyph(rows, x0, y0, z, map)
 	local h = #rows
@@ -588,27 +597,29 @@ B.server15 = function(v)
 	sparkle(v, -7, 5, -2)
 end
 
--- рюкзак
+-- рюкзак: высокий, с клапаном, карманом, лямками и ручкой
 B.bag = function(v)
-	v:box(-5, 0, -3, 5, 10, 3, "green")
-	for _, p in { { -5, 0 }, { 5, 0 }, { -5, 10 }, { 5, 10 } } do
-		v:clear(p[1], p[2], -3); v:clear(p[1], p[2], 3)
+	v:box(-4, 0, -3, 4, 9, 3, "green")
+	v:ellipsoid(0, 9, 0, 4.7, 3.4, 3.6, "green") -- скруглённый верх
+	v:box(-4, 0, -3, 4, 0, 3, "greenD")
+	for _, p in { { -4, 0 }, { 4, 0 } } do
+		v:clear(p[1], p[2], -3)
+		v:clear(p[1], p[2], 3)
 	end
-	v:box(-5, 9, -4, 5, 12, 3, "greenD") -- клапан
-	v:box(-4, 12, -3, 4, 12, 2, "greenD")
-	v:box(-4, 1, -5, 4, 5, -4, "greenD") -- карман
-	v:box(-4, 5, -5, 4, 6, -4, "brown")
-	v:box(-1, 6, -6, 0, 8, -6, "gold") -- пряжка
+	v:recolor(function(x, y, z)
+		return y >= 8 and z <= -1
+	end, "greenD") -- клапан
+	v:box(-3, 1, -5, 3, 5, -4, "greenD") -- карман
+	v:box(-3, 5, -5, 3, 5, -4, "brown")
+	v:box(-1, 5, -6, 0, 7, -6, "gold") -- пряжка
 	v:box(-1, 5, -6, 0, 5, -6, "goldHi")
-	for _, x in { -6, 5 } do
-		v:box(x, 1, -2, x + 1, 8, 2, "brown") -- лямки
-	end
-	v:cylX(14, 0, 1.9, -5, 4, "burlap") -- скатка сверху
-	v:cylX(14, 0, 1.9, -5, -5, "burlapD")
-	v:cylX(14, 0, 1.9, 4, 4, "burlapD")
-	v:cylX(14, 0, 2.1, -3, -3, "red")
-	v:cylX(14, 0, 2.1, 2, 2, "red")
-	sparkle(v, 8, 12, -2)
+	v:box(-5, 1, -2, -5, 8, 2, "brown") -- лямки
+	v:box(5, 1, -2, 5, 8, 2, "brown")
+	v:box(-2, 12, -1, -2, 13, 1, "brown") -- ручка
+	v:box(2, 12, -1, 2, 13, 1, "brown")
+	v:box(-2, 13, -1, 2, 13, 1, "brown")
+	sparkle(v, 8, 11, -2)
+	sparkle(v, -8, 6, -1)
 end
 
 ---------------------------------------------------------------------
