@@ -349,3 +349,14 @@ Shop art ids are now read from `Client/AudioIds` (keys `art_<name>`). `tools/upl
 - **Код.** `tileInfo` (невидимая кнопка на плитке под остальными элементами и значок «i»), `infoFor` (данные карточки), `openInfo`, экспорт `Shop.openInfo(key)`. Окно лежит в `PlayerGui` с порядком 6: выше окна магазина (5), ниже экранов «получено» (7) и тостов (10), чтобы результат покупки из карточки был виден.
 - **Проверено в Studio.** Открыты все 16 карточек без ошибок; настоящими кликами: открытие по плитке, клик внутри карточки её не закрывает, CLOSE и клик снаружи закрывают. Консоль без новых сообщений.
 - **Не сделано.** «Детальность в 10 раз» для иконок (крупные кубические модели, как у яиц), карточки для Starter Pack и ранга. 3D-иконка внутри карточки автором не просмотрена: снимки Studio не рисуют содержимое ViewportFrame, иконка создаётся тем же вызовом `icon()`, что и у плиток.
+
+## V42: cards for the Supporter Rank and the Starter Pack, two layout fixes
+
+`SpearHunt V42 - Shop Cards.rbxl` is V41 with new `Client/Shop` and `Client/Menus`.
+
+- **Rank card.** The Supporter Rank banner now has the same "i" chip and click-to-open card as the other items: the four ranks (Bronze 50 R$, Silver 200, Gold 500, Diamond 1000) with bag slots, price recovery, daily gift share and the free Market Insight, a marker on your current rank, how much you have spent and what the next rank needs, what counts towards the rank (passes by ownership, coin packs / boosts / eggs every purchase), how the daily gift is computed. All numbers come from `Config.SHOP.RANKS`, `GIFT_BASE`, `GIFT_HOURS`.
+- **Starter Pack card.** The hero banner (visible below level 10) opens a card with the four things in the pack (Iron Spear with its stats and its normal price in the Spear Shop, 4K coins, bag level 3 = 30 slots instead of 12, Golden Hour 30 min) and the rules (one per hunter, leaves the shop at level 10). Numbers come from `Config.SHOP.STARTER`, `Config.SPEAR_BY_ID`, `Config.BAG`.
+- **How.** `infoFor` got two branches (`starter`, `rank`), the rank has a pseudo item `RANK_ITEM`, `tileInfo` got an optional chip offset so the chip does not cover the banner text, `rankPerks` moved above the card code.
+- **Fixes found by opening every window in Play.** The empty-bag message sat inside the card grid (UIGridLayout forced it into a 128 px column, seven lines of text): it is a centred line now. The Reduced Effects label in Settings was 3 px too wide: it scales to fit. The "OWNED" label inside an info card was drawn under its box: ZIndex.
+- **Checked.** Every menu (Bag, Spears, Forge, Market, Animals, Quests, Potions, Settings, Demo, Shop) opens without errors and with no clipped text except the two labels above; a real click on the rank banner opens the card.
+- **Seen, not changed.** 3D shop icons draw 1-2 seconds after they first scroll into view (ViewportFrames render lazily).

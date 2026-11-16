@@ -824,7 +824,7 @@ end
 local openInfo: (string) -> () = function(_: string) end
 
 -- Невидимая кнопка на всю плитку (под остальными элементами, кнопка цены остаётся главнее) и значок «i» для подсказки
-local function tileInfo(f: GuiObject, item: any, chipLeft: boolean?, chipY: number?)
+local function tileInfo(f: GuiObject, item: any, chipLeft: boolean?, chipY: number?, chipExtra: number?)
 	local hit = Instance.new("TextButton")
 	hit.Name = "InfoHit"
 	hit.Text = ""
@@ -849,7 +849,7 @@ local function tileInfo(f: GuiObject, item: any, chipLeft: boolean?, chipY: numb
 	chip.Size = UDim2.fromOffset(22, 22)
 	local side = if chipLeft then 0 else 1
 	chip.AnchorPoint = Vector2.new(side, 0)
-	chip.Position = UDim2.new(side, if chipLeft then 8 else -8, 0, chipY or 36)
+	chip.Position = UDim2.new(side, (if chipLeft then 8 else -8) + (if chipLeft then (chipExtra or 0) else -(chipExtra or 0)), 0, chipY or 36)
 	chip.ZIndex = 5
 	corner(CUBE_R).Parent = chip
 	local st = Instance.new("UIStroke")
@@ -1512,6 +1512,7 @@ local function renderHero(o: Open, parent: Instance, order: number)
 	end
 	UI.label({ Text = "One per hunter. Leaves the shop at level " .. tostring(SHOP.STARTER_MAX_LEVEL) .. ".", TextSize = 17, Color = K.white, StrokeColor = K.heroLine, Stroke = 2, Wrap = true, Size = UDim2.new(1, -400, 0, 40), Position = UDim2.fromOffset(170, 128), XAlign = Enum.TextXAlignment.Left, ZIndex = 3, Parent = f })
 	buyButton(item, UDim2.fromOffset(200, 42), UDim2.new(1, -212, 0, 126), 22, f).ZIndex = 4
+	tileInfo(f, item, false, 8, 168) -- V42: подробности стартового набора
 	table.insert(o.shiny, f)
 	introPop(o, f)
 	tileHover(f)
@@ -2302,6 +2303,22 @@ end
 -- V39: подробная карточка товара. Клик по плитке (или значок «i») открывает её: что именно даёт товар (цифры берутся из
 -- Config.SHOP, поэтому они не расходятся с игрой), сколько действует, чем отличается от бесплатного.
 ---------------------------------------------------------------------
+local function rankPerks(rk: any): string
+	local parts = {}
+	if rk.bag > 0 then
+		table.insert(parts, "+" .. rk.bag .. " bag slots")
+	end
+	table.insert(parts, "prices recover x" .. tostring(rk.recover))
+	table.insert(parts, "daily gift " .. math.floor(rk.gift * 100) .. "%")
+	if rk.insight then
+		table.insert(parts, "free Market Insight")
+	end
+	return table.concat(parts, " · ")
+end
+
+-- V42: «товар» для карточки ранга поддержки (в Config его нет)
+local RANK_ITEM = { key = "rank", name = "Supporter Rank", kind = "rank", desc = "Spend Robux to earn a rank: a tag and aura everyone sees, a daily gift and perks." }
+
 local function pctText(v: number): string
 	return tostring(math.floor(v * 100 + 0.5)) .. "%"
 end
@@ -2428,6 +2445,44 @@ local function infoFor(item: any): any
 			},
 			know = { { "⏱", "How long", minText(item.dur) .. "." }, { "👥", "Everyone benefits", "You pay once, the whole server gets the bonus." } },
 		}
+	elseif k == "starter" then
+		local st = SHOP.STARTER
+		local sp = Config.SPEAR_BY_ID[st.spear]
+		local bag = Config.BAG[st.bagLvl]
+		local boost = Config.BOOSTS[st.boost]
+		local boostText = if st.boost == "fortune" then "Gold and Rainbow mutations come up " .. P.fortuneMutMul .. " times more often for " .. minText(st.dur) .. " of play time." else "A timed bonus for " .. minText(st.dur) .. " of play time."
+		return {
+			tag = "STARTER PACK · ONE-TIME", note = "One per hunter. It leaves the shop at level " .. tostring(SHOP.STARTER_MAX_LEVEL) .. ".",
+			get = {
+				{ "🔱", sp and sp.name or "A better spear", sp and string.format("Sharpness %s, power %s, luck ×%s, range ×%s. In the Spear Shop it costs %s coins.", tostring(sp.sharp), tostring(sp.heavy), tostring(sp.luck), tostring(sp.range), Num.short(sp.price)) or "A better spear to start with." },
+				{ "💰", Num.short(st.coins) .. " coins", "Added to your coins right away." },
+				{ "🎒", "Bag level " .. tostring(st.bagLvl), bag and ("Holds " .. bag.cap .. " animals instead of " .. Config.BAG[1].cap .. ".") or "A bigger bag." },
+				{ "✨", (boost and boost.name or "Boost") .. " · " .. minText(st.dur), boostText },
+			},
+			know = {
+				{ "1️⃣", "One per hunter", "You can buy it once." },
+				{ "⏳", "Leaves the shop", "At level " .. tostring(SHOP.STARTER_MAX_LEVEL) .. " the pack is removed from the shop." },
+			},
+		}
+	elseif k == "rank" then
+		local R = SHOP.RANKS
+		local rk = Perks.rank()
+		local spent = tonumber(Perks.state().spent) or 0
+		local medal = { "🥉", "🥈", "🥇", "💎" }
+		local get = {}
+		for i, r in R do
+			table.insert(get, { medal[i] or "⭐", r.name .. " · from " .. r.at .. " R$" .. (if i == rk then "  ← YOU ARE HERE" else ""), rankPerks(r) })
+		end
+		return {
+			tag = "SUPPORTER RANK", note = "The rank follows your account: it is the same on every server.",
+			get = get,
+			know = {
+				{ "💳", "You have spent " .. spent .. " R$", if rk < #R then "Next rank: " .. R[rk + 1].name .. " at " .. R[rk + 1].at .. " R$." else "You have the top rank. Thank you for supporting the game!" },
+				{ "🏷", "Tag and aura", "Your rank shows as a coloured tag and aura that every player sees." },
+				{ "🎁", "Daily gift", "Every " .. tostring(SHOP.GIFT_HOURS) .. " hours you can claim a gift worth " .. math.floor(SHOP.GIFT_BASE * 100 + 0.5) .. "% of the price of the next spear; a rank makes it bigger." },
+				{ "🧮", "What counts", "Game passes count once, while you own them. Coin packs, boosts and eggs count every time you buy." },
+			},
+		}
 	elseif item.kind == "coins" then
 		local n = Config.shopCoins(Backend.data, item.k)
 		return {
@@ -2445,7 +2500,7 @@ end
 local infoGui: ScreenGui? = nil
 
 openInfo = function(key: string)
-	local item = Config.SHOP_BY_KEY[key]
+	local item = if key == "rank" then RANK_ITEM else Config.SHOP_BY_KEY[key]
 	local info = item and infoFor(item)
 	if not info then
 		return
@@ -2454,7 +2509,7 @@ openInfo = function(key: string)
 		infoGui:Destroy()
 		infoGui = nil
 	end
-	local base = TILE[key] or rgb(70, 160, 245)
+	local base = if key == "rank" then rgb(160, 96, 230) elseif key == "starter" then rgb(176, 90, 240) else (TILE[key] or rgb(70, 160, 245))
 	local line = base:Lerp(Color3.new(1, 1, 1), 0.18)
 	local W, H = 600, 664
 	-- top-level ScreenGui, order 6: above the shop window (5), below the "unlocked" screens (7) and toasts (10), so a purchase made from this card shows its result on top
@@ -2487,7 +2542,7 @@ openInfo = function(key: string)
 	local chip = box({ Top = base, Bottom = base:Lerp(Color3.new(0, 0, 0), 0.35), Line = line, LineThick = 2, Radius = 6, Size = UDim2.fromOffset(200, 24), Position = UDim2.fromOffset(16, 16), ZIndex = 3, Parent = panel })
 	UI.label({ Text = info.tag, TextSize = 14, Stroke = 2, StrokeColor = K.frame, Size = UDim2.fromScale(1, 1), ZIndex = 4, Parent = chip })
 	-- title, benefit, the official one-line description
-	local pitch = PITCH[key] or { "", "" }
+	local pitch = PITCH[key] or (if key == "rank" then { "EARN A RANK", "the more you support, the more you get" } elseif key == "starter" then { "4 THINGS IN 1 PACK", "best deal, once per hunter" } else { "", "" })
 	local pitchTop = pitch[1]
 	local pitchSub = pitch[2]
 	if item.kind == "coins" then
@@ -2502,10 +2557,15 @@ openInfo = function(key: string)
 	-- spinning 3D icon and the price button
 	local iconBox = box({ Top = base:Lerp(rgb(36, 14, 84), 0.38), Bottom = base:Lerp(rgb(18, 6, 46), 0.72), Line = line, LineThick = 3, Radius = 12, Size = UDim2.fromOffset(168, 150), Position = UDim2.new(1, -184, 0, 16), ZIndex = 3, Clip = true, Parent = panel })
 	glowSpot(iconBox, K.white, 150, UDim2.fromScale(0.5, 0.5), 0.6)
-	icon(holder(iconBox, UDim2.fromScale(1, 1), UDim2.new(), 4), key, 0.8)
-	if item.pass and Perks.has(key) then
+	icon(holder(iconBox, UDim2.fromScale(1, 1), UDim2.new(), 4), if key == "rank" then "founder" elseif key == "starter" then ("spear:" .. SHOP.STARTER.spear) else key, 0.8)
+	if key == "rank" then
+		local R = SHOP.RANKS
+		local cur = R[Perks.rank()]
+		local mine = box({ Top = cur and cur.color or rgb(96, 96, 130), Bottom = (cur and cur.color or rgb(96, 96, 130)):Lerp(Color3.new(0, 0, 0), 0.35), Line = K.frame, LineThick = 2, Radius = 8, Size = UDim2.fromOffset(168, 46), Position = UDim2.new(1, -184, 0, 174), ZIndex = 3, Parent = panel })
+		UI.label({ Text = cur and string.upper(cur.name) or "NO RANK YET", TextSize = 20, StrokeColor = K.frame, Stroke = 3, Size = UDim2.fromScale(1, 1), ZIndex = 5, Parent = mine })
+	elseif item.pass and Perks.has(key) then
 		local owned = box({ Top = rgb(255, 224, 102), Bottom = rgb(245, 163, 0), Line = rgb(74, 38, 0), LineThick = 2, Radius = 8, Size = UDim2.fromOffset(168, 46), Position = UDim2.new(1, -184, 0, 174), ZIndex = 3, Parent = panel })
-		UI.label({ Text = "OWNED", TextSize = 22, StrokeColor = rgb(107, 61, 0), Size = UDim2.fromScale(1, 1), Parent = owned })
+		UI.label({ Text = "OWNED", TextSize = 22, StrokeColor = rgb(107, 61, 0), Size = UDim2.fromScale(1, 1), ZIndex = 5, Parent = owned })
 	else
 		buyButton(item, UDim2.fromOffset(168, 46), UDim2.new(1, -184, 0, 174), 22, panel).ZIndex = 4
 	end
@@ -2967,19 +3027,6 @@ local function fmtWait(sec: number): string
 	return string.format("%dh %02dm", math.floor(sec / 3600), math.floor((sec % 3600) / 60))
 end
 
-local function rankPerks(rk: any): string
-	local parts = {}
-	if rk.bag > 0 then
-		table.insert(parts, "+" .. rk.bag .. " bag slots")
-	end
-	table.insert(parts, "prices recover x" .. tostring(rk.recover))
-	table.insert(parts, "daily gift " .. math.floor(rk.gift * 100) .. "%")
-	if rk.insight then
-		table.insert(parts, "free Market Insight")
-	end
-	return table.concat(parts, " · ")
-end
-
 local function renderRank(o: Open, parent: Instance, order: number)
 	local R = SHOP.RANKS
 	local st = Perks.state()
@@ -3026,6 +3073,7 @@ local function renderRank(o: Open, parent: Instance, order: number)
 	end)
 	btn.ZIndex = 4
 	btn.Parent = f
+	tileInfo(f, RANK_ITEM, false, 10, 232) -- V42: все ранги, пороги и что даёт каждый
 	table.insert(o.shiny, f)
 	introPop(o, f)
 	tileHover(f)

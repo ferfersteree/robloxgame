@@ -217,7 +217,8 @@ local function renderBag(body: Frame, st: { [string]: any })
 	g.HorizontalAlignment = Enum.HorizontalAlignment.Center
 	g.Parent = grid
 	if #items == 0 then
-		txt(grid, "Your bag is empty. Head to the forest hide and throw your spear! 🗡️", 24, C.dim, { XAlign = Enum.TextXAlignment.Center, Size = UDim2.new(1, 0, 0, 60), Wrap = true })
+		-- V42: не внутри сетки (UIGridLayout сжимал текст до ширины ячейки 128 px): отдельная подпись по центру окна
+		txt(body, "Your bag is empty. Head to the forest hide and throw your spear! 🗡️", 24, C.dim, { XAlign = Enum.TextXAlignment.Center, YAlign = Enum.TextYAlignment.Center, Size = UDim2.new(1, -40, 0, 90), Position = UDim2.new(0, 20, 0, 120), Wrap = true })
 	end
 	for i = (st.page - 1) * per + 1, math.min(#items, st.page * per) do
 		local it = items[i]
@@ -659,7 +660,7 @@ local function renderSettings(body: Frame, _st: { [string]: any })
 	}
 	for i, o in opts do
 		local r = UI.panel({ Color = C.card, Size = UDim2.new(1, 0, 0, 66), Radius = 14, LayoutOrder = i, Parent = body })
-		UI.label({ Text = o[2], TextSize = 26, Size = UDim2.new(0.7, 0, 1, 0), Position = UDim2.fromOffset(16, 0), XAlign = Enum.TextXAlignment.Left, Parent = r })
+		UI.label({ Text = o[2], TextSize = 26, Scaled = true, MaxSize = 26, Size = UDim2.new(0.7, 0, 1, 0), Position = UDim2.fromOffset(16, 0), XAlign = Enum.TextXAlignment.Left, Parent = r })
 		local on = s[o[1]] == true
 		local b = UI.button({ Text = on and "ON" or "OFF", TextSize = 22, Color = on and C.green or C.red, Size = UDim2.fromOffset(130, 50), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.5, 0) }, function()
 			call("Settings", { [o[1]] = not on })
