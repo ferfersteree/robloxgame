@@ -224,7 +224,7 @@ local function renderBag(body: Frame, st: { [string]: any })
 		local it = items[i]
 		Card.new(it.sp, it, { size = Vector2.new(128, 168), selected = st.sel[it.id] == true, layoutOrder = i, parent = grid, onClick = market and function()
 			st.sel[it.id] = not st.sel[it.id] or nil
-			Sfx.play("press")
+			Sfx.play("select") -- V42: свой звук выбора карточки (раньше общий press)
 			Menus.refresh()
 		end or nil })
 	end
@@ -662,7 +662,7 @@ local function renderSettings(body: Frame, _st: { [string]: any })
 		local r = UI.panel({ Color = C.card, Size = UDim2.new(1, 0, 0, 66), Radius = 14, LayoutOrder = i, Parent = body })
 		UI.label({ Text = o[2], TextSize = 26, Scaled = true, MaxSize = 26, Size = UDim2.new(0.7, 0, 1, 0), Position = UDim2.fromOffset(16, 0), XAlign = Enum.TextXAlignment.Left, Parent = r })
 		local on = s[o[1]] == true
-		local b = UI.button({ Text = on and "ON" or "OFF", TextSize = 22, Color = on and C.green or C.red, Size = UDim2.fromOffset(130, 50), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.5, 0) }, function()
+		local b = UI.button({ Text = on and "ON" or "OFF", TextSize = 22, Color = on and C.green or C.red, Sound = on and "toggle_off" or "toggle_on", Size = UDim2.fromOffset(130, 50), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.5, 0) }, function()
 			call("Settings", { [o[1]] = not on })
 		end)
 		b.Parent = r

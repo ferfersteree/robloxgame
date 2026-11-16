@@ -500,6 +500,7 @@ function HuntCtl.release(crashed: boolean)
 	fovTarget = 70
 	if res.escaped then
 		Animator.play("Shrug")
+		Sfx.play("miss") -- V42: зверь ушёл
 	elseif res.item and Config.SPECIES_BY_ID[res.sp] and Config.SPECIES_BY_ID[res.sp].rarity >= 3 then
 		Animator.play("Cheer")
 		task.wait(1.4)

@@ -58,3 +58,7 @@ Not run in Studio. The audio itself could not be listened to by the author of th
 - **Found while checking.** 10 of the 63 egg events had no sound at all (shimmer / arc / bubble loops, `egg_surge`, `pet_trail`, `storm_crackle`, and the reveal music `egg_music_a/b`); they now play the library loops, a 6 s riser and the already uploaded `music_meadow` / `music_cozy`. `rbxasset://sounds/swoosh.wav` ("Asset is not approved for the requester") is replaced by a loadable built-in sound.
 - **Verified.** Play in Studio: all 63 events resolve to a sound; five complete openings (forest 1-2, amber, tide, astral, storm) ran through `EggOpen3D` with 34-46 sound calls each and no silent shot or layer; console clean.
 - **Not verified.** The sounds were not listened to (nobody could); the mix is set by measured peaks, not by ear. If something is too loud or does not fit, change `gain` or the pick in `lib_bank.py`.
+
+## V43: sounds that existed but were never called
+
+`toggle_on` / `toggle_off` (settings switches, `UI.button` `Sound`), `select` (choosing a card in the bag when selling), `pickup` (firefly or egg pickup, together with the old sparkle) and `miss` (the animal escaped) now play. `coin_burst`, `hit_ground`, `back` and `fly` are still not called anywhere: no natural place for them was found.

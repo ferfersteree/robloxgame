@@ -48,7 +48,8 @@ end
 local function activityBar(title: string, color: Color3, onExit: () -> ()): (Frame, TextLabel)
 	local bar = UI.panel({ Color = color, Size = UDim2.fromOffset(460, 70), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 86), Radius = 18, ZIndex = 30, Parent = UI.root })
 	UI.label({ Text = title, TextSize = 24, Size = UDim2.new(1, -150, 0, 28), Position = UDim2.fromOffset(16, 4), XAlign = Enum.TextXAlignment.Left, ZIndex = 32, Parent = bar })
-	local val = UI.label({ Text = "", TextSize = 30, Size = UDim2.new(1, -150, 0, 34), Position = UDim2.fromOffset(16, 30), XAlign = Enum.TextXAlignment.Left, ZIndex = 32, Parent = bar })
+	-- V42: Scaled: длинная строка («⏱ 0:05 · 🪙 0/4 · target: 1:30») сжимается и не уходит под кнопку Exit
+	local val = UI.label({ Text = "", TextSize = 30, Scaled = true, MaxSize = 30, Size = UDim2.new(1, -150, 0, 34), Position = UDim2.fromOffset(16, 30), XAlign = Enum.TextXAlignment.Left, ZIndex = 32, Parent = bar })
 	local ex = UI.button({ Text = "Exit", TextSize = 22, Color = Theme.C.red, Size = UDim2.fromOffset(120, 48), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.5, 0), ZIndex = 34 }, onExit)
 	ex.Parent = bar
 	local sc = Instance.new("UIScale")
@@ -691,7 +692,8 @@ RunService.Heartbeat:Connect(function()
 			task.spawn(function()
 				local ok, res = Backend.call("Collect", id)
 				if ok then
-					Sfx.play(egg and "level" or "sparkle", egg and 1.3 or 1, 0.6)
+					Sfx.play("pickup", egg and 1.15 or 1, 0.55) -- V42: звук подбора плюс искры
+					Sfx.play(egg and "level" or "sparkle", egg and 1.3 or 1, 0.45)
 					Fx.burst(c.part.Position, { tex = "star", color = egg and Theme.C.pink or Color3.fromRGB(255, 240, 120), n = 16, speed = NumberRange.new(6, 12), size = 0.8, life = 0.8, rot = true })
 					UI.toast((egg and "🥚 Egg found! " or "✨ Firefly found! ") .. "+" .. res.coins .. " 💰", egg and "rare" or "gold")
 					Hud.flyCoins(UI.worldToScreen(c.part.Position), res.coins)
