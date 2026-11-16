@@ -386,10 +386,16 @@ local function start(ctx: any, info: any)
 	local fit = math.clamp((vh - 96 - ry) / (ly + 52), 0.4, 1)
 
 	local finished = false
+	local musicLayer: any = nil -- V39: music under the reveal card
+	Sfx.duck(0.12, 0.4) -- V39: the world music goes quiet while the egg opens
 	local conn: RBXScriptConnection? = nil
 	local prep: any = nil
 	local prepFailed = false
 	local function cleanup()
+		if musicLayer then
+			musicLayer.stop(0.6)
+		end
+		Sfx.duck(1, 1.0)
 		if prep then
 			for _, p in prep.pieces do
 				pcall(function()
@@ -502,7 +508,8 @@ local function start(ctx: any, info: any)
 		ring(cx, cy, dispH * 0.2, dispH * (0.7 + k * 0.1), 0.6, accent(clock))
 		burstSparks(5 + k * 2, 300 + k * 60)
 		shake = math.max(shake, 4 + k * 2.5)
-		Sfx.play("boom", 0.7 + k * 0.12, 0.35 + k * 0.05)
+		Sfx.play("egg_crack", 0.82 + k * 0.07, 0.4 + k * 0.07)
+		Sfx.play("egg_boom_s", 0.9 + k * 0.05, 0.3 + k * 0.04)
 		hintScale.Scale = 1.3
 		tapKick = 1
 	end
@@ -556,8 +563,13 @@ local function start(ctx: any, info: any)
 			task.wait(0.12)
 			UI.tween(zoom, 0.55, { Scale = 1 }, Enum.EasingStyle.Back)
 		end)
-		Sfx.play("boom", 1, 1)
-		Sfx.play(rank >= 5 and "thunder" or "pop", 1, 0.9)
+		local ri = math.clamp(rank - 1, 0, 6) -- 0..6, as in EggOpen3D
+		Sfx.play("egg_crack", 1, 0.8)
+		Sfx.play(({ "egg_boom_s", "egg_boom_s", "egg_boom_m", "egg_boom_m", "egg_boom_l", "egg_boom_l", "egg_boom_l" })[ri + 1], 1, 0.85)
+		Sfx.play(({ "egg_burst_s", "egg_burst_s", "egg_burst_m", "egg_burst_m", "egg_burst_l", "egg_burst_l", "egg_burst_l" })[ri + 1], 1, 0.55)
+		if ri >= 5 then
+			Sfx.play("egg_thunder", 1, 0.7)
+		end
 		if rays1 then
 			local s = rays1:FindFirstChild("S")
 			if s then
@@ -576,7 +588,11 @@ local function start(ctx: any, info: any)
 		UI.tween(holderScale, 0.7, { Scale = 1 }, Enum.EasingStyle.Back)
 		UI.tween(infoScale, 0.55, { Scale = fit }, Enum.EasingStyle.Back)
 		UI.tween(info2, 0.5, { Position = UDim2.fromOffset(cx, ry) }, Enum.EasingStyle.Quad)
-		Sfx.play("sparkle", 1 + rank * 0.04, 0.9)
+		local ri = math.clamp(rank - 1, 0, 6)
+		Sfx.play("egg_reveal_" .. ri, 1, 0.62)
+		Sfx.play("egg_card", 1, 0.5)
+		Sfx.play(ctx.dupe and "egg_dupe" or "egg_new", 1, 0.6)
+		musicLayer = Sfx.layer(ri >= 4 and "egg_music_b" or "egg_music_a", 0.2, 1.6)
 		task.delay(0.6, function()
 			if not finished then
 				UI.tween(tagScale, 0.5, { Scale = 1 }, Enum.EasingStyle.Back)
@@ -586,7 +602,7 @@ local function start(ctx: any, info: any)
 		if rank >= 4 then
 			task.delay(0.35, function()
 				if not finished then
-					Sfx.play("level", 1, 0.8)
+					Sfx.play("egg_flash", 1, 0.5)
 					flash.BackgroundColor3 = col:Lerp(WHITE, 0.4)
 					flash.BackgroundTransparency = 0.35
 					UI.tween(flash, 0.8, { BackgroundTransparency = 1 })
@@ -617,7 +633,7 @@ local function start(ctx: any, info: any)
 			p = math.min(1, p + 0.07)
 			tapKick = 1
 			shake = math.max(shake, 3)
-			Sfx.play("tick", 1.2 + p * 0.8, 0.5)
+			Sfx.play("egg_crack", 0.95 + p * 0.3, 0.5)
 			local a = math.random() * math.pi * 2
 			for _ = 1, low and 1 or 3 do
 				emit("spark", cx, cy, math.cos(a) * 240, math.sin(a) * 240 - 100, 0.5, 8, WHITE, 0, 500)
@@ -627,6 +643,7 @@ local function start(ctx: any, info: any)
 		end
 	end)
 	onSkip = function()
+		Sfx.play("egg_skip", 1, 0.5)
 		if phase == "intro" or phase == "charge" then
 			p = 1
 			for k = 1, #stageHits do
@@ -666,7 +683,8 @@ local function start(ctx: any, info: any)
 				second = true
 				ring(cx, floorY, dispW * 0.3, dispW * 2.0, 0.7, accent(clock), 0, 0.3)
 				burstSparks(10, 340)
-				Sfx.play("pop", 0.9, 0.8)
+				Sfx.play("egg_boom_s", 1.1, 0.7)
+				Sfx.play("egg_appear", 1, 0.5)
 				shake = 6
 			end
 			if pt >= 1.05 then
@@ -717,7 +735,7 @@ local function start(ctx: any, info: any)
 			-- ticking gets faster and higher
 			if clock - lastTick > 0.55 - 0.43 * p then
 				lastTick = clock
-				Sfx.play("tick", 0.8 + p * 1.0, 0.45)
+				Sfx.play("egg_knock", 0.85 + p * 0.6, 0.4 + 0.3 * p)
 			end
 			hintScale.Scale += (1 + 0.08 * math.sin(clock * 8) - hintScale.Scale) * math.min(1, dt * 10)
 			hint.Text = p < 0.4 and "TAP THE EGG!" or (p < 0.8 and "KEEP TAPPING!" or "ALMOST THERE!")

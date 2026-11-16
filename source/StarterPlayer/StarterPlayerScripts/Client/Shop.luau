@@ -2314,6 +2314,8 @@ local function playHatchBasic(h: any, done: () -> ())
 	local lastTick = 0
 	local conn: RBXScriptConnection? = nil
 	local finished = false
+	local musicLayer: any = nil
+	Sfx.duck(0.12, 0.4) -- V39: the world music goes quiet while the egg opens
 	finish = function()
 		if finished then
 			return
@@ -2322,6 +2324,10 @@ local function playHatchBasic(h: any, done: () -> ())
 		if conn then
 			conn:Disconnect()
 		end
+		if musicLayer then
+			musicLayer.stop(0.6)
+		end
+		Sfx.duck(1, 1.0)
 		sg:Destroy()
 		done()
 	end
@@ -2337,7 +2343,7 @@ local function playHatchBasic(h: any, done: () -> ())
 			cracks[3].Visible = p > 0.82
 			if t - lastTick > 0.34 - 0.24 * p then
 				lastTick = t
-				Sfx.play('tick', 0.8 + p * 0.9, 0.5)
+				Sfx.play('egg_knock', 0.85 + p * 0.6, 0.45 + 0.25 * p)
 			end
 			if t >= DUR then
 				phase = 'burst'
@@ -2353,10 +2359,17 @@ local function playHatchBasic(h: any, done: () -> ())
 					s.f.Visible = true
 				end
 				local big = ex.rarity
-				Sfx.play(big >= 5 and 'thunder' or (big >= 3 and 'boom' or 'pop'), 1, 0.9)
-				Sfx.play('sparkle', 1 + big * 0.04, 0.8)
+				local ri = math.clamp(big - 1, 0, 6) -- 0..6, as in EggOpen3D
+				Sfx.play('egg_crack', 1, 0.75)
+				Sfx.play(({ 'egg_boom_s', 'egg_boom_s', 'egg_boom_m', 'egg_boom_m', 'egg_boom_l', 'egg_boom_l', 'egg_boom_l' })[ri + 1], 1, 0.8)
+				Sfx.play(({ 'egg_burst_s', 'egg_burst_s', 'egg_burst_m', 'egg_burst_m', 'egg_burst_l', 'egg_burst_l', 'egg_burst_l' })[ri + 1], 1, 0.5)
+				Sfx.play('egg_reveal_' .. ri, 1, 0.62)
+				Sfx.play(h.dupe and 'egg_dupe' or 'egg_new', 1, 0.6)
+				if ri >= 5 then
+					Sfx.play('egg_thunder', 1, 0.7)
+				end
+				musicLayer = Sfx.layer(ri >= 4 and 'egg_music_b' or 'egg_music_a', 0.2, 1.6)
 				if big >= 4 then
-					Sfx.play('level', 1, 0.7)
 					UI.flash(rar.color, 0.4, 0.5)
 				end
 			end
@@ -2411,6 +2424,7 @@ local function playHatch(h: any, done: () -> ())
 				Sfx.play(name, pitch, vol)
 			end,
 			buildReveal = function(sg: ScreenGui, finish: () -> ())
+				Sfx.play(h.dupe and 'egg_dupe' or 'egg_new', 1, 0.6)
 				-- карточка внизу: питомец остаётся живым в 3D над ней, тап по нему - реакция
 				local card = newI('Frame', { BackgroundColor3 = rgb(10, 20, 70), BackgroundTransparency = 0.08, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -18), Size = UDim2.fromOffset(520, 238), ZIndex = 20 }, sg)
 				corner(16).Parent = card

@@ -1,0 +1,632 @@
+[
+ {
+  "name": "egg_appear",
+  "seconds": 1.88,
+  "channels": 1,
+  "loop": false,
+  "kind": "hit",
+  "ogg_kb": 21.7,
+  "use": "the egg materialises in the dark room (t = 0)"
+ },
+ {
+  "name": "egg_knock_1",
+  "seconds": 0.53,
+  "channels": 1,
+  "loop": false,
+  "kind": "hit",
+  "ogg_kb": 7.6,
+  "use": "heartbeat knock from inside the egg, accelerates before the opening (pitch rises in code)"
+ },
+ {
+  "name": "egg_knock_2",
+  "seconds": 0.55,
+  "channels": 1,
+  "loop": false,
+  "kind": "hit",
+  "ogg_kb": 7.8,
+  "use": "heartbeat knock, second variant"
+ },
+ {
+  "name": "egg_riser_forest",
+  "seconds": 2.5,
+  "channels": 2,
+  "loop": false,
+  "kind": "sustain",
+  "ogg_kb": 48.3,
+  "use": "prep of the forest egg: rustle and wood tension, climax at t = prep"
+ },
+ {
+  "name": "egg_riser_amber",
+  "seconds": 2.7,
+  "channels": 2,
+  "loop": false,
+  "kind": "sustain",
+  "ogg_kb": 50.5,
+  "use": "prep of the amber egg: warm brass swell and gong shimmer"
+ },
+ {
+  "name": "egg_riser_tide",
+  "seconds": 2.7,
+  "channels": 2,
+  "loop": false,
+  "kind": "sustain",
+  "ogg_kb": 52.5,
+  "use": "prep of the tide egg: bubbles speed up, water rush"
+ },
+ {
+  "name": "egg_riser_storm",
+  "seconds": 2.8,
+  "channels": 2,
+  "loop": false,
+  "kind": "sustain",
+  "ogg_kb": 67.0,
+  "use": "prep of the storm egg: electric build-up, rumble"
+ },
+ {
+  "name": "egg_riser_astral",
+  "seconds": 3.0,
+  "channels": 2,
+  "loop": false,
+  "kind": "sustain",
+  "ogg_kb": 59.7,
+  "use": "prep of the astral egg: shimmering glissando, choir swell"
+ },
+ {
+  "name": "egg_crack_1",
+  "seconds": 0.72,
+  "channels": 1,
+  "loop": false,
+  "kind": "hit",
+  "ogg_kb": 11.5,
+  "use": "the shell cracks open at t = prep"
+ },
+ {
+  "name": "egg_crack_2",
+  "seconds": 0.71,
+  "channels": 1,
+  "loop": false,
+  "kind": "hit",
+  "ogg_kb": 11.7,
+  "use": "the shell cracks open, variant with a longer cascade"
+ },
+ {
+  "name": "egg_boom_s",
+  "seconds": 1.21,
+  "channels": 1,
+  "loop": false,
+  "kind": "hit",
+  "ogg_kb": 13.3,
+  "use": "impact of the opening, size s (small for low rarities, large for high)"
+ },
+ {
+  "name": "egg_boom_m",
+  "seconds": 1.9,
+  "channels": 1,
+  "loop": false,
+  "kind": "hit",
+  "ogg_kb": 16.9,
+  "use": "impact of the opening, size m (small for low rarities, large for high)"
+ },
+ {
+  "name": "egg_boom_l",
+  "seconds": 2.82,
+  "channels": 1,
+  "loop": false,
+  "kind": "hit",
+  "ogg_kb": 22.4,
+  "use": "impact of the opening, size l (small for low rarities, large for high)"
+ },
+ {
+  "name": "egg_burst_s",
+  "seconds": 2.44,
+  "channels": 1,
+  "loop": false,
+  "kind": "hit",
+  "ogg_kb": 25.9,
+  "use": "magic burst when the shell opens, size s"
+ },
+ {
+  "name": "egg_burst_m",
+  "seconds": 3.53,
+  "channels": 1,
+  "loop": false,
+  "kind": "hit",
+  "ogg_kb": 37.9,
+  "use": "magic burst when the shell opens, size m"
+ },
+ {
+  "name": "egg_burst_l",
+  "seconds": 4.82,
+  "channels": 1,
+  "loop": false,
+  "kind": "hit",
+  "ogg_kb": 50.8,
+  "use": "magic burst when the shell opens, size l"
+ },
+ {
+  "name": "egg_thunder",
+  "seconds": 4.12,
+  "channels": 1,
+  "loop": false,
+  "kind": "hit",
+  "ogg_kb": 36.2,
+  "use": "thunder for high rarities at the opening (and the storm egg)"
+ },
+ {
+  "name": "egg_divine",
+  "seconds": 4.5,
+  "channels": 1,
+  "loop": false,
+  "kind": "hit",
+  "ogg_kb": 49.3,
+  "use": "the biggest hit: top rarity opening (sub drop, choir, cymbal, bells)"
+ },
+ {
+  "name": "forest_snap_1",
+  "seconds": 0.39,
+  "channels": 1,
+  "loop": false,
+  "kind": "hit",
+  "ogg_kb": 7.9,
+  "use": "forest egg: a belt segment splinters (8 in a row, pitch rises in code)"
+ },
+ {
+  "name": "forest_snap_2",
+  "seconds": 0.42,
+  "channels": 1,
+  "loop": false,
+  "kind": "hit",
+  "ogg_kb": 8.0,
+  "use": "forest egg: belt segment splinters, second variant"
+ },
+ {
+  "name": "forest_leaves",
+  "seconds": 1.73,
+  "channels": 1,
+  "loop": false,
+  "kind": "hit",
+  "ogg_kb": 21.4,
+  "use": "forest egg: burst of leaf cubes and soft sparks"
+ },
+ {
+  "name": "forest_shimmer",
+  "seconds": 3.0,
+  "channels": 1,
+  "loop": true,
+  "kind": "loop",
+  "ogg_kb": 32.8,
+  "use": "forest egg: soft rising sparkles while sparks rise around the egg (loop)"
+ },
+ {
+  "name": "amber_note",
+  "seconds": 2.11,
+  "channels": 1,
+  "loop": false,
+  "kind": "hit",
+  "ogg_kb": 16.3,
+  "use": "amber egg: a segment of the sun lights up (6 notes, pitch steps up the scale in code)"
+ },
+ {
+  "name": "amber_inflow",
+  "seconds": 3.0,
+  "channels": 1,
+  "loop": true,
+  "kind": "loop",
+  "ogg_kb": 29.2,
+  "use": "amber egg: sparks fly toward the egg (loop)"
+ },
+ {
+  "name": "amber_sun",
+  "seconds": 3.31,
+  "channels": 1,
+  "loop": false,
+  "kind": "hit",
+  "ogg_kb": 22.4,
+  "use": "amber egg: the sun ring swells (warm gong and pad)"
+ },
+ {
+  "name": "amber_shard_1",
+  "seconds": 0.83,
+  "channels": 1,
+  "loop": false,
+  "kind": "hit",
+  "ogg_kb": 9.5,
+  "use": "amber egg: an amber shard flies off a segment (6 in a row)"
+ },
+ {
+  "name": "amber_shard_2",
+  "seconds": 0.85,
+  "channels": 1,
+  "loop": false,
+  "kind": "hit",
+  "ogg_kb": 9.6,
+  "use": "amber egg: amber shard, second variant"
+ },
+ {
+  "name": "tide_bubbles",
+  "seconds": 3.0,
+  "channels": 1,
+  "loop": true,
+  "kind": "loop",
+  "ogg_kb": 29.3,
+  "use": "tide egg: bubbles rise around the egg (loop)"
+ },
+ {
+  "name": "tide_splash",
+  "seconds": 1.65,
+  "channels": 1,
+  "loop": false,
+  "kind": "hit",
+  "ogg_kb": 19.5,
+  "use": "tide egg: the splash when the shell opens (rings and droplets)"
+ },
+ {
+  "name": "tide_pop_1",
+  "seconds": 0.4,
+  "channels": 1,
+  "loop": false,
+  "kind": "hit",
+  "ogg_kb": 7.0,
+  "use": "tide egg: a pearl row bursts into bubbles (4 pops, pitch rises in code)"
+ },
+ {
+  "name": "tide_pop_2",
+  "seconds": 0.39,
+  "channels": 1,
+  "loop": false,
+  "kind": "hit",
+  "ogg_kb": 6.9,
+  "use": "tide egg: bubble pop, second variant"
+ },
+ {
+  "name": "tide_ring",
+  "seconds": 1.06,
+  "channels": 1,
+  "loop": false,
+  "kind": "hit",
+  "ogg_kb": 12.4,
+  "use": "tide egg: water ring pulse"
+ },
+ {
+  "name": "storm_crackle",
+  "seconds": 3.68,
+  "channels": 1,
+  "loop": false,
+  "kind": "sustain",
+  "ogg_kb": 47.9,
+  "use": "storm egg: sparks along the seam, accelerating (one long rising crackle)"
+ },
+ {
+  "name": "storm_zap_1",
+  "seconds": 0.51,
+  "channels": 1,
+  "loop": false,
+  "kind": "hit",
+  "ogg_kb": 9.0,
+  "use": "storm egg: a bolt across the seam / from the centre"
+ },
+ {
+  "name": "storm_zap_2",
+  "seconds": 0.5,
+  "channels": 1,
+  "loop": false,
+  "kind": "hit",
+  "ogg_kb": 9.1,
+  "use": "storm egg: bolt, second variant"
+ },
+ {
+  "name": "storm_clamp",
+  "seconds": 0.8,
+  "channels": 1,
+  "loop": false,
+  "kind": "hit",
+  "ogg_kb": 11.3,
+  "use": "storm egg: a steel clamp releases (6 in a row)"
+ },
+ {
+  "name": "storm_thunder",
+  "seconds": 4.2,
+  "channels": 1,
+  "loop": false,
+  "kind": "hit",
+  "ogg_kb": 36.8,
+  "use": "storm egg: the thunder flash at the opening (sharper crack, long rumble)"
+ },
+ {
+  "name": "storm_arcs",
+  "seconds": 3.0,
+  "channels": 1,
+  "loop": true,
+  "kind": "loop",
+  "ogg_kb": 36.9,
+  "use": "storm egg: arcs between the separated armour segments (loop)"
+ },
+ {
+  "name": "astral_twinkle",
+  "seconds": 3.0,
+  "channels": 1,
+  "loop": true,
+  "kind": "loop",
+  "ogg_kb": 27.1,
+  "use": "astral egg: stars twinkle around the egg (loop)"
+ },
+ {
+  "name": "astral_ring",
+  "seconds": 4.12,
+  "channels": 1,
+  "loop": false,
+  "kind": "hit",
+  "ogg_kb": 29.0,
+  "use": "astral egg: the rings align (resonant chord of bells, sub hum)"
+ },
+ {
+  "name": "astral_burst",
+  "seconds": 4.62,
+  "channels": 1,
+  "loop": false,
+  "kind": "hit",
+  "ogg_kb": 48.2,
+  "use": "astral egg: stars fly to all sides (whoosh, dense sparkle, soft choir)"
+ },
+ {
+  "name": "astral_split",
+  "seconds": 2.9,
+  "channels": 1,
+  "loop": false,
+  "kind": "hit",
+  "ogg_kb": 28.0,
+  "use": "astral egg: the shell separates (resonant sweep, glass crack, shimmer)"
+ },
+ {
+  "name": "egg_flash",
+  "seconds": 1.78,
+  "channels": 1,
+  "loop": false,
+  "kind": "hit",
+  "ogg_kb": 21.0,
+  "use": "light flash from inside the egg: a rising airy shine and a bright ping"
+ },
+ {
+  "name": "egg_ring_s",
+  "seconds": 1.31,
+  "channels": 1,
+  "loop": false,
+  "kind": "hit",
+  "ogg_kb": 15.4,
+  "use": "shock ring on the floor, small"
+ },
+ {
+  "name": "egg_ring_l",
+  "seconds": 1.78,
+  "channels": 1,
+  "loop": false,
+  "kind": "hit",
+  "ogg_kb": 19.5,
+  "use": "shock ring on the floor, large"
+ },
+ {
+  "name": "pet_emerge",
+  "seconds": 1.52,
+  "channels": 1,
+  "loop": false,
+  "kind": "hit",
+  "ogg_kb": 17.4,
+  "use": "the animal pops out of the shell: spring boing, upward whoosh, sparkle"
+ },
+ {
+  "name": "pet_trail",
+  "seconds": 2.4,
+  "channels": 1,
+  "loop": true,
+  "kind": "loop",
+  "ogg_kb": 28.7,
+  "use": "sparkle trail while the animal is in the air (loop)"
+ },
+ {
+  "name": "pet_land_s",
+  "seconds": 1.36,
+  "channels": 1,
+  "loop": false,
+  "kind": "hit",
+  "ogg_kb": 15.1,
+  "use": "the animal lands, size s (by rarity)"
+ },
+ {
+  "name": "pet_land_m",
+  "seconds": 1.83,
+  "channels": 1,
+  "loop": false,
+  "kind": "hit",
+  "ogg_kb": 17.8,
+  "use": "the animal lands, size m (by rarity)"
+ },
+ {
+  "name": "pet_land_l",
+  "seconds": 2.48,
+  "channels": 1,
+  "loop": false,
+  "kind": "hit",
+  "ogg_kb": 25.8,
+  "use": "the animal lands, size l (by rarity)"
+ },
+ {
+  "name": "pet_slowmo",
+  "seconds": 2.1,
+  "channels": 1,
+  "loop": false,
+  "kind": "hit",
+  "ogg_kb": 22.0,
+  "use": "slow motion at the jump of high rarities (the world slows down and speeds up)"
+ },
+ {
+  "name": "egg_shafts",
+  "seconds": 4.04,
+  "channels": 1,
+  "loop": false,
+  "kind": "sustain",
+  "ogg_kb": 40.6,
+  "use": "light shafts appear (rarity 3 and up): a soft vowel swell and high bells"
+ },
+ {
+  "name": "egg_halo",
+  "seconds": 5.69,
+  "channels": 1,
+  "loop": false,
+  "kind": "sustain",
+  "ogg_kb": 60.0,
+  "use": "halo of the mythic and divine rarities: choir, strings and bells"
+ },
+ {
+  "name": "egg_orbit",
+  "seconds": 3.68,
+  "channels": 1,
+  "loop": false,
+  "kind": "hit",
+  "ogg_kb": 36.5,
+  "use": "the camera circles the animal (divine rarity): two passes of air"
+ },
+ {
+  "name": "pet_tap_1",
+  "seconds": 0.73,
+  "channels": 1,
+  "loop": false,
+  "kind": "hit",
+  "ogg_kb": 10.4,
+  "use": "tap on the animal: a cheerful boop going up"
+ },
+ {
+  "name": "pet_tap_2",
+  "seconds": 0.69,
+  "channels": 1,
+  "loop": false,
+  "kind": "hit",
+  "ogg_kb": 9.4,
+  "use": "tap on the animal: a boop going down"
+ },
+ {
+  "name": "egg_skip",
+  "seconds": 0.66,
+  "channels": 1,
+  "loop": false,
+  "kind": "hit",
+  "ogg_kb": 10.0,
+  "use": "SKIP pressed: a quick whoosh and a soft thud"
+ },
+ {
+  "name": "egg_reveal_0",
+  "seconds": 2.83,
+  "channels": 2,
+  "loop": false,
+  "kind": "sustain",
+  "ogg_kb": 48.3,
+  "use": "reveal stinger, rarity 0 (Common): three glockenspiel notes and a soft pad"
+ },
+ {
+  "name": "egg_reveal_1",
+  "seconds": 3.27,
+  "channels": 2,
+  "loop": false,
+  "kind": "sustain",
+  "ogg_kb": 51.9,
+  "use": "reveal stinger, rarity 1 (Uncommon): harp arpeggio, celesta, pad"
+ },
+ {
+  "name": "egg_reveal_2",
+  "seconds": 3.3,
+  "channels": 2,
+  "loop": false,
+  "kind": "sustain",
+  "ogg_kb": 59.7,
+  "use": "reveal stinger, rarity 2 (Rare): bell fanfare, brass swell, harp run"
+ },
+ {
+  "name": "egg_reveal_3",
+  "seconds": 3.72,
+  "channels": 2,
+  "loop": false,
+  "kind": "sustain",
+  "ogg_kb": 69.9,
+  "use": "reveal stinger, rarity 3 (Epic): timpani roll into a brass hit with choir"
+ },
+ {
+  "name": "egg_reveal_4",
+  "seconds": 4.84,
+  "channels": 2,
+  "loop": false,
+  "kind": "sustain",
+  "ogg_kb": 91.3,
+  "use": "reveal stinger, rarity 4 (Legendary): orchestral hit, choir, cymbal crash, bell cascade"
+ },
+ {
+  "name": "egg_reveal_5",
+  "seconds": 6.57,
+  "channels": 2,
+  "loop": false,
+  "kind": "sustain",
+  "ogg_kb": 121.1,
+  "use": "reveal stinger, rarity 5 (Mythic): two hits, modulation up to D major"
+ },
+ {
+  "name": "egg_reveal_6",
+  "seconds": 7.81,
+  "channels": 2,
+  "loop": false,
+  "kind": "sustain",
+  "ogg_kb": 145.1,
+  "use": "reveal stinger, rarity 6 (Divine): brass fanfare, roll, huge choir hit, bell cascade"
+ },
+ {
+  "name": "egg_card",
+  "seconds": 1.02,
+  "channels": 1,
+  "loop": false,
+  "kind": "hit",
+  "ogg_kb": 12.3,
+  "use": "the reveal card slams onto the screen"
+ },
+ {
+  "name": "egg_new",
+  "seconds": 1.99,
+  "channels": 1,
+  "loop": false,
+  "kind": "hit",
+  "ogg_kb": 21.9,
+  "use": "NEW PET: a rising triple ping with sparkle"
+ },
+ {
+  "name": "egg_dupe",
+  "seconds": 1.05,
+  "channels": 1,
+  "loop": false,
+  "kind": "hit",
+  "ogg_kb": 14.0,
+  "use": "DUPLICATE: two glass clinks and shard sparkle"
+ },
+ {
+  "name": "egg_music_a",
+  "seconds": 10.0,
+  "channels": 2,
+  "loop": true,
+  "kind": "loop",
+  "ogg_kb": 185.3,
+  "use": "music under the reveal card, calm (rarities 0-3), loops, C-Am-F-G"
+ },
+ {
+  "name": "egg_music_b",
+  "seconds": 10.0,
+  "channels": 2,
+  "loop": true,
+  "kind": "loop",
+  "ogg_kb": 208.8,
+  "use": "music under the reveal card, grand (rarities 4-6), loops, D-Bm-G-A with choir and timpani"
+ },
+ {
+  "name": "egg_surge",
+  "seconds": 7.88,
+  "channels": 2,
+  "loop": false,
+  "kind": "sustain",
+  "ogg_kb": 156.8,
+  "use": "music build-up while the animal jumps (from emerge to reveal): arpeggio, strings, roll, riser"
+ }
+]
