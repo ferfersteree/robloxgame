@@ -5,6 +5,7 @@ local TweenService = game:GetService("TweenService")
 
 local Sfx = {}
 Sfx.enabled = true
+Sfx.skipOnce = nil :: string? -- V47: имя события, которое надо один раз не играть (окно магазина играет свой shop_open вместо общего open)
 Sfx.music = true
 
 ---------------------------------------------------------------------
@@ -578,6 +579,10 @@ end
 
 function Sfx.play(name: string, pitch: number?, volume: number?): Sound?
 	if not Sfx.enabled then
+		return nil
+	end
+	if Sfx.skipOnce == name then
+		Sfx.skipOnce = nil
 		return nil
 	end
 	if name == "hover" then

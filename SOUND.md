@@ -62,3 +62,7 @@ Not run in Studio. The audio itself could not be listened to by the author of th
 ## V43: sounds that existed but were never called
 
 `toggle_on` / `toggle_off` (settings switches, `UI.button` `Sound`), `select` (choosing a card in the bag when selling), `pickup` (firefly or egg pickup, together with the old sparkle) and `miss` (the animal escaped) now play. `coin_burst`, `hit_ground`, `back` and `fly` are still not called anywhere: no natural place for them was found.
+
+## V47: one sound when the shop opens
+
+`UI.window` plays the generic `open` for every window and `Shop.open` also played its own `shop_open`, so the two overlapped (listed as an open question since V38). `Sfx.skipOnce = "open"` is set around the `UI.window` call in `Shop.open` and consumed by `Sfx.play`, so the shop plays `shop_open` only; other windows keep `open`. Checked in Play by logging what `Sfx.play` really produced: Shop `(skipped open), shop_open, ...`, Bag `open`, Shop again the same as the first time, flag `nil` afterwards.

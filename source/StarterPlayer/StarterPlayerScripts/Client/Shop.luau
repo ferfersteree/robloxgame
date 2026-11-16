@@ -3188,9 +3188,11 @@ function Shop.refresh()
 end
 
 function Shop.open()
+	Sfx.skipOnce = "open" -- V47: UI.window играет общий open, а магазин свой shop_open ниже: они накладывались
 	local win, body = UI.window("shop", "", Vector2.new(780, 612), K.skyBot, function()
 		open = nil
 	end)
+	Sfx.skipOnce = nil
 	-- Убираем стандартное оформление окна: вместо него небо, баннер и облака
 	for _, c in win:GetChildren() do
 		if c.Name == "Header" or c.Name == "Button" or c:IsA("UIStroke") or c:IsA("UIGradient") then
