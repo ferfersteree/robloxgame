@@ -260,6 +260,15 @@ do
 		warn("[Footsteps] init failed: " .. tostring(err))
 	end
 end
+-- V37: растения, камни и здания из HTML-мира, детали строятся только вокруг камеры
+do
+	local ok, err = pcall(function()
+		require(Client.HtmlWorld).init()
+	end)
+	if not ok then
+		warn("[HtmlWorld] init failed: " .. tostring(err))
+	end
+end
 
 task.delay(1, function()
 	Hud.banner(string.upper(Config.GAME_NAME), C.gold, (Backend.mode == "Demo" and game:GetService("RunService"):IsStudio()) and "Demo mode - test panel in the menu" or nil, 2.6)
