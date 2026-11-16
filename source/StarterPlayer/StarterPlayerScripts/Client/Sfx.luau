@@ -53,6 +53,20 @@ local BANKS: { [string]: { string } } = {
 	step_grass = { "step_grass_1", "step_grass_2", "step_grass_3", "step_grass_4" },
 	step_stone = { "step_stone_1", "step_stone_2", "step_stone_3", "step_stone_4" },
 	step_wood = { "step_wood_1", "step_wood_2", "step_wood_3", "step_wood_4" },
+	-- V38: звуки магазина (кубики): файлы audio/shop_*.wav
+	shop_open = { "shop_open" }, shop_close = { "shop_close" },
+	shop_hover = { "shop_hover_1", "shop_hover_2", "shop_hover_3" },
+	shop_press = { "shop_press_1", "shop_press_2" },
+	shop_pop = { "shop_pop_1", "shop_pop_2" },
+	shop_buy = { "shop_buy" }, shop_deny = { "shop_deny" }, shop_odds = { "shop_odds" },
+	shop_equip = { "shop_equip" }, shop_unequip = { "shop_unequip" },
+	shop_upgrade = { "shop_upgrade" }, shop_claim = { "shop_claim" },
+}
+-- Пока свой файл события не загружен, играет уже загруженный звук похожего события (а если нет и его: встроенный)
+local ALIAS: { [string]: string } = {
+	shop_open = "open", shop_close = "close", shop_hover = "hover", shop_press = "press", shop_pop = "pop",
+	shop_buy = "buy", shop_deny = "error", shop_odds = "select", shop_equip = "toggle_on", shop_unequip = "toggle_off",
+	shop_upgrade = "level", shop_claim = "coin_burst",
 }
 -- громкость по умолчанию (файлы нормализованы одинаково, громкость задаёт характер события)
 local BANK_VOL: { [string]: number } = {
@@ -62,6 +76,8 @@ local BANK_VOL: { [string]: number } = {
 	stamp = 0.55, heart = 0.5, thunder = 0.55, boom = 0.6, crash = 0.6, rustle = 0.45, creak = 0.25,
 	throw = 0.55, miss = 0.4, fly = 0.25, hit = 0.55, hit_ground = 0.55, hit_wood = 0.55, blip = 0.18,
 	jump = 0.35, land = 0.4, bounce = 0.35, step_grass = 0.3, step_stone = 0.3, step_wood = 0.3,
+	shop_open = 0.4, shop_close = 0.36, shop_hover = 0.2, shop_press = 0.42, shop_pop = 0.26, shop_buy = 0.5,
+	shop_deny = 0.42, shop_odds = 0.4, shop_equip = 0.4, shop_unequip = 0.36, shop_upgrade = 0.48, shop_claim = 0.45,
 }
 local bankCache: { [string]: Sound } = {}
 local lastPick: { [string]: string } = {}
@@ -133,6 +149,19 @@ local PRESETS: { [string]: { any } } = {
 	hit_wood = { "hit", 1.3, 0.6, 0.05 },
 	pickup = { "ping", 2.0, 0.35, 0.08 },
 	coin_burst = { "ping", 2.2, 0.3, 0.15 },
+	-- V38: запасные встроенные звуки магазина
+	shop_open = { "swoosh", 1.25, 0.3, 0.04 },
+	shop_close = { "swoosh", 0.85, 0.33, 0.05 },
+	shop_hover = { "ping", 2.05, 0.1, 0.035 },
+	shop_press = { "click", 1.08, 0.34, 0.04 },
+	shop_pop = { "click", 1.8, 0.3, 0.1 },
+	shop_buy = { "win", 1.6, 0.4, 0 },
+	shop_deny = { "hit", 0.6, 0.5, 0 },
+	shop_odds = { "click", 1.25, 0.34, 0.05 },
+	shop_equip = { "click", 1.4, 0.35, 0.03 },
+	shop_unequip = { "click", 0.9, 0.35, 0.03 },
+	shop_upgrade = { "win", 1.2, 0.5, 0 },
+	shop_claim = { "ping", 2.2, 0.3, 0.15 },
 }
 
 local folder = Instance.new("Folder")
@@ -162,6 +191,10 @@ local function bankSound(name: string): Sound?
 		end
 	end
 	if #avail == 0 then
+		local alt = ALIAS[name]
+		if alt then
+			return bankSound(alt)
+		end
 		return nil
 	end
 	local pick = avail[math.random(1, #avail)]
@@ -187,6 +220,8 @@ end
 local ASWRITTEN: { [string]: boolean } = {
 	select = true, back = true, blip = true, rep = true, throw = true, miss = true,
 	hit_ground = true, hit_wood = true, pickup = true, coin_burst = true,
+	shop_open = true, shop_close = true, shop_hover = true, shop_press = true, shop_pop = true, shop_buy = true,
+	shop_deny = true, shop_odds = true, shop_equip = true, shop_unequip = true, shop_upgrade = true, shop_claim = true,
 }
 
 local function customPitch(name: string, pitch: number?): number?

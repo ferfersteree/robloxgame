@@ -1,5 +1,6 @@
 -- StarterPlayerScripts/Client/Shop.luau
 -- Окно Robux-магазина: красная шапка с гирляндой, стартовый набор, пассы, бусты, паки монет.
+-- V38: кубический стиль (как яйца и питомцы): прямые углы, ступенчатая заливка, выступы-«шипы», свои звуки shop_*.
 -- Иконки — настоящие 3D-предметы во вьюпортах (копья и звери из игры, остальное собрано из деталей).
 -- Покупка: MarketplaceService → сервер (Server/Shop) выдаёт → сюда приходит "granted".
 -- Здесь же загрузка/сохранение прогресса и применение купленных монет и стартового набора.
@@ -728,6 +729,98 @@ local function icon(parent: Instance, kind: string, spin: number?)
 end
 
 ---------------------------------------------------------------------
+-- V38: кубический стиль окна (как яйца и питомцы из кубиков)
+---------------------------------------------------------------------
+local CUBE_R = 3 -- скругление углов: почти прямые, как у кубика
+
+local function corner(r: number?, scale: boolean?): UICorner
+	if scale then
+		return UI.corner(r, true)
+	end
+	return UI.corner(math.min(r or CUBE_R, CUBE_R))
+end
+
+-- Ступенчатая заливка вместо плавного градиента: два-три ряда «кубиков» разного тона
+local function bands(top: Color3, mid: Color3?, bottom: Color3): ColorSequence
+	if mid then
+		return ColorSequence.new({
+			ColorSequenceKeypoint.new(0, top), ColorSequenceKeypoint.new(0.33, top),
+			ColorSequenceKeypoint.new(0.335, mid), ColorSequenceKeypoint.new(0.66, mid),
+			ColorSequenceKeypoint.new(0.665, bottom), ColorSequenceKeypoint.new(1, bottom),
+		})
+	end
+	if top == bottom then
+		return ColorSequence.new(top)
+	end
+	return ColorSequence.new({
+		ColorSequenceKeypoint.new(0, top), ColorSequenceKeypoint.new(0.5, top),
+		ColorSequenceKeypoint.new(0.505, bottom), ColorSequenceKeypoint.new(1, bottom),
+	})
+end
+
+-- Выступы по верхнему краю (как у кубика конструктора) и тёмная нижняя грань
+local function cubeStuds(f: Frame, n: number, z: number?)
+	local zi = (z or f.ZIndex) + 1
+	for i = 1, n do
+		local s = Instance.new("Frame")
+		s.Name = "Stud"
+		s.BorderSizePixel = 0
+		s.BackgroundColor3 = Color3.new(1, 1, 1)
+		s.BackgroundTransparency = 0.74
+		s.AnchorPoint = Vector2.new(0.5, 0)
+		s.Position = UDim2.new((i - 0.5) / n, 0, 0, 0)
+		s.Size = UDim2.fromOffset(12, 5)
+		s.ZIndex = zi
+		s.Parent = f
+	end
+	local d = Instance.new("Frame")
+	d.Name = "Depth"
+	d.BorderSizePixel = 0
+	d.BackgroundColor3 = Color3.new(0, 0, 0)
+	d.BackgroundTransparency = 0.72
+	d.AnchorPoint = Vector2.new(0, 1)
+	d.Position = UDim2.fromScale(0, 1)
+	d.Size = UDim2.new(1, 0, 0, 6)
+	d.ZIndex = zi
+	d.Parent = f
+end
+
+-- Кнопка магазина: та же UI.button, но с прямыми углами и своим звуком
+local BTN_SOUND: { [string]: string } = {
+	ODDS = "shop_odds", EQUIP = "shop_equip", UNEQUIP = "shop_unequip", CLAIM = "shop_claim",
+}
+local function sbutton(p: any, onClick: (() -> ())?): Frame
+	if p.Sound == nil or p.Sound == "press" then
+		local text = tostring(p.Text or "")
+		if text ~= "X" and text ~= "CLOSE" then
+			p.Sound = BTN_SOUND[text] or (if text:sub(1, 3) == "UP " then "shop_upgrade" else "shop_press")
+		end
+	end
+	local b = UI.button(p, onClick)
+	for _, d in b:GetDescendants() do
+		if d:IsA("UICorner") then
+			d.CornerRadius = UDim.new(0, CUBE_R)
+		elseif d:IsA("UIStroke") then
+			d.LineJoinMode = Enum.LineJoinMode.Miter
+		end
+	end
+	return b
+end
+
+-- Наведение на плитку товара: тихий щелчок кубика (не чаще 14 раз в секунду)
+local lastTileHover = 0
+local function tileHover(f: GuiObject)
+	f.MouseEnter:Connect(function()
+		local now = os.clock()
+		if now - lastTileHover < 0.07 then
+			return
+		end
+		lastTileHover = now
+		Sfx.play("shop_hover")
+	end)
+end
+
+---------------------------------------------------------------------
 -- Кирпичики оформления
 ---------------------------------------------------------------------
 local function box(p: { [string]: any }): Frame
@@ -758,15 +851,16 @@ local function box(p: { [string]: any }): Frame
 	end
 	local g = Instance.new("UIGradient")
 	g.Rotation = 90
-	if p.Mid then
-		g.Color = ColorSequence.new({ ColorSequenceKeypoint.new(0, p.Top), ColorSequenceKeypoint.new(0.55, p.Mid), ColorSequenceKeypoint.new(1, p.Bottom) })
-	else
-		g.Color = ColorSequence.new(p.Top, p.Bottom or p.Top)
-	end
+	g.Color = bands(p.Top, p.Mid, p.Bottom or p.Top)
 	g.Parent = f
-	UI.corner(p.Radius or 10).Parent = f
+	corner(p.Radius or 10).Parent = f
 	if p.Line then
-		UI.stroke(p.Line, p.LineThick or 3, 0, true).Parent = f
+		local st = UI.stroke(p.Line, p.LineThick or 3, 0, true)
+		st.LineJoinMode = Enum.LineJoinMode.Miter
+		st.Parent = f
+	end
+	if p.Studs then
+		cubeStuds(f, p.Studs, p.ZIndex)
 	end
 	if p.Parent then
 		f.Parent = p.Parent
@@ -809,23 +903,25 @@ local function sectionBar(o, parent: Instance, text: string, order: number)
 	bar.BackgroundTransparency = 0.3
 	bar.Size = UDim2.new(1, 0, 1, -6)
 	bar.Position = UDim2.fromOffset(0, 3)
-	local fade = Instance.new("UIGradient")
-	fade.Transparency = NumberSequence.new({
-		NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.2, 0), NumberSequenceKeypoint.new(0.8, 0), NumberSequenceKeypoint.new(1, 1),
-	})
-	fade.Parent = bar
+	bar.BackgroundTransparency = 0.12
+	corner(CUBE_R).Parent = bar
 	bar.Parent = c
+	for side = 0, 1 do -- золотые кубики-заклёпки по краям
+		local rv = Instance.new("Frame")
+		rv.BorderSizePixel = 0
+		rv.BackgroundColor3 = K.gold
+		rv.AnchorPoint = Vector2.new(side, 0.5)
+		rv.Position = UDim2.new(side, side == 0 and 8 or -8, 0.5, 0)
+		rv.Size = UDim2.fromOffset(10, 10)
+		rv.ZIndex = 3
+		rv.Parent = c
+	end
 	for side = 0, 1 do
 		local l = Instance.new("Frame")
 		l.BorderSizePixel = 0
 		l.BackgroundColor3 = K.gold
 		l.Size = UDim2.new(1, 0, 0, 2)
 		l.Position = UDim2.new(0, 0, 0, side == 0 and 3 or 27)
-		local g = Instance.new("UIGradient")
-		g.Transparency = NumberSequence.new({
-			NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.25, 0), NumberSequenceKeypoint.new(0.75, 0), NumberSequenceKeypoint.new(1, 1),
-		})
-		g.Parent = l
 		l.Parent = c
 	end
 	UI.label({ Text = text, TextSize = 21, Color = K.white, StrokeColor = K.navy, Stroke = 3, Size = UDim2.fromScale(1, 1), ZIndex = 3, Parent = c })
@@ -895,10 +991,12 @@ local ShopFn: RemoteFunction? = nil
 local function buy(item: any)
 	local st = Perks.state()
 	if not st.loaded then
+		Sfx.play("shop_deny")
 		UI.toast("The shop is still loading your data. Try again in a moment.", "warn")
 		return
 	end
 	if item.kind == "egg" and st.eggsOff then
+		Sfx.play("shop_deny")
 		UI.toast("Eggs are not available in your region.", "warn")
 		return
 	end
@@ -916,12 +1014,13 @@ local function buy(item: any)
 			end)
 		end)
 	else
+		Sfx.play("shop_deny")
 		UI.toast("Coming soon!", "info")
 	end
 end
 
 local function buyButton(item: any, size: UDim2, pos: UDim2, textSize: number, parent: Instance): Frame
-	local b = UI.button({ Text = priceText(item), TextSize = textSize, Color = K.green, Size = size, Position = pos, Sound = "press" }, function()
+	local b = sbutton({ Text = priceText(item), TextSize = textSize, Color = K.green, Size = size, Position = pos, Sound = "shop_press" }, function()
 		buy(item)
 	end)
 	b.Parent = parent
@@ -1124,7 +1223,7 @@ local function basketIcon(parent: Instance, z: number): Frame
 		slit.Size = UDim2.fromOffset(4, 14)
 		slit.Position = UDim2.fromOffset(10 + (i - 1) * 14, 8)
 		slit.ZIndex = z + 2
-		UI.corner(2).Parent = slit
+		corner(2).Parent = slit
 		slit.Parent = body
 	end
 	local rim = box({ Top = rgb(255, 150, 156), Bottom = rgb(236, 56, 72), Line = rgb(84, 6, 22), LineThick = 2, Radius = 5, Size = UDim2.fromOffset(58, 9), Position = UDim2.fromOffset(-1, 14), ZIndex = z + 3, Parent = h })
@@ -1156,7 +1255,7 @@ local function flySpear(parent: Instance, o: Open): Frame
 		l.Size = UDim2.fromOffset(46 - i * 10, 3)
 		l.Position = UDim2.fromOffset(-60 + i * 10, y)
 		l.ZIndex = 20
-		UI.corner(2).Parent = l
+		corner(2).Parent = l
 		l.Parent = j
 	end
 	local flat = artImage(j, "flyspear")
@@ -1250,7 +1349,7 @@ local function closeAnimated(o: Open)
 		return
 	end
 	o.closing = true
-	Sfx.play("close")
+	Sfx.play("shop_close")
 	o.scroll.Visible = false
 	UI.tween(o.sky, 0.22, { Size = UDim2.new(1, 0, 0, 0) }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 	UI.tween(o.headScale, 0.3, { Scale = 0 }, Enum.EasingStyle.Back, Enum.EasingDirection.In)
@@ -1303,13 +1402,15 @@ local function introPop(o: Open, obj: GuiObject)
 		return
 	end
 	o.n += 1
+	local k = math.min(o.n, 14)
 	local sc = Instance.new("UIScale")
 	sc.Name = "Intro"
 	sc.Scale = 0
 	sc.Parent = obj
-	task.delay(0.6 + math.min(o.n, 14) * 0.045, function()
+	task.delay(0.6 + k * 0.045, function()
 		if sc.Parent then
 			UI.tween(sc, 0.38, { Scale = 1 }, Enum.EasingStyle.Back)
+			Sfx.play("shop_pop", 0.86 + k * 0.035, 0.26) -- кубики встают один за другим, тон растёт
 		end
 	end)
 end
@@ -1329,14 +1430,14 @@ local function gloss(f: Frame, h: number)
 	g.Size = UDim2.new(1, -12, 0, h)
 	g.Position = UDim2.fromOffset(6, 4)
 	g.ZIndex = 2
-	UI.corner(9).Parent = g
+	corner(9).Parent = g
 	g.Parent = f
 end
 
 local function renderHero(o: Open, parent: Instance, order: number)
 	local item = Config.SHOP_BY_KEY.starter
 	local st = SHOP.STARTER
-	local f = box({ Top = K.heroTop, Mid = K.heroMid, Bottom = K.heroBot, Line = K.heroLine, Size = CENTER.Size, AnchorPoint = CENTER.AnchorPoint, Position = CENTER.Position, Clip = true, Parent = slot(parent, order, 176) })
+	local f = box({ Top = K.heroTop, Mid = K.heroMid, Bottom = K.heroBot, Line = K.heroLine, Studs = 18, Size = CENTER.Size, AnchorPoint = CENTER.AnchorPoint, Position = CENTER.Position, Clip = true, Parent = slot(parent, order, 176) })
 	glowSpot(f, rgb(214, 170, 255), 460, UDim2.fromOffset(95, 92), 0.55)
 	for i = 1, 6 do
 		sparkle(o.cards, f, 0.1 + i * 0.14, 0.2 + (i % 3) * 0.28, 12 + (i % 3) * 4, i * 1.7, 2)
@@ -1367,13 +1468,14 @@ local function renderHero(o: Open, parent: Instance, order: number)
 	buyButton(item, UDim2.fromOffset(200, 42), UDim2.new(1, -212, 0, 126), 22, f).ZIndex = 4
 	table.insert(o.shiny, f)
 	introPop(o, f)
+	tileHover(f)
 end
 
 -- Широкий баннер (Server Luck! в референсе)
 local function renderBanner(o: Open, parent: Instance, item: any, order: number)
 	local base = TILE[item.key] or rgb(52, 196, 96)
 	local top, bot, line, bright = base:Lerp(rgb(36, 14, 84), 0.38), base:Lerp(rgb(18, 6, 46), 0.72), base:Lerp(Color3.new(0, 0, 0), 0.68), base:Lerp(Color3.new(1, 1, 1), 0.18)
-	local f = box({ Top = top, Bottom = bot, Line = bright, LineThick = 4, Size = CENTER.Size, AnchorPoint = CENTER.AnchorPoint, Position = CENTER.Position, Clip = true, Parent = slot(parent, order, 120) })
+	local f = box({ Top = top, Bottom = bot, Line = bright, LineThick = 4, Studs = 18, Size = CENTER.Size, AnchorPoint = CENTER.AnchorPoint, Position = CENTER.Position, Clip = true, Parent = slot(parent, order, 120) })
 	glowSpot(f, rgb(230, 255, 200), 340, UDim2.fromOffset(78, 60), 0.55)
 	for i = 1, 5 do
 		sparkle(o.cards, f, 0.2 + i * 0.15, 0.2 + (i % 2) * 0.5, 12 + (i % 3) * 3, i * 2.1, 2)
@@ -1395,6 +1497,7 @@ local function renderBanner(o: Open, parent: Instance, item: any, order: number)
 	end
 	table.insert(o.shiny, f)
 	introPop(o, f)
+	tileHover(f)
 end
 
 -- Вертикальная плитка: пасс, буст или пак монет
@@ -1404,7 +1507,7 @@ local openOdds: (string) -> () = function(_: string) end
 local function renderTile(o: Open, parent: Instance, item: any, order: number, kind: string)
 	local base = TILE[item.key] or rgb(70, 160, 245)
 	local top, bot, line, bright = base:Lerp(rgb(36, 14, 84), 0.38), base:Lerp(rgb(18, 6, 46), 0.72), base:Lerp(Color3.new(0, 0, 0), 0.68), base:Lerp(Color3.new(1, 1, 1), 0.18)
-	local f = box({ Top = top, Bottom = bot, Line = bright, LineThick = 4, Radius = 12, Size = CENTER.Size, AnchorPoint = CENTER.AnchorPoint, Position = CENTER.Position, Clip = true, Parent = slot(parent, order) })
+	local f = box({ Top = top, Bottom = bot, Line = bright, LineThick = 4, Radius = 12, Studs = 5, Size = CENTER.Size, AnchorPoint = CENTER.AnchorPoint, Position = CENTER.Position, Clip = true, Parent = slot(parent, order) })
 	gloss(f, 52)
 	glowSpot(f, K.white, 170, UDim2.fromScale(0.5, 0.4), 0.6)
 	sparkle(o.cards, f, 0.18, 0.4, 14, order * 1.3, 2)
@@ -1416,7 +1519,7 @@ local function renderTile(o: Open, parent: Instance, item: any, order: number, k
 	plate.Size = UDim2.new(1, -10, 0, 26)
 	plate.Position = UDim2.fromOffset(5, 5)
 	plate.ZIndex = 2
-	UI.corner(8).Parent = plate
+	corner(8).Parent = plate
 	plate.Parent = f
 	UI.label({ Text = string.upper(item.name), TextSize = 19, Scaled = true, MaxSize = 19, Color = K.white, StrokeColor = line, Size = UDim2.new(1, -16, 0, 24), Position = UDim2.fromOffset(8, 6), ZIndex = 3, Parent = f })
 	local art = holder(f, UDim2.fromOffset(136, 100), UDim2.new(0.5, -68, 0, 28), 2)
@@ -1444,7 +1547,7 @@ local function renderTile(o: Open, parent: Instance, item: any, order: number, k
 	end
 	if kind == "egg" then
 		-- V28: шансы выпадения до покупки (требование правил Roblox для платных случайных предметов)
-		local ob = UI.button({ Text = "ODDS", TextSize = 15, Color = rgb(70, 110, 230), Size = UDim2.fromOffset(60, 34), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -10, 0, 172), Sound = "press" }, function()
+		local ob = sbutton({ Text = "ODDS", TextSize = 15, Color = rgb(70, 110, 230), Size = UDim2.fromOffset(60, 34), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -10, 0, 172), Sound = "press" }, function()
 			openOdds(item.key)
 		end)
 		ob.ZIndex = 6
@@ -1452,6 +1555,7 @@ local function renderTile(o: Open, parent: Instance, item: any, order: number, k
 	end
 	table.insert(o.shiny, f)
 	introPop(o, f)
+	tileHover(f)
 end
 
 ---------------------------------------------------------------------
@@ -1891,14 +1995,14 @@ local function buildCrystals(o: Open, sky: Frame)
 		d.AnchorPoint = Vector2.new(0.5, 0.5)
 		d.Size = UDim2.fromOffset(s, s)
 		d.ZIndex = 1
-		UI.corner(3).Parent = d
+		corner(3).Parent = d
 		UI.stroke(rgb(255, 236, 255), 1.5, 0.45, true).Parent = d
 		d.Parent = sky
 		local x0 = (i * 97) % (BW - 20) + 10
 		local speed = 7 + (i % 5) * 3
 		reg(o.anim, d, function(t)
 			d.Position = UDim2.fromOffset(x0 + math.sin(t * 0.5 + i) * 14, 700 - (t * speed + i * 83) % 760)
-			d.Rotation = 45 + math.sin(t * 0.7 + i) * 25
+			d.Rotation = math.sin(t * 0.7 + i) * 10
 		end)
 	end
 	for i = 1, 10 do
@@ -1921,7 +2025,7 @@ local function renderEggBanner(o: Open, parent: Instance, item: any, order: numb
 	local egg = Config.EGGS[item.key]
 	local base: Color3 = egg.color
 	local line = base:Lerp(Color3.new(1, 1, 1), 0.2)
-	local f = box({ Top = base:Lerp(rgb(24, 8, 56), 0.6), Mid = base:Lerp(rgb(30, 10, 72), 0.78), Bottom = rgb(22, 8, 54), Line = line, LineThick = 4, Radius = 16, Size = CENTER.Size, AnchorPoint = CENTER.AnchorPoint, Position = CENTER.Position, Clip = true, Parent = slot(parent, order, 244) })
+	local f = box({ Top = base:Lerp(rgb(24, 8, 56), 0.6), Mid = base:Lerp(rgb(30, 10, 72), 0.78), Bottom = rgb(22, 8, 54), Line = line, LineThick = 4, Radius = 16, Studs = 18, Size = CENTER.Size, AnchorPoint = CENTER.AnchorPoint, Position = CENTER.Position, Clip = true, Parent = slot(parent, order, 244) })
 	pcall(function()
 		local r = UI.rays(f, base:Lerp(Color3.new(1, 1, 1), 0.35), 10, 400, 8)
 		r.Position = UDim2.fromOffset(96, 126)
@@ -2034,7 +2138,7 @@ local function renderEggBanner(o: Open, parent: Instance, item: any, order: numb
 		UI.label({ Text = oddsText(g.pct), TextSize = top and 24 or 21, Color = top and K.goldText or K.white, StrokeColor = Color3.new(0, 0, 0), Stroke = 3, XAlign = Enum.TextXAlignment.Right, Size = UDim2.new(1, -6, 0, 24), Position = UDim2.new(0, 0, 1, -26), ZIndex = 5, Parent = card })
 		x += w + 8
 	end
-	local ob = UI.button({ Text = "ODDS", TextSize = 20, Color = rgb(70, 110, 230), Size = UDim2.fromOffset(104, 48), AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -268, 1, -10), Sound = "press" }, function()
+	local ob = sbutton({ Text = "ODDS", TextSize = 20, Color = rgb(70, 110, 230), Size = UDim2.fromOffset(104, 48), AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -268, 1, -10), Sound = "press" }, function()
 		openOdds(item.key)
 	end)
 	ob.ZIndex = 6
@@ -2045,6 +2149,7 @@ local function renderEggBanner(o: Open, parent: Instance, item: any, order: numb
 	table.insert(o.shiny, price) -- блики бегут по кнопке цены
 	table.insert(o.shiny, f)
 	introPop(o, f)
+	tileHover(f)
 end
 
 -- Доля в проценты без ошибки округления для минусов (-0.10 -> -10, а не -11)
@@ -2133,7 +2238,7 @@ openOdds = function(key: string)
 		note = string.format('%s  ·  %d R$', note, item.price)
 	end
 	UI.label({ Text = note, TextSize = 13, Color = rgb(201, 210, 255), StrokeColor = K.frame, Stroke = 2, Wrap = true, Size = UDim2.new(1, -240, 0, 40), Position = UDim2.fromOffset(15, 510), XAlign = Enum.TextXAlignment.Left, ZIndex = 3, Parent = panel })
-	local close = UI.button({ Text = 'CLOSE', TextSize = 22, Color = K.red, Size = UDim2.fromOffset(150, 42), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 508), Sound = 'press' }, function()
+	local close = sbutton({ Text = 'CLOSE', TextSize = 22, Color = K.red, Size = UDim2.fromOffset(150, 42), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 508), Sound = 'press' }, function()
 		sg:Destroy()
 	end)
 	close.ZIndex = 5
@@ -2170,7 +2275,7 @@ local function playHatchBasic(h: any, done: () -> ())
 	local cracks = {}
 	for i, c in { { 0.46, 0.38, 70, 0.1 }, { 0.56, 0.5, -20, 0.12 }, { 0.44, 0.62, 25, 0.1 } } do
 		cracks[i] = newI('Frame', { BackgroundColor3 = rgb(255, 250, 200), BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(c[1], c[2]), Size = UDim2.fromScale(0.035, c[4] + 0.1), Rotation = c[3], Visible = false, ZIndex = 20 }, eggBox)
-		UI.corner(4).Parent = cracks[i]
+		corner(4).Parent = cracks[i]
 	end
 	-- искры (пул заранее; на слабой графике меньше)
 	local nSpark = low and 10 or 30
@@ -2194,7 +2299,7 @@ local function playHatchBasic(h: any, done: () -> ())
 	local tag = h.dupe and string.format('DUPLICATE  +%d shards', h.shards or 0) or 'NEW PET!'
 	UI.label({ Text = tag, TextSize = 24, Color = h.dupe and rgb(160, 220, 255) or K.goldText, StrokeColor = Color3.new(0, 0, 0), Stroke = 4, Size = UDim2.new(1, 0, 0, 30), Position = UDim2.fromOffset(0, 500), ZIndex = 12, Parent = reveal })
 	local finish: () -> () = function() end -- настоящая задаётся ниже, кнопка вызывает её по имени
-	local cont = UI.button({ Text = 'CONTINUE', TextSize = 22, Color = K.green, Size = UDim2.fromOffset(200, 46), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 1, -56), Sound = 'press' }, function()
+	local cont = sbutton({ Text = 'CONTINUE', TextSize = 22, Color = K.green, Size = UDim2.fromOffset(200, 46), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 1, -56), Sound = 'press' }, function()
 		finish()
 	end)
 	cont.Visible = false
@@ -2308,7 +2413,7 @@ local function playHatch(h: any, done: () -> ())
 			buildReveal = function(sg: ScreenGui, finish: () -> ())
 				-- карточка внизу: питомец остаётся живым в 3D над ней, тап по нему - реакция
 				local card = newI('Frame', { BackgroundColor3 = rgb(10, 20, 70), BackgroundTransparency = 0.08, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -18), Size = UDim2.fromOffset(520, 238), ZIndex = 20 }, sg)
-				UI.corner(16).Parent = card
+				corner(16).Parent = card
 				newI('UIStroke', { Color = rar.color, Thickness = 4 }, card)
 				local scale = newI('UIScale', { Scale = 0.2 }, card)
 				UI.tween(scale, 0.45, { Scale = 1 }, Enum.EasingStyle.Back)
@@ -2320,7 +2425,7 @@ local function playHatch(h: any, done: () -> ())
 				end
 				local tag = h.dupe and string.format('DUPLICATE  +%d shards', h.shards or 0) or 'NEW PET!'
 				UI.label({ Text = tag, TextSize = 20, Color = h.dupe and rgb(160, 220, 255) or K.goldText, StrokeColor = Color3.new(0, 0, 0), Stroke = 3, Size = UDim2.new(1, -170, 0, 26), Position = UDim2.new(0, 10, 1, -38), XAlign = Enum.TextXAlignment.Left, ZIndex = 21, Parent = card })
-				local cont = UI.button({ Text = 'CONTINUE', TextSize = 20, Color = K.green, Size = UDim2.fromOffset(160, 42), AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -12, 1, -10), Sound = 'press' }, function()
+				local cont = sbutton({ Text = 'CONTINUE', TextSize = 20, Color = K.green, Size = UDim2.fromOffset(160, 42), AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -12, 1, -10), Sound = 'press' }, function()
 					finish()
 				end)
 				cont.ZIndex = 25
@@ -2455,7 +2560,7 @@ local function openExotic()
 			end
 			local rar = Config.EXOTIC.RARITIES[ex.rarity]
 			local card = newI('Frame', { BackgroundColor3 = rar.color:Lerp(Color3.new(0.05, 0.03, 0.14), 0.78), BorderSizePixel = 0, LayoutOrder = i }, scroll)
-			UI.corner(14).Parent = card
+			corner(14).Parent = card
 			newI('UIStroke', { Thickness = eq[ex.id] and 4 or 2, Color = eq[ex.id] and K.goldText or rar.color }, card)
 			if owned then
 				UI.glow(card, rar.color, 200, 0.62).Position = UDim2.fromOffset(125, 80)
@@ -2474,7 +2579,7 @@ local function openExotic()
 			end
 			if owned then
 				local on = eq[ex.id] == true
-				local b1 = UI.button({ Text = on and 'UNEQUIP' or 'EQUIP', TextSize = 15, Color = on and rgb(110, 110, 140) or K.green, Size = UDim2.new(0.5, -10, 0, 30), Position = UDim2.new(0, 6, 1, -36), Sound = 'press' }, function()
+				local b1 = sbutton({ Text = on and 'UNEQUIP' or 'EQUIP', TextSize = 15, Color = on and rgb(110, 110, 140) or K.green, Size = UDim2.new(0.5, -10, 0, 30), Position = UDim2.new(0, 6, 1, -36), Sound = 'press' }, function()
 					call(on and 'exoticUnequip' or 'exoticEquip', ex.id)
 				end)
 				b1.ZIndex = 5
@@ -2482,7 +2587,7 @@ local function openExotic()
 				local lvl = E.level[ex.id] or 0
 				if lvl < Config.EXOTIC.MAX_LEVEL then
 					local cost = Config.exoticUpgradeCost(ex, lvl)
-					local b2 = UI.button({ Text = 'UP ' .. cost, TextSize = 15, Color = (E.shards or 0) >= cost and rgb(70, 130, 240) or rgb(90, 90, 120), Size = UDim2.new(0.5, -10, 0, 30), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -6, 1, -36), Sound = 'press' }, function()
+					local b2 = sbutton({ Text = 'UP ' .. cost, TextSize = 15, Color = (E.shards or 0) >= cost and rgb(70, 130, 240) or rgb(90, 90, 120), Size = UDim2.new(0.5, -10, 0, 30), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -6, 1, -36), Sound = 'press' }, function()
 						call('exoticUpgrade', ex.id)
 					end)
 					b2.ZIndex = 5
@@ -2526,7 +2631,7 @@ local function updateExoHud()
 		if ex then
 			local rar = Config.EXOTIC.RARITIES[ex.rarity]
 			local chip = newI('TextButton', { Text = '', AutoButtonColor = false, BackgroundColor3 = rar.color:Lerp(Color3.new(0.05, 0.03, 0.14), 0.7), Size = UDim2.fromOffset(60, 60) }, row)
-			UI.corner(12).Parent = chip
+			corner(12).Parent = chip
 			newI('UIStroke', { Thickness = 3, Color = rar.color }, chip)
 			local pb = newI('Frame', { BackgroundTransparency = 1, Size = UDim2.new(1, -6, 1, -6), Position = UDim2.fromOffset(3, 3) }, chip)
 			exoticPortrait(pb, ex, false, 0, 3)
@@ -2566,7 +2671,7 @@ local function renderRank(o: Open, parent: Instance, order: number)
 	local spent = tonumber(st.spent) or 0
 	local cur = R[rank]
 	local nxt = R[rank + 1]
-	local f = box({ Top = K.heroTop, Mid = K.heroMid, Bottom = K.heroBot, Line = K.heroLine, Size = CENTER.Size, AnchorPoint = CENTER.AnchorPoint, Position = CENTER.Position, Clip = true, Parent = slot(parent, order, 150) })
+	local f = box({ Top = K.heroTop, Mid = K.heroMid, Bottom = K.heroBot, Line = K.heroLine, Studs = 18, Size = CENTER.Size, AnchorPoint = CENTER.AnchorPoint, Position = CENTER.Position, Clip = true, Parent = slot(parent, order, 150) })
 	glowSpot(f, rgb(214, 170, 255), 380, UDim2.fromOffset(80, 70), 0.6)
 	UI.label({ Text = cur and (string.upper(cur.name) .. " SUPPORTER") or "SUPPORTER RANK", TextSize = 28, Color = cur and cur.color or K.white, StrokeColor = K.heroLine, Stroke = 4, Size = UDim2.new(1, -250, 0, 32), Position = UDim2.fromOffset(14, 8), XAlign = Enum.TextXAlignment.Left, ZIndex = 3, Parent = f })
 	UI.label({ Text = cur and rankPerks(cur) or "Spend Robux to earn a rank: a tag and aura everyone sees, a daily gift and perks.", TextSize = 15, Color = K.white, StrokeColor = K.heroLine, Stroke = 2, Wrap = true, Size = UDim2.new(1, -250, 0, 40), Position = UDim2.fromOffset(14, 44), XAlign = Enum.TextXAlignment.Left, ZIndex = 3, Parent = f })
@@ -2578,14 +2683,14 @@ local function renderRank(o: Open, parent: Instance, order: number)
 	bar.Size = UDim2.new(1, -250, 0, 16)
 	bar.Position = UDim2.fromOffset(14, 94)
 	bar.ZIndex = 3
-	UI.corner(8).Parent = bar
+	corner(8).Parent = bar
 	bar.Parent = f
 	local fill = Instance.new("Frame")
 	fill.BorderSizePixel = 0
 	fill.BackgroundColor3 = nxt and nxt.color or K.goldText
 	fill.Size = UDim2.fromScale(frac, 1)
 	fill.ZIndex = 4
-	UI.corner(8).Parent = fill
+	corner(8).Parent = fill
 	fill.Parent = bar
 	UI.label({ Text = nxt and string.format("%d / %d R$ to %s: %s", spent, nxt.at, nxt.name, rankPerks(nxt)) or "Top rank reached. Thank you for supporting the game!", TextSize = 14, Color = K.white, StrokeColor = K.heroLine, Stroke = 2, Wrap = true, Size = UDim2.new(1, -250, 0, 34), Position = UDim2.fromOffset(14, 114), XAlign = Enum.TextXAlignment.Left, ZIndex = 3, Parent = f })
 	local left = Perks.giftLeft()
@@ -2593,7 +2698,7 @@ local function renderRank(o: Open, parent: Instance, order: number)
 	local k = (cur and cur.gift or SHOP.GIFT_BASE) + (Perks.has("founder") and 0.05 or 0)
 	UI.label({ Text = "DAILY GIFT", TextSize = 22, Color = K.goldText, StrokeColor = K.heroLine, Stroke = 3, Size = UDim2.fromOffset(200, 26), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 14), XAlign = Enum.TextXAlignment.Right, ZIndex = 3, Parent = f })
 	UI.label({ Text = "+" .. Num.short(Config.shopCoins(Backend.data, k)) .. " coins", TextSize = 18, Color = K.white, StrokeColor = K.heroLine, Stroke = 2, Size = UDim2.fromOffset(200, 22), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 42), XAlign = Enum.TextXAlignment.Right, ZIndex = 3, Parent = f })
-	local btn = UI.button({ Text = ready and "CLAIM" or fmtWait(left), TextSize = 22, Color = ready and K.green or rgb(96, 96, 120), Size = UDim2.fromOffset(190, 44), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 74), Sound = "press" }, function()
+	local btn = sbutton({ Text = ready and "CLAIM" or fmtWait(left), TextSize = 22, Color = ready and K.green or rgb(96, 96, 120), Size = UDim2.fromOffset(190, 44), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 74), Sound = "press" }, function()
 		local fn = ShopFn
 		if ready and fn then
 			task.spawn(function()
@@ -2607,6 +2712,7 @@ local function renderRank(o: Open, parent: Instance, order: number)
 	btn.Parent = f
 	table.insert(o.shiny, f)
 	introPop(o, f)
+	tileHover(f)
 end
 
 local function renderBody(o: Open)
@@ -2669,7 +2775,7 @@ local function renderBody(o: Open)
 		renderTile(o, boosts, it, i, "boost")
 	end
 	sectionBar(o, scroll, "Eggs", nextOrder())
-	local collect = UI.button({ Text = "OPEN EXOTIC COLLECTION", TextSize = 20, Color = rgb(122, 62, 214), Size = UDim2.new(1, 0, 0, 46), LayoutOrder = nextOrder(), Sound = "press" }, function()
+	local collect = sbutton({ Text = "OPEN EXOTIC COLLECTION", TextSize = 20, Color = rgb(122, 62, 214), Size = UDim2.new(1, 0, 0, 46), LayoutOrder = nextOrder(), Sound = "press" }, function()
 		openExotic()
 	end)
 	collect.Parent = scroll
@@ -2758,7 +2864,7 @@ function Shop.open()
 	mask.Size = UDim2.fromOffset(0, HEAD_H)
 	mask.ZIndex = 1
 	mask.Parent = head
-	local ribbon = box({ Top = K.headTop, Bottom = K.headBot, Line = K.frame, LineThick = 4, Radius = 14, Size = UDim2.fromOffset(BW - 8, HEAD_H - 8), Position = UDim2.fromOffset(4, 4), ZIndex = 1, Clip = true, Parent = mask })
+	local ribbon = box({ Top = K.headTop, Bottom = K.headBot, Line = K.frame, LineThick = 4, Radius = 14, Studs = 20, Size = UDim2.fromOffset(BW - 8, HEAD_H - 8), Position = UDim2.fromOffset(4, 4), ZIndex = 1, Clip = true, Parent = mask })
 	local shine = Instance.new("Frame")
 	shine.BorderSizePixel = 0
 	shine.BackgroundColor3 = K.white
@@ -2766,7 +2872,7 @@ function Shop.open()
 	shine.Size = UDim2.new(1, -16, 0, 9)
 	shine.Position = UDim2.fromOffset(8, 4)
 	shine.ZIndex = 2
-	UI.corner(5).Parent = shine
+	corner(5).Parent = shine
 	shine.Parent = ribbon
 
 	local o: Open = {
@@ -2779,10 +2885,10 @@ function Shop.open()
 		for i = 1, 11 do
 			local tri = Instance.new("ImageLabel")
 			tri.BackgroundTransparency = 1
-			tri.Image = UI.IMG.triangle
-			tri.ImageColor3 = K.headPat
-			tri.ImageTransparency = 0.8
-			tri.Size = UDim2.fromOffset(18, 18)
+			tri.BackgroundColor3 = K.headPat
+			tri.BackgroundTransparency = 0.82
+			tri.BorderSizePixel = 0
+			tri.Size = UDim2.fromOffset(14, 14)
 			tri.ZIndex = 2
 			tri.Parent = ribbon
 			local y = row == 1 and 12 or 34
@@ -2820,7 +2926,7 @@ function Shop.open()
 	-- Кнопка закрытия лежит в обёртке: у самой кнопки уже есть свой UIScale (наведение), второй на неё не вешаем
 	local closeHold = holder(head, UDim2.fromOffset(40, 40), UDim2.fromOffset(BW - 34, 26), 5)
 	closeHold.AnchorPoint = Vector2.new(0.5, 0.5)
-	local close = UI.button({ Text = "X", TextSize = 24, Color = K.red, Size = UDim2.fromScale(1, 1), ZIndex = 5, Sound = "press", Burst = false }, function()
+	local close = sbutton({ Text = "X", TextSize = 24, Color = K.red, Size = UDim2.fromScale(1, 1), ZIndex = 5, Sound = "press", Burst = false }, function()
 		closeAnimated(o)
 	end)
 	close.Parent = closeHold
@@ -2831,6 +2937,7 @@ function Shop.open()
 	buildCrystals(o, sky)
 
 	open = o
+	Sfx.play("shop_open")
 	renderBody(o)
 	refreshLive(o)
 	playIntro(o, body, mask, ribbon, { { badgeRim, 0.5 }, { peekers[1], 0.62 }, { peekers[2], 0.68 }, { closeHold, 0.75 } })
@@ -2921,7 +3028,7 @@ local function processPending(pending: any)
 				local n = tonumber(coins) or 0
 				if n > 0 then
 					local cam = workspace.CurrentCamera
-					Sfx.play("buy")
+					Sfx.play("shop_buy")
 					Hud.flyCoins(Vector2.new(cam.ViewportSize.X / 2, cam.ViewportSize.Y * 0.45), n)
 				end
 			end
