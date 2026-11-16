@@ -166,6 +166,8 @@ def main():
     rows = write_manifest()
     if not a.no_emit:
         replace_block(os.path.join(CLIENT, "Sfx.luau"), "-- BEGIN GENERATED egg audio", "-- END GENERATED egg audio", C.lua_sfx_block())
+        import lib_bank
+        replace_block(os.path.join(CLIENT, "Sfx.luau"), "-- BEGIN GENERATED library sounds", "-- END GENERATED library sounds", lib_bank.lua_block().rstrip("\n"))
         replace_block(os.path.join(CLIENT, "EggOpen3D.luau"), "-- BEGIN GENERATED egg cues", "-- END GENERATED egg cues", C.lua_cues_block())
         print("Luau tables written into Sfx.luau and EggOpen3D.luau")
         update_audio_ids()

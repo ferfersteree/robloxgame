@@ -22,10 +22,45 @@ do
 	end
 end
 
+-- V41: настоящие записи из Creator Store (audio/tools/lib_bank.py): номер, поправка громкости и скорости на ключ файла.
+-- Отключить: SoundService:SetAttribute("SpearNoLibrary", true) до запуска клиента. Свои номера из AudioIds ниже по приоритету.
+local LIB_IDS: { [string]: string } = {}
+local LIB_GAIN: { [string]: number } = {}
+local LIB_SPEED: { [string]: number } = {}
+local LIB_REUSE: { [string]: string } = {} -- ключ без своего номера берёт номер другого ключа AudioIds (например, музыка яйца берёт загруженную музыку мира)
+Sfx.library = SoundService:GetAttribute("SpearNoLibrary") ~= true
+
+local function libGain(key: string): number
+	if Sfx.library and LIB_IDS[key] then
+		return LIB_GAIN[key] or 1
+	end
+	return 1
+end
+
+local function libSpeed(key: string): number
+	if Sfx.library and LIB_IDS[key] then
+		return LIB_SPEED[key] or 1
+	end
+	return 1
+end
+
 local function audioId(file: string): string?
+	if Sfx.library then
+		local lib = LIB_IDS[file]
+		if lib then
+			return lib
+		end
+	end
 	local id = AUDIO[file]
 	if type(id) == "string" and id ~= "" and id ~= "rbxassetid://0" then
 		return id
+	end
+	local re = LIB_REUSE[file]
+	if re then
+		local rid = AUDIO[re]
+		if type(rid) == "string" and rid ~= "" and rid ~= "rbxassetid://0" then
+			return rid
+		end
 	end
 	return nil
 end
@@ -98,7 +133,7 @@ end
 
 local IDS = {
 	click = "rbxasset://sounds/button.wav",
-	swoosh = "rbxasset://sounds/swoosh.wav",
+	swoosh = "rbxasset://sounds/swordslash.wav", -- swoosh.wav: "Asset is not approved for the requester"
 	throw = "rbxasset://sounds/swordlunge.wav",
 	slash = "rbxasset://sounds/swordslash.wav",
 	equip = "rbxasset://sounds/unsheath.wav",
@@ -421,6 +456,98 @@ for name, alt in EGG_ALIAS do
 end
 -- END GENERATED egg audio
 
+-- BEGIN GENERATED library sounds (audio/tools/lib_bank.py). Do not edit by hand.
+local EGG_LIB = {
+	egg_crack_1 = "rbxassetid://9113959343",
+	egg_crack_2 = "rbxassetid://9113959332",
+	egg_boom_s = "rbxassetid://1837830050",
+	egg_boom_m = "rbxassetid://103410515538241",
+	egg_boom_l = "rbxassetid://9125484511",
+	egg_thunder = "rbxassetid://95410087861011",
+	storm_thunder = "rbxassetid://72113341430811",
+	storm_zap_1 = "rbxassetid://9116277954",
+	storm_zap_2 = "rbxassetid://9116279560",
+	egg_burst_s = "rbxassetid://135968996204345",
+	egg_burst_m = "rbxassetid://117011707307950",
+	egg_burst_l = "rbxassetid://132381858621446",
+	egg_flash = "rbxassetid://135968996204345",
+	tide_splash = "rbxassetid://9125702987",
+	egg_riser_forest = "rbxassetid://9040288138",
+	egg_riser_amber = "rbxassetid://9040281199",
+	egg_riser_tide = "rbxassetid://9043343295",
+	egg_riser_storm = "rbxassetid://9040281199",
+	egg_riser_astral = "rbxassetid://1837834284",
+	storm_crackle = "rbxassetid://9116279560",
+	storm_arcs = "rbxassetid://9116277954",
+	pet_trail = "rbxassetid://131722051883127",
+	amber_inflow = "rbxassetid://131722051883127",
+	tide_bubbles = "rbxassetid://131722051883127",
+	forest_shimmer = "rbxassetid://132381858621446",
+	astral_twinkle = "rbxassetid://117011707307950",
+	egg_surge = "rbxassetid://9040281199",
+	egg_reveal_0 = "rbxassetid://1841173394",
+	egg_reveal_1 = "rbxassetid://1841209502",
+	egg_reveal_2 = "rbxassetid://1841173434",
+	egg_reveal_3 = "rbxassetid://9043144476",
+	egg_reveal_4 = "rbxassetid://9041792228",
+	egg_reveal_5 = "rbxassetid://1836860398",
+	egg_reveal_6 = "rbxassetid://1841180330",
+}
+local EGG_GAIN = {
+	egg_crack_1 = 2.94,
+	egg_crack_2 = 3.16,
+	egg_boom_s = 1.28,
+	egg_boom_m = 0.91,
+	egg_boom_l = 0.82,
+	egg_thunder = 1.57,
+	storm_thunder = 2.57,
+	storm_zap_1 = 0.94,
+	storm_zap_2 = 1.23,
+	egg_burst_s = 0.84,
+	egg_burst_m = 0.72,
+	egg_burst_l = 3.02,
+	egg_flash = 0.84,
+	tide_splash = 1.84,
+	egg_riser_forest = 0.81,
+	egg_riser_amber = 0.88,
+	egg_riser_tide = 1.46,
+	egg_riser_storm = 0.88,
+	egg_riser_astral = 1.16,
+	storm_crackle = 1.23,
+	storm_arcs = 0.94,
+	pet_trail = 2.43,
+	amber_inflow = 2.43,
+	tide_bubbles = 2.43,
+	forest_shimmer = 3.02,
+	astral_twinkle = 0.63,
+	egg_surge = 0.88,
+	egg_reveal_0 = 1.47,
+	egg_reveal_1 = 1.26,
+	egg_reveal_2 = 1.23,
+	egg_reveal_3 = 0.96,
+	egg_reveal_4 = 0.79,
+	egg_reveal_5 = 0.58,
+	egg_reveal_6 = 0.84,
+}
+local EGG_SPEED = {
+	egg_riser_forest = 0.85,
+	egg_riser_amber = 1.7,
+	egg_riser_tide = 1.5,
+	egg_riser_storm = 1.7,
+	egg_riser_astral = 1.4,
+	amber_inflow = 0.9,
+	tide_bubbles = 1.35,
+}
+local EGG_REUSE = {
+	egg_music_a = "music_meadow",
+	egg_music_b = "music_cozy",
+}
+for k, id in EGG_LIB do LIB_IDS[k] = id end
+for k, v in EGG_REUSE do LIB_REUSE[k] = v end
+for k, g in EGG_GAIN do LIB_GAIN[k] = g end
+for k, s in EGG_SPEED do LIB_SPEED[k] = s end
+-- END GENERATED library sounds
+
 local function customPitch(name: string, pitch: number?): number?
 	if not pitch then
 		return nil
@@ -434,8 +561,8 @@ end
 
 local function playBank(base: Sound, name: string, pitch: number?, volume: number?, parent: Instance?): Sound
 	local s = base:Clone()
-	s.PlaybackSpeed = customPitch(name, pitch) or (1 + (math.random() * 2 - 1) * (if name:sub(1, 4) == "step" then 0.06 else 0.03))
-	s.Volume = volume or BANK_VOL[name] or 0.4
+	s.PlaybackSpeed = (customPitch(name, pitch) or (1 + (math.random() * 2 - 1) * (if name:sub(1, 4) == "step" then 0.06 else 0.03))) * libSpeed(base.Name)
+	s.Volume = (volume or BANK_VOL[name] or 0.4) * libGain(base.Name)
 	s.Parent = parent or folder
 	s:Play()
 	s.Ended:Once(function()
@@ -618,11 +745,11 @@ function Sfx.layer(name: string, volume: number?, fadeIn: number?, pitch: number
 	end
 	local s = base:Clone()
 	s.Looped = looped ~= false
-	s.PlaybackSpeed = pitch or 1
+	s.PlaybackSpeed = (pitch or 1) * libSpeed(base.Name)
 	s.Volume = 0
 	s.Parent = folder
 	s:Play()
-	TweenService:Create(s, TweenInfo.new(fadeIn or 0.3), { Volume = volume or BANK_VOL[name] or 0.3 }):Play()
+	TweenService:Create(s, TweenInfo.new(fadeIn or 0.3), { Volume = (volume or BANK_VOL[name] or 0.3) * libGain(base.Name) }):Play()
 	local dead = false
 	local handle = {}
 	function handle.stop(fadeOut: number?)
