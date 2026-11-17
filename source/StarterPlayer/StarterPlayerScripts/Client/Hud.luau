@@ -294,15 +294,41 @@ end
 ---------------------------------------------------------------------
 -- Меню слева
 ---------------------------------------------------------------------
+-- Меню слева. V57: на телефоне (только сенсорный ввод) оно компактное. Столбец из 7 кнопок посередине экрана лежал на зоне штатного
+-- стика движения, а цель касания у кнопки с подписью была около 27 пикселей (экран высотой 375). Теперь вверху слева две кнопки по
+-- 96 единиц (46 пикселей на таком экране): «Shop» (всегда на виду) и «📋», которая открывает остальное сеткой 3×2 и закрывает её после
+-- выбора. Проверка на ПК: атрибут ReplicatedStorage.ForceMobileUI = true включает тот же вид.
+---------------------------------------------------------------------
+local compactMenu = UI.mobile or RS:GetAttribute("ForceMobileUI") == true
 local left = UI.panel({
 	Name = "LeftMenu", Color = C.panel, Transparency = 0.12,
-	Size = UDim2.fromOffset(190, 10), AnchorPoint = Vector2.new(0, 0.5),
-	Position = UDim2.new(0, 12, 0.5, 0), Radius = 22, LineThick = 2, Parent = root,
+	Size = UDim2.fromOffset(compactMenu and 324 or 190, 10), AnchorPoint = compactMenu and Vector2.new(0, 0) or Vector2.new(0, 0.5),
+	Position = compactMenu and UDim2.new(0, 10, 0, 116) or UDim2.new(0, 12, 0.5, 0), Radius = 22, LineThick = 2, Parent = root,
 })
 left.AutomaticSize = Enum.AutomaticSize.Y
 UI.pad(10, 10).Parent = left
-UI.list(Enum.FillDirection.Vertical, 9, Enum.HorizontalAlignment.Center).Parent = left
-UI.label({ Text = "🌲 CAMP", TextSize = 18, Color = C.dim, Size = UDim2.fromOffset(168, 28), LayoutOrder = 0, Parent = left })
+local menuOpen = false -- только для компактного меню
+local menuToggle: Frame? = nil
+local readyQuests, bagIsFull = 0, false
+local function updateMenuBadge()
+	if menuToggle then
+		local n = readyQuests + (bagIsFull and 1 or 0)
+		UI.badge(menuToggle, if n > 0 then n else nil)
+	end
+end
+if compactMenu then
+	local grid = Instance.new("UIGridLayout")
+	grid.CellSize = UDim2.fromOffset(96, 96)
+	grid.CellPadding = UDim2.fromOffset(8, 8)
+	grid.FillDirectionMaxCells = 3
+	grid.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	grid.SortOrder = Enum.SortOrder.LayoutOrder
+	grid.Parent = left
+	left.Visible = false
+else
+	UI.list(Enum.FillDirection.Vertical, 9, Enum.HorizontalAlignment.Center).Parent = left
+	UI.label({ Text = "🌲 CAMP", TextSize = 18, Color = C.dim, Size = UDim2.fromOffset(168, 28), LayoutOrder = 0, Parent = left })
+end
 
 local menuButtons: { [string]: Frame } = {}
 local MENU = {
@@ -314,20 +340,39 @@ local MENU = {
 	{ "potions", "🧪", "Potions", Color3.fromRGB(190, 112, 210) },
 	{ "settings", "⚙️", "Settings", Color3.fromRGB(117, 139, 145) },
 }
--- Панель читов видна только разработчику в Studio, в живой игре её нет
+-- Панель читов видна только разработчику в Студии, в живой игре её нет
 if Config.BACKEND == "Demo" and RunService:IsStudio() then
 	table.insert(MENU, { "demo", "🛠️", "DEMO", Color3.fromRGB(225, 85, 115) })
 end
+local function setMenuOpen(on: boolean)
+	menuOpen = on
+	left.Visible = on and Hud.mode == "normal"
+end
 for i, m in MENU do
+	local alone = compactMenu and m[1] == "shop" -- «Shop» на телефоне стоит отдельно, всегда на виду
 	local b = UI.button({
-		Text = string.upper(m[3]), Icon = m[2], IconSize = 29, TextSize = 18,
-		Color = m[4], Size = UDim2.fromOffset(168, 56), LayoutOrder = i,
+		Text = compactMenu and "" or string.upper(m[3]), Icon = m[2], IconSize = compactMenu and 52 or 29, TextSize = 18,
+		Color = m[4], Size = compactMenu and UDim2.fromOffset(96, 96) or UDim2.fromOffset(168, 56), LayoutOrder = i,
+		Position = if alone then UDim2.new(0, 10, 0, 10) else nil,
 		Shine = i == 1,
 	}, function()
+		if compactMenu then
+			setMenuOpen(false)
+		end
 		Hud.MenuClicked:Fire(m[1])
 	end)
-	b.Parent = left
+	b.Parent = if alone then root else left
 	menuButtons[m[1]] = b
+end
+if compactMenu then
+	local toggle = UI.button({
+		Text = "", Icon = "📋", IconSize = 52, TextSize = 18, Color = Color3.fromRGB(96, 108, 170),
+		Size = UDim2.fromOffset(96, 96), Position = UDim2.new(0, 114, 0, 10), Name = "MenuToggle",
+	}, function()
+		setMenuOpen(not menuOpen)
+	end)
+	toggle.Parent = root
+	menuToggle = toggle
 end
 
 function Hud.menuButton(name: string): Frame?
@@ -423,6 +468,8 @@ local function refreshQuests(d: any)
 	if qb then
 		UI.badge(qb, ready)
 	end
+	readyQuests = ready
+	updateMenuBadge()
 end
 
 ---------------------------------------------------------------------
@@ -833,7 +880,18 @@ function Hud.setMode(mode: string)
 	Hud.mode = mode
 	Sfx.setMood(mode)
 	local normal = mode == "normal"
-	left.Visible = normal
+	if compactMenu then
+		if not normal then
+			menuOpen = false
+		end
+		left.Visible = normal and menuOpen
+		menuButtons.shop.Visible = normal
+		if menuToggle then
+			menuToggle.Visible = normal
+		end
+	else
+		left.Visible = normal
+	end
 	right.Visible = normal or mode == "hunt"
 	topBar.Visible = mode ~= "cinematic"
 	hunt.Visible = mode == "hunt"
@@ -869,6 +927,8 @@ function Hud.refresh(d: any)
 	if bb then
 		UI.badge(bb, n >= d.bagCap and n or nil)
 	end
+	bagIsFull = n >= d.bagCap
+	updateMenuBadge()
 end
 
 Backend.onChange(Hud.refresh)
