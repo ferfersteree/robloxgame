@@ -16,6 +16,7 @@ local Hud = {}
 Hud.mode = "normal"
 Hud.ThrowDown = Instance.new("BindableEvent")
 Hud.ThrowUp = Instance.new("BindableEvent")
+Hud.throwTouch = nil :: any -- касание (InputObject), которое сейчас держит кнопку броска
 Hud.ExitClicked = Instance.new("BindableEvent")
 Hud.MenuClicked = Instance.new("BindableEvent") -- (name)
 
@@ -537,12 +538,15 @@ end)
 throwBtn.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
 		UI.tween(throwScale, 0.08, { Scale = 0.9 })
+		-- V55: HuntCtl запоминает касание, которое держит заряд (через поле модуля: событие Bindable копирует таблицы)
+		Hud.throwTouch = if input.UserInputType == Enum.UserInputType.Touch then input else nil
 		Hud.ThrowDown:Fire()
 	end
 end)
 throwBtn.InputEnded:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
 		UI.tween(throwScale, 0.25, { Scale = 1 }, Enum.EasingStyle.Back)
+		Hud.throwTouch = nil
 		Hud.ThrowUp:Fire()
 	end
 end)

@@ -570,8 +570,12 @@ end)
 ---------------------------------------------------------------------
 -- Ввод
 ---------------------------------------------------------------------
-local function down()
+-- V55: на телефоне заряд держит одно касание (кнопка 🗡️). Раньше бросок отпускало отпускание ЛЮБОГО пальца:
+-- зажал кнопку одним пальцем, коснулся экрана вторым и убрал его, и бросок срывался раньше времени
+local chargeTouch: any = nil
+local function down(touch: any?)
 	pressed = true
+	chargeTouch = touch
 	if HuntCtl.state == "ready" then
 		task.spawn(startCharge)
 	end
@@ -579,9 +583,20 @@ end
 local function up()
 	pressed = false
 	holding = false
+	chargeTouch = nil
+end
+-- касание закончилось: отпускает бросок только то, что его держало (вынесено в функцию, чтобы проверять без телефона)
+function HuntCtl.touchEnded(input: any): boolean
+	if chargeTouch ~= nil and input == chargeTouch then
+		up()
+		return true
+	end
+	return false
 end
 
-Hud.ThrowDown.Event:Connect(down)
+Hud.ThrowDown.Event:Connect(function()
+	down(Hud.throwTouch)
+end)
 Hud.ThrowUp.Event:Connect(up)
 Hud.ExitClicked.Event:Connect(function()
 	if HuntCtl.state == "ready" then
@@ -602,7 +617,9 @@ UserInputService.InputBegan:Connect(function(i, gp)
 	end
 end)
 UserInputService.InputEnded:Connect(function(i)
-	if i.UserInputType == Enum.UserInputType.MouseButton1 or i.KeyCode == Enum.KeyCode.Space or i.KeyCode == Enum.KeyCode.ButtonR2 or i.UserInputType == Enum.UserInputType.Touch then
+	if i.UserInputType == Enum.UserInputType.Touch then
+		HuntCtl.touchEnded(i)
+	elseif i.UserInputType == Enum.UserInputType.MouseButton1 or i.KeyCode == Enum.KeyCode.Space or i.KeyCode == Enum.KeyCode.ButtonR2 then
 		up()
 	end
 end)
