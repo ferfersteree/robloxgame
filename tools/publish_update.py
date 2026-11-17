@@ -11,7 +11,8 @@ What it does
   4. mirrors the whole updates/ folder to the `main` branch (the one GitHub shows on the front page) through a temporary
      checkout and pushes it. Nothing else on `main` is touched. Skip with --no-main.
 
-Other options: --date YYYY-MM-DD, --ref REV (take the files from that commit instead of the working tree, for
+Other options: --keep-tree (files under source/ keep their folder structure inside the update folder instead of landing flat in
+scripts/), --date YYYY-MM-DD, --ref REV (take the files from that commit instead of the working tree, for
 back-filling), --status TEXT (index column), --trailer LINE (repeatable, appended to the commit message),
 --no-push (commit only), --dry-run (print the plan, change nothing). It never force-pushes.
 """
@@ -41,7 +42,10 @@ def git(*args, cwd=ROOT, check=True):
     return r.stdout.strip()
 
 
-def dest_for(path):
+def dest_for(path, keep_tree=False):
+    rel = path.replace("\\", "/")
+    if keep_tree and rel.startswith("source/") and rel.lower().endswith((".luau", ".lua")):
+        return rel
     name = os.path.basename(path)
     ext = os.path.splitext(name)[1].lower()
     if ext == ".rbxl":
@@ -125,6 +129,7 @@ def main():
     ap.add_argument("--trailer", action="append", default=[])
     ap.add_argument("--no-main", action="store_true")
     ap.add_argument("--no-push", action="store_true")
+    ap.add_argument("--keep-tree", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
 
@@ -132,7 +137,7 @@ def main():
         sys.exit("slug must be ascii letters, digits, - _ .")
     folder_name = f"{a.id}_{a.date}_{a.slug}"
     folder = os.path.join(ROOT, "updates", folder_name)
-    plan = [(f, dest_for(f)) for f in a.files]
+    plan = [(f, dest_for(f, a.keep_tree)) for f in a.files]
     print(f"update folder: updates/{folder_name}")
     for src, dst in plan:
         print(f"  {src}  ->  {dst}")

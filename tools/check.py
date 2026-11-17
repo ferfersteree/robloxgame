@@ -10,6 +10,8 @@
      в каждой модели не больше 1100 кубиков
   4. в README.md назван «новейший» файл места и он лежит в корне репозитория
   5. в отслеживаемых текстовых файлах нет присвоенного значения ключа ROBLOX_API_KEY
+  6. код в source/ совпадает с кодом в новейшем файле места из README (tools/place_vs_repo.py; около 15 секунд;
+     пропустить: python tools/check.py --fast)
 Код возврата 0 только если всё в порядке. Это не заменяет проверку в Studio (звук, вид, ввод, DataStore).
 """
 from __future__ import annotations
@@ -74,12 +76,26 @@ def check_secrets() -> None:
     results.append(("ключ Roblox в файлах", not bad, "не найден" if not bad else "найден в: " + ", ".join(bad)))
 
 
+def check_place() -> None:
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+    m = re.search(r"Новее всех: `([^`]+\.rbxl)`", text)
+    if not m or not (ROOT / m.group(1)).is_file():
+        results.append(("код совпадает с файлом места", False, "нет новейшего файла места"))
+        return
+    p = subprocess.run([sys.executable, "tools/place_vs_repo.py", m.group(1)], cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    lines = [l for l in p.stdout.strip().splitlines() if l.strip()]
+    shown = lines[0] if p.returncode == 0 and lines else "; ".join(lines[:12])
+    results.append(("код совпадает с файлом места", p.returncode == 0, shown[:600]))
+
+
 def main() -> int:
     run("синтаксис .luau (source, tests)", ["-I", "tools/luau_check.py", "source", "tests"])
     run("имена без объявления", ["tools/luau_names.py", "source", "tests"])
     check_models()
     check_readme()
     check_secrets()
+    if "--fast" not in sys.argv:
+        check_place()
     width = max(len(r[0]) for r in results)
     bad = 0
     for label, ok, msg in results:
