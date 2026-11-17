@@ -235,10 +235,105 @@ SpearFx.Landed.Event:Connect(function(pos: Vector3)
 end)
 
 ---------------------------------------------------------------------
+-- Зал Showroom: стенды для копий 41-46
+---------------------------------------------------------------------
+-- В карте 40 табличек: два ряда по 20 (z = 28 и 35). Свободно только по краям рядов (стены на x = 133,6 и 204,4), поэтому копии
+-- 41-46 достраиваются у краёв по образцу крайних стендов: копии стенда, таблички (с подсказкой Inspect) и якоря. Модель копья на
+-- якоре рисует Showroom.init так же, как у остальных. Стенд лежит только у этого клиента (как и сами модели копий зала).
+local function addSpearStands()
+	local hall = map:FindFirstChild("Showroom")
+	local folder = hall and hall:FindFirstChild("Spears")
+	if not folder or folder:GetAttribute("ExtraStands") then
+		return
+	end
+	local rows: { [number]: { stand: BasePart, plaque: BasePart?, anchor: Model? } } = {}
+	for _, d in folder:GetChildren() do
+		if d:IsA("BasePart") and d.Name == "SpearStand" then
+			local z = math.round(d.Position.Z)
+			local r = rows[z]
+			if not r or d.Position.X > r.stand.Position.X then
+				rows[z] = { stand = d }
+			end
+		end
+	end
+	local zs: { number } = {}
+	for z in rows do
+		table.insert(zs, z)
+	end
+	table.sort(zs)
+	if #zs ~= 2 then
+		return
+	end
+	for _, d in folder:GetChildren() do
+		for _, r in rows do
+			local sx, sz = r.stand.Position.X, r.stand.Position.Z
+			if d:IsA("BasePart") and d.Name == "SpearPlaque" and math.abs(d.Position.X - sx) < 0.3 and math.abs(d.Position.Z - sz) < 4 then
+				r.plaque = d
+			elseif d:IsA("Model") and d:GetAttribute("ShowroomSpear") and math.abs(d:GetPivot().Position.X - sx) < 0.3 and math.abs(d:GetPivot().Position.Z - sz) < 0.5 then
+				r.anchor = d
+			end
+		end
+	end
+	for _, z in zs do
+		if not rows[z].plaque or not rows[z].anchor then
+			return
+		end
+	end
+	folder:SetAttribute("ExtraStands", true)
+	local SLOTS = {
+		{ row = 1, x = 136.1, scale = 1 },
+		{ row = 2, x = 136.1, scale = 1 },
+		{ row = 1, x = 200.5, scale = 0.8 },
+		{ row = 1, x = 203.0, scale = 0.8 },
+		{ row = 2, x = 200.5, scale = 0.8 },
+		{ row = 2, x = 203.0, scale = 0.8 },
+	}
+	for i, slot in SLOTS do
+		local spear = Config.SPEARS[40 + i]
+		local r = rows[zs[slot.row]]
+		local srcPlaque, srcAnchor = r.plaque, r.anchor
+		if spear and srcPlaque and srcAnchor then
+			local dx = slot.x - r.stand.Position.X
+			local narrow = slot.scale < 1
+			local stand = r.stand:Clone()
+			stand.Size = Vector3.new(narrow and 2.2 or stand.Size.X, stand.Size.Y, stand.Size.Z)
+			stand.CFrame = r.stand.CFrame + Vector3.new(dx, 0, 0)
+			stand.Parent = folder
+			local plaque = srcPlaque:Clone()
+			plaque.Size = Vector3.new(narrow and 2.3 or plaque.Size.X, plaque.Size.Y, plaque.Size.Z)
+			plaque.CFrame = srcPlaque.CFrame + Vector3.new(dx, 0, 0)
+			plaque:SetAttribute("SpearId", spear.id)
+			local title = plaque:FindFirstChild("Title", true)
+			if title and title:IsA("TextLabel") then
+				title.Text = spear.name
+			end
+			local prompt = plaque:FindFirstChildOfClass("ProximityPrompt")
+			if prompt then
+				prompt.ObjectText = spear.name
+			end
+			plaque.Parent = folder
+			local anchor = srcAnchor:Clone()
+			anchor.Name = spear.id
+			anchor:SetAttribute("SpearName", spear.id)
+			anchor:SetAttribute("SpearId", spear.id)
+			anchor:SetAttribute("ShowroomScale", slot.scale)
+			anchor:PivotTo(srcAnchor:GetPivot() + Vector3.new(dx, 0, 0))
+			anchor.Parent = folder
+		end
+	end
+end
+
+---------------------------------------------------------------------
 -- Запуск
 ---------------------------------------------------------------------
 Ambient.init()
 Activities.init()
+do
+	local okStands, errStands = pcall(addSpearStands)
+	if not okStands then
+		warn("[Showroom] stands for spears 41-46: " .. tostring(errStands))
+	end
+end
 Showroom.init()
 require(script.Parent.NativeVendors).init()
 Guide.init()
