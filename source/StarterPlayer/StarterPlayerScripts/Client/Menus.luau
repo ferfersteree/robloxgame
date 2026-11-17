@@ -439,7 +439,7 @@ local function renderMarket(body: Frame, _st: { [string]: any })
 	local nxt = Config.BAG[d.bagLvl + 1]
 	local r2 = UI.panel({ Color = C.card, Size = UDim2.new(1, 0, 0, 90), Radius = 16, LayoutOrder = 5, Parent = body })
 	if nxt then
-		UI.label({ Text = string.format("🎒 Bigger bag: %d → <b>%d</b> slots", d.bagCap, nxt.cap), Rich = true, TextSize = 26, Size = UDim2.new(0.6, 0, 1, 0), Position = UDim2.fromOffset(16, 0), XAlign = Enum.TextXAlignment.Left, Parent = r2 })
+		UI.label({ Text = string.format("🎒 Bigger bag: %d → <b>%d</b> slots", d.bagCap, d.bagCap + nxt.cap - (Config.BAG[d.bagLvl] and Config.BAG[d.bagLvl].cap or nxt.cap)), Rich = true, TextSize = 26, Size = UDim2.new(0.6, 0, 1, 0), Position = UDim2.fromOffset(16, 0), XAlign = Enum.TextXAlignment.Left, Parent = r2 })
 		local b = UI.button({ Text = "💰 " .. Num.short(nxt.cost), TextSize = 24, Color = C.green, Size = UDim2.fromOffset(200, 56), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -16, 0.5, 0), Shine = d.coins >= nxt.cost }, function()
 			if call("BuyBag") then
 				Sfx.play("buy")
