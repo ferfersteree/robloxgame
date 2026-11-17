@@ -278,7 +278,13 @@ local function renderSpears(body: Frame, st: { [string]: any })
 		vpH.Size = UDim2.fromOffset(120, 120)
 		vpH.Position = UDim2.fromOffset(6, 4)
 		vpH.Parent = rowF
-		spearView(s.id, vpH, inHand and 1.2 or 0.4)
+		-- V50: модель копья (сотни деталей) строится по одной на кадр, а не шесть сразу: окно открывалось за ~250 мс
+		local spinSpeed = inHand and 1.2 or 0.4
+		task.delay(0.04 * (i - (st.page - 1) * pageSize - 1), function()
+			if vpH.Parent then
+				spearView(s.id, vpH, spinSpeed)
+			end
+		end)
 		UI.label({ Text = s.name .. (owned and lvl > 0 and ("  +" .. lvl) or ""), TextSize = 28, Size = UDim2.new(0.5, 0, 0, 34), Position = UDim2.fromOffset(134, 6), XAlign = Enum.TextXAlignment.Left, Color = s.trail[1]:Lerp(Color3.new(1, 1, 1), 0.4), Parent = rowF })
 		UI.label({ Text = spearStatsText(s.id, lvl), TextSize = 17, Size = UDim2.new(0.55, 0, 0, 66), Position = UDim2.fromOffset(134, 40), XAlign = Enum.TextXAlignment.Left, YAlign = Enum.TextYAlignment.Top, Color = C.dim, Stroke = 2, Parent = rowF })
 		UI.label({ Text = s.desc, TextSize = 15, Size = UDim2.new(0.55, 0, 0, 20), Position = UDim2.fromOffset(134, 104), XAlign = Enum.TextXAlignment.Left, Color = C.gray, Stroke = 2, Parent = rowF })
