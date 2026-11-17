@@ -55,16 +55,47 @@ UI.reveal = screen("SpearReveal", 7, true)
 UI.top = screen("SpearFx", 10, true)
 
 local S = 1
+local HS = 1 -- масштаб экранных панелей (UI.root); у окон и слоёв эффектов остаётся S
+local RSvc = game:GetService("ReplicatedStorage")
+-- Проверка на ПК: атрибут ReplicatedStorage.ForceViewport (Vector2, например 812×375) рисует интерфейс в прямоугольнике такого
+-- размера в левом верхнем углу (эмуляция телефона), ForceMobileUI = true включает телефонные вещи. Без атрибутов всё как раньше.
+local function viewport(): (Vector2, boolean)
+	local forced = RSvc:GetAttribute("ForceViewport")
+	if typeof(forced) == "Vector2" and forced.X >= 200 and forced.Y >= 200 then
+		return forced, true
+	end
+	return camera.ViewportSize, false
+end
 local function rescale()
-	local vp = camera.ViewportSize
+	local vp, forced = viewport()
 	S = math.clamp(math.min(vp.Y / 820, vp.X / 1200), 0.48, 1.35)
+	-- V60: на телефоне окна высотой 600-650 единиц держат масштаб не выше 0,48-0,55 (иначе не влезут), а панели по
+	-- краям экрана (верхняя полоса, задания, кнопки) можно держать крупнее: текст читается и попадать пальцем легче
+	HS = S
+	if UI.mobile or RSvc:GetAttribute("ForceMobileUI") == true then
+		HS = math.clamp(math.min(vp.Y / 820 * 1.25, vp.X / 1400), S, 0.62)
+	end
 	for _, c in canvases do
-		c.scale.Scale = S
-		c.frame.Size = UDim2.fromScale(1 / S, 1 / S)
+		local k = if c.frame == UI.root then HS else S
+		c.scale.Scale = k
+		if forced then
+			-- у UI.root отступ сверху (верхняя полоска Roblox), как у настоящего экрана
+			local h = vp.Y
+			if c.frame == UI.root then
+				h -= GuiService:GetGuiInset().Y
+			end
+			c.frame.Size = UDim2.fromOffset(vp.X / k, h / k)
+			c.frame.ClipsDescendants = true
+		else
+			c.frame.Size = UDim2.fromScale(1 / k, 1 / k)
+			c.frame.ClipsDescendants = false
+		end
 	end
 end
 rescale()
 camera:GetPropertyChangedSignal("ViewportSize"):Connect(rescale)
+RSvc:GetAttributeChangedSignal("ForceViewport"):Connect(rescale)
+RSvc:GetAttributeChangedSignal("ForceMobileUI"):Connect(rescale)
 
 function UI.scale(): number
 	return S
