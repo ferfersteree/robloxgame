@@ -31,7 +31,16 @@ local function clear(body: Frame)
 	end
 end
 
+-- V53: разговор с NPC закрывается, когда открывается любое окно (раньше окно оказывалось под диалогом, который лежит поверх)
+local function closeDialog()
+	local ok, D = pcall(require, script.Parent.Dialog)
+	if ok and type(D) == "table" and D.close then
+		D.close()
+	end
+end
+
 local function show(id: string, title: string, size: Vector2, color: Color3, render: (Frame, any) -> (), state: { [string]: any }?)
+	closeDialog()
 	local w: Win? = nil
 	local _, body = UI.window(id, title, size, color, function()
 		if cur == w then
@@ -763,6 +772,7 @@ end)
 Hud.MenuClicked.Event:Connect(function(name: string)
 	local f = (Menus :: any)[name]
 	if type(f) == "function" then
+		closeDialog()
 		if UI.windowOpen(name) then
 			UI.closeWindow()
 		else
