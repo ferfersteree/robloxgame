@@ -3,6 +3,7 @@
 -- Все действия — через Backend.call; после ответа окно перерисовывается на месте.
 local Players = game:GetService("Players")
 local RS = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 
 local Config = require(RS.Shared.Config)
 local Num = require(RS.Shared.Num)
@@ -110,6 +111,34 @@ local function txt(parent: Instance, text: string, size: number, color: Color3?,
 end
 
 -- Копьё во вьюпорте (наискосок)
+local swayers: { { vp: ViewportFrame, model: Model, base: CFrame, speed: number, t: number } } = {}
+local swayAcc = 0
+RunService.RenderStepped:Connect(function(dt)
+	swayAcc += dt
+	if swayAcc < 1 / 30 then
+		return
+	end
+	local step = math.min(swayAcc, 0.1)
+	swayAcc = 0
+	for i = #swayers, 1, -1 do
+		local s = swayers[i]
+		if not s.vp.Parent or not s.model.Parent then
+			table.remove(swayers, i)
+		elseif s.vp.AbsoluteSize.X > 0 then
+			-- за пределами прокручиваемого списка модель не двигаем
+			local sc = s.vp:FindFirstAncestorWhichIsA("ScrollingFrame")
+			local seen = true
+			if sc then
+				local p, z = s.vp.AbsolutePosition, s.vp.AbsoluteSize
+				seen = p.Y + z.Y >= sc.AbsolutePosition.Y and p.Y <= sc.AbsolutePosition.Y + sc.AbsoluteSize.Y
+			end
+			if seen then
+				s.t += step * s.speed
+				s.model:PivotTo(CFrame.Angles(0, math.sin(s.t) * 0.85, 0) * s.base)
+			end
+		end
+	end
+end)
 local function spearView(id: string, parent: Instance, spin: number?): ViewportFrame?
 	local s = SpearFactoryV15.Create(id)
 	if not s then
@@ -121,9 +150,17 @@ local function spearView(id: string, parent: Instance, spin: number?): ViewportF
 	holder.WorldPivot = CFrame.new()
 	s:PivotTo(CFrame.Angles(0, 0, math.rad(-42)))
 	s.Parent = holder
-	local vp = UI.viewport(holder, nil, math.rad(20), spin or 0.6)
+	local vp = UI.viewport(holder, nil, math.rad(20), 0) -- сам вьюпорт не вращает: ниже модель качается
 	vp.Parent = parent
 	holder:Destroy()
+	-- V58: плоская модель копья (толщина два кубика) при полном вращении поворачивалась ребром и была видна как нитка, кроме того
+	-- вращалась по кругу вокруг точки хвата. Теперь она стоит по центру и качается на ±49° вокруг вертикальной оси.
+	local m = vp:FindFirstChildOfClass("Model")
+	if m then
+		local bb = m:GetBoundingBox()
+		m:PivotTo(CFrame.new(-bb.Position) * m:GetPivot())
+		table.insert(swayers, { vp = vp, model = m, base = m:GetPivot(), speed = (spin or 0.6) * 2, t = math.random() * 6.28 })
+	end
 	return vp
 end
 Menus.spearView = spearView
@@ -265,7 +302,13 @@ end
 ---------------------------------------------------------------------
 local function spearStatsText(id: string, lvl: number): string
 	local s = Config.spearStats(id, lvl)
-	return string.format("Sharpness %s  ·  Power %s\nLuck ×%.1f  ·  Range ×%.2f\nChance to reach ×10: %s", stars(s.sharp, 6), stars(s.heavy, 5), s.luck, s.range, Num.odds(Roll.reachChance(10, s.alpha)))
+	-- V58: дальность и шанс с учётом постоянных бонусов питомцев-экзотики (дальность броска и хват), как в настоящем броске
+	local rangeMul, gripMul = Perks.rangeMul(), Perks.gripMul()
+	local rangeText = string.format("%.2f", s.range * rangeMul)
+	if math.abs(rangeMul - 1) > 0.005 then
+		rangeText ..= string.format(" (%+d%%)", math.floor((rangeMul - 1) * 100 + 0.5))
+	end
+	return string.format("Sharpness %s  ·  Power %s\nLuck ×%.1f  ·  Range ×%s\nChance to reach ×10: %s", stars(s.sharp, 6), stars(s.heavy, 5), s.luck, rangeText, Num.odds(Roll.reachChance(10, s.alpha * gripMul)))
 end
 
 local function renderSpears(body: Frame, st: { [string]: any })

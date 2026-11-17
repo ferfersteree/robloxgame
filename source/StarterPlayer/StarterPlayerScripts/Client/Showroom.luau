@@ -8,6 +8,7 @@ local RunService = game:GetService("RunService")
 local Config = require(RS.Shared.Config)
 local Num = require(RS.Shared.Num)
 local Roll = require(RS.Shared.Roll)
+local Perks = require(script.Parent.Perks)
 local UI = require(script.Parent.UIKit)
 local Theme = require(script.Parent.Theme)
 local Sfx = require(script.Parent.Sfx)
@@ -268,12 +269,15 @@ function Showroom.inspect(prompt: ProximityPrompt)
 	right.Parent = body
 	UI.list(Enum.FillDirection.Vertical, 8).Parent = right
 	local st = Config.spearStats(s.id, 0)
+	-- V58: с учётом постоянных бонусов питомцев (дальность и хват), как в настоящем броске
+	local rangeMul, gripMul = Perks.rangeMul(), Perks.gripMul()
+	local alpha = st.alpha * gripMul
 	local lines = {
 		{ s.desc, 22, C.dim },
 		{ "Sharpness: " .. s.sharp, 24, C.text },
 		{ "Weight: " .. s.heavy, 24, C.text },
-		{ string.format("Luck ×%.1f   ·   Range ×%.2f", st.luck, st.range), 24, C.text },
-		{ "Chance to reach ×10: " .. Num.odds(Roll.reachChance(10, st.alpha)) .. "   ·   ×100: " .. Num.odds(Roll.reachChance(100, st.alpha)), 21, C.cyan },
+		{ string.format("Luck ×%.1f   ·   Range ×%.2f", st.luck, st.range * rangeMul), 24, C.text },
+		{ "Chance to reach ×10: " .. Num.odds(Roll.reachChance(10, alpha)) .. "   ·   ×100: " .. Num.odds(Roll.reachChance(100, alpha)), 21, C.cyan },
 		{ "Price: 💰 " .. Num.short(s.price), 26, C.gold },
 	}
 	for i, l in lines do
