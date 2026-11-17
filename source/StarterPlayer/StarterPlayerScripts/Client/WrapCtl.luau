@@ -758,7 +758,8 @@ function WrapCtl.open(plot: Instance)
 	local savedFov = camera.FieldOfView
 	camera.CameraType = Enum.CameraType.Scriptable
 	camera.FieldOfView = 62
-	local eye = (S * CFrame.new(0, 5.4, -2.9)).Position
+	-- V54: камера на 15% дальше (бумага чуть меньше), чтобы верхний маркер края не заходил на подсказку в шапке
+	local eye = (S * CFrame.new(0, 6.2, -3.35)).Position
 	camFly(CFrame.lookAt(eye, (S * CFrame.new(0, 0.3, -0.2)).Position), 0.7)
 	Sfx.play("open")
 	local bar, v = Activities.bar("📦 WRAPPING · sale bonus ×" .. Config.WRAP_MULT, C.orange, function()
