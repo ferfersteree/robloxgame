@@ -89,8 +89,8 @@ def check_place() -> None:
 
 
 def main() -> int:
-    run("синтаксис .luau (source, tests)", ["-I", "tools/luau_check.py", "source", "tests"])
-    run("имена без объявления", ["tools/luau_names.py", "source", "tests"])
+    run("синтаксис .luau (source, tests, demo)", ["-I", "tools/luau_check.py", "source", "tests", "demo"])
+    run("имена без объявления", ["tools/luau_names.py", "source", "tests", "demo"])
     check_models()
     check_readme()
     check_secrets()
