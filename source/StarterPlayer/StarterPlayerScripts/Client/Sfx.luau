@@ -560,6 +560,33 @@ local function customPitch(name: string, pitch: number?): number?
 	return math.clamp(pitch / ((pr and pr[2]) or 1), 0.6, 1.7)
 end
 
+-- V49: загрузить записи из Creator Store заранее (первая сцена яйца иначе ждала бы сеть на первых звуках)
+local libraryPreloaded = false
+function Sfx.preloadLibrary()
+	if libraryPreloaded or not Sfx.library then
+		return
+	end
+	libraryPreloaded = true
+	task.spawn(function()
+		local list: { Instance } = {}
+		for key, id in LIB_IDS do
+			local base = bankCache[key]
+			if not base then
+				base = Instance.new("Sound")
+				base.Name = key
+				base.SoundId = id
+				base.Volume = 0.5
+				base.Parent = folder
+				bankCache[key] = base
+			end
+			table.insert(list, base)
+		end
+		pcall(function()
+			game:GetService("ContentProvider"):PreloadAsync(list)
+		end)
+	end)
+end
+
 local function playBank(base: Sound, name: string, pitch: number?, volume: number?, parent: Instance?): Sound
 	local s = base:Clone()
 	s.PlaybackSpeed = (customPitch(name, pitch) or (1 + (math.random() * 2 - 1) * (if name:sub(1, 4) == "step" then 0.06 else 0.03))) * libSpeed(base.Name)

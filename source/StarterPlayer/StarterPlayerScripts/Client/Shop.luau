@@ -3193,6 +3193,7 @@ function Shop.open()
 		open = nil
 	end)
 	Sfx.skipOnce = nil
+	pcall(Sfx.preloadLibrary) -- V49: звуки открытия яйца (настоящие записи) грузятся, пока игрок смотрит магазин
 	-- Убираем стандартное оформление окна: вместо него небо, баннер и облака
 	for _, c in win:GetChildren() do
 		if c.Name == "Header" or c.Name == "Button" or c:IsA("UIStroke") or c:IsA("UIGradient") then
