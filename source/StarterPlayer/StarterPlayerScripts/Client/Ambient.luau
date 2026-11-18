@@ -7,6 +7,7 @@ local RunService = game:GetService("RunService")
 local Config = require(RS.Shared.Config)
 local Fx = require(script.Parent.WorldFx)
 local AnimalRig = require(script.Parent.AnimalRig)
+local Fauna150 = require(RS:WaitForChild("Fauna150"))
 
 local Ambient = {}
 
@@ -83,7 +84,7 @@ local function streamAnimals()
   local old=walkers[anchor]
   if old and old.species~=species then old.rig:destroy();walkers[anchor]=nil;old=nil end
   if not old and type(species)=="string" and spawned<(if Fx.lowFx then 1 else 2) then
-   local rig=AnimalRig.spawn(species,anchor.CFrame,folder)
+   local rig=AnimalRig.spawn(species,anchor.CFrame,folder,nil,Fauna150.WorldScale(species)) -- V61: настоящий размер рядом с игроком
    spawned+=1
    if rig then walkers[anchor]={rig=rig,anchor=anchor,species=species,flee=0} end
   end

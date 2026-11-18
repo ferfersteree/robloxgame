@@ -109,17 +109,24 @@ PoseEv.OnServerEvent:Connect(function(player: Player, clip: any)
 	setDumbbells(player, clip == "Train" or clip == "TrainRest" or clip == "Lift")
 end)
 
+-- V62: до какого момента (os.clock) эффекты игрока ещё не рассылаются после схода с одиночного места
+local soloUntil: { [Player]: number } = {}
+
 -- Эффекты: копируем только известные поля нужных типов
 local FX_KINDS = { throw = true, reveal = true, crash = true, bounce = true, levelup = true, collect = true, tier = true }
 local FIELDS = {
 	tier = "number", spear = "string", from = "Vector3", to = "Vector3", t = "number", sp = "string",
-	rarity = "number", mut = "string", pos = "Vector3", m = "number", lane = "number", escaped = "boolean", crashed = "boolean",
+	rarity = "number", mut = "string", pos = "Vector3", m = "number", lane = "number", escaped = "boolean", crashed = "boolean", sz = "number",
 }
 FxEv.OnServerEvent:Connect(function(player: Player, payload: any)
 	if type(payload) ~= "table" or not FX_KINDS[payload.k] then
 		return
 	end
 	if not allow(player, "fx", 8) then
+		return
+	end
+	-- V62: броски, раскрытия и добыча игрока на одиночном месте другим не показываются
+	if player:GetAttribute("Solo") or (soloUntil[player] or 0) > os.clock() then
 		return
 	end
 	local out = { k = payload.k, by = player.UserId }
@@ -154,13 +161,14 @@ local farSince: { [Player]: number } = {}
 
 local function leaveAmbush(player: Player)
 	farSince[player] = nil
-	local s = occupied[player]
-	if s then
-		occupied[player] = nil
-		if s.Parent then
-			s:SetAttribute("Occupant", nil)
-			s:SetAttribute("OccupantName", nil)
-		end
+	-- V62: игрок снова виден остальным; ещё несколько секунд его запоздалые эффекты не рассылаются
+	-- (только если он действительно стоял на одиночном месте)
+	if occupied[player] or player:GetAttribute("Solo") then
+		soloUntil[player] = os.clock() + 8
+	end
+	occupied[player] = nil
+	if player.Parent then
+		player:SetAttribute("Solo", nil)
 	end
 end
 
@@ -212,38 +220,12 @@ AmbushFn.OnServerInvoke = function(player: Player, action: any, lane: any)
 	if not pr or (hrp.Position - pr.Position).Magnitude > MAX_DISTANCE then
 		return false, "You are too far from the Throwing Grounds"
 	end
-	-- уже стоит на дорожке: оставляем её
-	local mine = occupied[player]
-	if mine and mine.Parent and mine:GetAttribute("Occupant") == player.UserId then
-		return true, mine:GetAttribute("Index")
-	end
-	leaveAmbush(player)
-	local pick: BasePart? = nil
-	if type(lane) == "number" then
-		for _, s in stands do
-			if s:GetAttribute("Index") == math.floor(lane) and s:GetAttribute("Occupant") == nil then
-				pick = s
-				break
-			end
-		end
-	end
-	if not pick then
-		local best = math.huge
-		for _, s in stands do
-			if s:GetAttribute("Occupant") == nil then
-				local d = (s.Position - hrp.Position).Magnitude
-				if d < best then
-					best, pick = d, s
-				end
-			end
-		end
-	end
-	if not pick then
-		return false, "Throwing Grounds are full"
-	end
+	-- V62: одно место для всех. Игрок на нём невидим для остальных (атрибут Solo читают клиенты),
+	-- поэтому на одной дорожке могут стоять сколько угодно игроков, каждый бросает «сам с собой».
+	local pick = stands[1]
 	occupied[player] = pick
-	pick:SetAttribute("Occupant", player.UserId)
-	pick:SetAttribute("OccupantName", player.DisplayName)
+	farSince[player] = nil
+	player:SetAttribute("Solo", true)
 	return true, pick:GetAttribute("Index")
 end
 
@@ -270,8 +252,55 @@ task.spawn(function()
 	end
 end)
 
+-- V62: столкновения. Игроки на одиночном месте не толкают друг друга и остальных (они стоят в одной точке),
+-- но по-прежнему стоят на земле (группа Solo сталкивается с Default).
+local PhysicsService = game:GetService("PhysicsService")
+local G_SOLO, G_CHAR = "SoloThrow", "PlayerChars"
+for _, g in { G_SOLO, G_CHAR } do
+	pcall(PhysicsService.RegisterCollisionGroup, PhysicsService, g)
+end
+pcall(PhysicsService.CollisionGroupSetCollidable, PhysicsService, G_SOLO, G_SOLO, false)
+pcall(PhysicsService.CollisionGroupSetCollidable, PhysicsService, G_SOLO, G_CHAR, false)
+
+local function applyGroup(player: Player, char: Model)
+	local g = player:GetAttribute("Solo") and G_SOLO or G_CHAR
+	for _, d in char:GetDescendants() do
+		if d:IsA("BasePart") then
+			d.CollisionGroup = g
+		end
+	end
+end
+
+local function watchCharacter(player: Player, char: Model)
+	applyGroup(player, char)
+	char.DescendantAdded:Connect(function(d)
+		if d:IsA("BasePart") then
+			d.CollisionGroup = player:GetAttribute("Solo") and G_SOLO or G_CHAR
+		end
+	end)
+end
+
+local function watchPlayer(player: Player)
+	player:GetAttributeChangedSignal("Solo"):Connect(function()
+		if player.Character then
+			applyGroup(player, player.Character)
+		end
+	end)
+	player.CharacterAdded:Connect(function(char)
+		watchCharacter(player, char)
+	end)
+	if player.Character then
+		watchCharacter(player, player.Character)
+	end
+end
+Players.PlayerAdded:Connect(watchPlayer)
+for _, p in Players:GetPlayers() do
+	watchPlayer(p)
+end
+
 function Relay.onLeave(player: Player)
 	leaveAmbush(player)
+	soloUntil[player] = nil
 	buckets[player] = nil
 end
 

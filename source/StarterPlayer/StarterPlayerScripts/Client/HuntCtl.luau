@@ -108,9 +108,9 @@ local function watchZone(m: Instance)
 			end
 			local pr = promptOf(model)
 			if pr then
-				pr.Enabled = free > 0
-				local title = tostring(model:GetAttribute("Title") or "Throwing Grounds")
-				pr.ObjectText = free > 0 and string.format("%s · %d free", title, free) or (title .. " · full")
+				-- V62: место одиночное, занятости нет
+				pr.Enabled = total > 0
+				pr.ObjectText = tostring(model:GetAttribute("Title") or "Throwing Grounds") .. " · private"
 			end
 		end
 		for _, s in stands:GetChildren() do
@@ -651,5 +651,122 @@ RunService.Heartbeat:Connect(function()
 		end
 	end
 end)
+
+---------------------------------------------------------------------
+-- V62: одиночное место. Игрок с атрибутом Solo (его ставит сервер на время броска) для остальных невидим и
+-- «не твёрдый»: его персонаж, предметы и эффекты на нём скрыты только на этом клиенте. Копья и добыча таких игроков
+-- сервер другим не рассылает (Relay). Хижина игрока (его участок) не трогается и видна всем.
+---------------------------------------------------------------------
+-- на каждого скрытого игрока: что именно поменяли и подписка на новые предметы персонажа
+local hidden: { [Player]: { saved: { [Instance]: { [string]: any } }, conn: RBXScriptConnection? } } = {}
+
+local ENABLED_CLASSES = {
+	"ParticleEmitter", "Trail", "Beam", "Light", "BillboardGui", "SurfaceGui", "Highlight", "Fire", "Smoke", "Sparkles",
+}
+
+local function isEnabledKind(d: Instance): boolean
+	for _, cls in ENABLED_CLASSES do
+		if d:IsA(cls) then
+			return true
+		end
+	end
+	return false
+end
+
+local function hideInst(rec: { saved: { [Instance]: { [string]: any } } }, d: Instance)
+	if rec.saved[d] then
+		return
+	end
+	if d:IsA("BasePart") then
+		rec.saved[d] = { cq = d.CanQuery, ct = d.CanTouch }
+		d.LocalTransparencyModifier = 1
+		d.CanQuery = false
+		d.CanTouch = false
+	elseif d:IsA("Decal") or d:IsA("Texture") then
+		rec.saved[d] = { dec = true }
+		pcall(function()
+			(d :: any).LocalTransparencyModifier = 1
+		end)
+	elseif d:IsA("ForceField") then
+		rec.saved[d] = { ff = d.Visible }
+		d.Visible = false
+	elseif d:IsA("Humanoid") then
+		rec.saved[d] = { dd = d.DisplayDistanceType }
+		d.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+	elseif isEnabledKind(d) then
+		rec.saved[d] = { en = (d :: any).Enabled }
+		;(d :: any).Enabled = false
+	end
+end
+
+local function showAll(p: Player)
+	local rec = hidden[p]
+	if not rec then
+		return
+	end
+	hidden[p] = nil
+	if rec.conn then
+		rec.conn:Disconnect()
+	end
+	for d, st in rec.saved do
+		pcall(function()
+			if d:IsA("BasePart") then
+				d.LocalTransparencyModifier = 0
+				d.CanQuery = st.cq
+				d.CanTouch = st.ct
+			elseif st.dec then
+				(d :: any).LocalTransparencyModifier = 0
+			elseif st.ff ~= nil then
+				(d :: any).Visible = st.ff
+			elseif st.dd ~= nil then
+				(d :: any).DisplayDistanceType = st.dd
+			elseif st.en ~= nil then
+				(d :: any).Enabled = st.en
+			end
+		end)
+	end
+end
+
+local function hideAll(p: Player)
+	showAll(p)
+	local char = p.Character
+	if not char then
+		return
+	end
+	local rec = { saved = {}, conn = nil :: RBXScriptConnection? }
+	hidden[p] = rec
+	for _, d in char:GetDescendants() do
+		hideInst(rec, d)
+	end
+	rec.conn = char.DescendantAdded:Connect(function(d)
+		hideInst(rec, d)
+	end)
+end
+
+local function watchSolo(p: Player)
+	if p == player then
+		return
+	end
+	local function refresh()
+		if p:GetAttribute("Solo") == true then
+			hideAll(p)
+		else
+			showAll(p)
+		end
+	end
+	p:GetAttributeChangedSignal("Solo"):Connect(refresh)
+	p.CharacterAdded:Connect(function()
+		task.defer(refresh)
+	end)
+	p.CharacterRemoving:Connect(function()
+		showAll(p)
+	end)
+	refresh()
+end
+for _, p in Players:GetPlayers() do
+	watchSolo(p)
+end
+Players.PlayerAdded:Connect(watchSolo)
+Players.PlayerRemoving:Connect(showAll)
 
 return HuntCtl

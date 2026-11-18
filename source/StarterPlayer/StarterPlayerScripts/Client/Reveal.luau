@@ -2,6 +2,9 @@
 -- Гача-раскрытие добычи: куст шуршит → «?» → свечение растёт по цветам редкостей → (эпик+) темнеет небо,
 -- столб света, стук сердца → взрыв лучей и конфетти → зверь выпрыгивает и радуется → карточка с цифрами,
 -- штампы «НОВЫЙ ВИД!/РЕКОРД!» → карточка летит в сумку. Со 2-го раскрытия — «Пропустить».
+-- V61: зверь настоящего размера рядом с игроком (Fauna150.WorldScale), тяжёлая особь крупнее обычной (до x1,7, «GIANT»);
+-- куст свой у каждого биома и растёт вместе со зверем; перед выходом секунда затишья и испуг («!», толчок камеры);
+-- выход и фирменный жест у каждого вида свои (Stage.Emerge, таблица REVEAL в V15Covers/Stage).
 local RS = game:GetService("ReplicatedStorage")
 local Fauna150 = require(game:GetService("ReplicatedStorage"):WaitForChild("Fauna150"))
 local Players = game:GetService("Players")
@@ -26,6 +29,7 @@ local CoverMotionV15 = require(CoverLibraryV15:WaitForChild("Motion"))
 local CoverStageV15 = require(CoverLibraryV15:WaitForChild("Stage"))
 local FaunaFactoryV15 = require(RS:WaitForChild("V16Fauna"):WaitForChild("Factory"))
 local activeCoverCleanup: (() -> ())? = nil
+local activeSkipCleanup: (() -> ())? = nil -- кнопка «Skip» и её клавиши: убираются и при ошибке в сцене
 
 local Reveal = {}
 Reveal.active = false
@@ -46,7 +50,7 @@ end
 
 -- The filled centre belongs to two rigid halves; .5-stud cubes never scale.
 local function makeBush(plan: any, zoneId: number)
-	local model = assert(CoverFactoryV15.CreateCover(zoneId, plan.Frame, Fx.folder))
+	local model = assert(CoverFactoryV15.CreateCover(zoneId, plan.Frame, Fx.folder, { Scale = plan.CoverScale }))
 	model.Name = "RevealCoverV15"
 	model:SetAttribute("Stage", "anticipation")
 	local motion = CoverMotionV15.new(model, {ZoneId=zoneId, Spread=plan.Spread})
@@ -54,9 +58,9 @@ local function makeBush(plan: any, zoneId: number)
 	local function shake(amplitude: number)
 		motion:Rustle(amplitude)
 	end
-	local function open()
+	local function open(duration: number?)
 		model:SetAttribute("Stage", "opening")
-		motion:Open(.7,plan.Spread)
+		motion:Open(duration or .7,plan.Spread)
 	end
 	local function cleanup()
 		motion:Destroy()
@@ -66,7 +70,7 @@ local function makeBush(plan: any, zoneId: number)
 	return model,shake,open,cleanup,color1,color2
 end
 
-local function questionMark(pos: Vector3): (BillboardGui, TextLabel)
+local function questionMark(pos: Vector3, symbol: string?): (BillboardGui, TextLabel)
 	local part = Fx.anchor(pos, 30)
 	local bb = Instance.new("BillboardGui")
 	bb.Size = UDim2.fromOffset(160, 160)
@@ -84,7 +88,7 @@ local function questionMark(pos: Vector3): (BillboardGui, TextLabel)
 	l.BackgroundTransparency = 1
 	l.Size = UDim2.fromScale(1, 1)
 	l.Font = Theme.FONT
-	l.Text = "?"
+	l.Text = symbol or "?"
 	l.TextScaled = true
 	l.TextColor3 = Color3.new(1, 1, 1)
 	local s = Instance.new("UIStroke")
@@ -92,6 +96,59 @@ local function questionMark(pos: Vector3): (BillboardGui, TextLabel)
 	s.Parent = l
 	l.Parent = bb
 	return bb, l
+end
+
+-- V61: испуг в момент раскрытия: «!» над кустом, толчок камеры и рывок угла обзора
+local function startle(strength: number, at: Vector3)
+	local bang, lbl = questionMark(at, "!")
+	lbl.TextColor3 = Color3.fromRGB(255, 90, 70)
+	local sc = Instance.new("UIScale")
+	sc.Scale = 0.2
+	sc.Parent = lbl
+	UI.tween(sc, 0.12, { Scale = 1.3 }, Enum.EasingStyle.Back)
+	task.delay(0.6, function()
+		bang:Destroy()
+	end)
+	Fx.shake(0.32 * strength, 0.35)
+	local base = camera.FieldOfView
+	camera.FieldOfView = base + 9 * strength
+	UI.tween(camera, 0.5, { FieldOfView = base })
+	Sfx.play("pop", 1.25, 0.9)
+end
+
+-- V61: эффекты выхода зверя (пыль, брызги, толчки, рёв, вспышка) по событиям Stage.Emerge; масштаб по росту зверя
+-- NumberRange с max < min бросает ошибку: размах всегда не меньше начала
+local function range(lo: number, hi: number): NumberRange
+	return NumberRange.new(lo, math.max(lo, hi))
+end
+
+local function sceneFx(kind: string, at: Vector3, strength: number, h: number, c1: Color3, c2: Color3)
+	local k = math.clamp(strength, 0.45, 2.5)
+	local r = math.clamp(h * 0.5, 2.5, 16)
+	local ground = at + Vector3.new(0, 0.25, 0)
+	if kind == "splash" then
+		Fx.burst(ground + Vector3.new(0, 0.5, 0), { tex = "sparkle", color = Color3.fromRGB(150, 215, 255), n = 14, speed = range(5, 12 * k), size = 0.7, life = 0.9, accel = Vector3.new(0, -24, 0) })
+		Fx.ring(ground, Color3.fromRGB(190, 235, 255), r, 0.5)
+		Fx.shake(0.1 * k, 0.2)
+	elseif kind == "dust" or kind == "dig" or kind == "pop" then
+		Fx.burst(ground, { tex = "smoke", color = c1, n = 8, speed = range(2, 5 * k), size = 1.0, size2 = 2.0, life = 0.7, light = 0, accel = Vector3.new(0, 2, 0), transp = 0.35 })
+		if kind == "dig" then
+			Fx.burst(ground, { tex = "square", color = c2, n = 12, speed = NumberRange.new(5, 11), size = 0.4, life = 1.0, rot = true, accel = Vector3.new(0, -26, 0), light = 0 })
+		end
+		if kind == "pop" then
+			Fx.shake(0.08 * k, 0.15)
+		end
+	elseif kind == "land" or kind == "step" or kind == "skid" then
+		Fx.burst(ground, { tex = "smoke", color = c1, n = 10, speed = range(3, 7 * k), size = 1.4, size2 = 2.6, life = 0.8, light = 0, accel = Vector3.new(0, 2, 0), transp = 0.3 })
+		Fx.ring(ground, c1, r, 0.45)
+		Fx.shake((if kind == "step" then 0.12 else 0.2) * k, 0.25)
+	elseif kind == "roar" then
+		Fx.ring(at + Vector3.new(0, h * 0.5, 0), Color3.new(1, 1, 1), r * 1.4, 0.6)
+		Fx.shake(0.28 * k, 0.4)
+	elseif kind == "flare" or kind == "flash" then
+		Fx.sphere(at + Vector3.new(0, h * 0.5, 0), c2, 2 + h * 0.4, 0.4)
+		Fx.burst(at + Vector3.new(0, h * 0.5, 0), { tex = "star", color = c2, n = 10, speed = NumberRange.new(6, 14), size = 0.7, life = 0.9, rot = true, accel = Vector3.new(0, -4, 0) })
+	end
 end
 
 -- Ждать с возможностью «перемотки»
@@ -159,7 +216,8 @@ function Reveal.playCrash(_res: any, pos: Vector3, o: any)
 end
 
 -- Нижняя карточка результата
-local function resultPanel(res: any, sp: any, rar: any, fast: boolean): (Frame, () -> ())
+local STAMP_POS = { { 0.86, 10 }, { 0.14, 10 }, { 0.86, 200 } }
+local function resultPanel(res: any, sp: any, rar: any, fast: boolean, sz: number): (Frame, () -> ())
 	local item = res.item
 	local escaped = res.escaped == true
 	local col = escaped and Theme.C.red or rar.color
@@ -175,6 +233,10 @@ local function resultPanel(res: any, sp: any, rar: any, fast: boolean): (Frame, 
 	head.AutomaticSize = Enum.AutomaticSize.X
 	UI.pad(18, 0).Parent = head
 	local rname = escaped and "ESCAPED!" or string.upper(rar.name)
+	local giant = not escaped and Fauna150.IsGiant(sz)
+	if giant then
+		rname = "GIANT · " .. rname
+	end
 	if item and item.mut then
 		rname = (item.mut == "gold" and "✨ GOLDEN · " or "🌈 RAINBOW · ") .. rname
 	end
@@ -215,7 +277,7 @@ local function resultPanel(res: any, sp: any, rar: any, fast: boolean): (Frame, 
 			end)
 		end
 		local zone = Config.ZONES[res.zone or (sp and sp.zone) or 1]
-		UI.label({ Text = zone.icon .. " " .. zone.name .. (res.dist and res.dist > 0 and ("  ·  " .. math.floor(res.dist) .. " m") or "") .. (res.xp and res.xp > 0 and ("  ·  +" .. res.xp .. " XP") or ""), TextSize = 22, Color = Theme.C.dim, Size = UDim2.new(1, -40, 0, 26), Position = UDim2.fromOffset(20, 168), ZIndex = 24, Stroke = 2, Parent = panel })
+		UI.label({ Text = zone.icon .. " " .. zone.name .. (res.dist and res.dist > 0 and ("  ·  " .. math.floor(res.dist) .. " m") or "") .. (res.xp and res.xp > 0 and ("  ·  +" .. res.xp .. " XP") or "") .. (sz > 1.05 and string.format("  ·  size x%.1f", sz) or ""), TextSize = 22, Color = Theme.C.dim, Size = UDim2.new(1, -40, 0, 26), Position = UDim2.fromOffset(20, 168), ZIndex = 24, Stroke = 2, Parent = panel })
 	end
 	-- штампы
 	local stamps = {}
@@ -225,12 +287,15 @@ local function resultPanel(res: any, sp: any, rar: any, fast: boolean): (Frame, 
 	if res.isRecord and not escaped then
 		table.insert(stamps, { "NEW RECORD!", Theme.C.pink, 12 })
 	end
+	if giant then
+		table.insert(stamps, { "GIANT!", Theme.C.orange, -8 })
+	end
 	task.spawn(function()
 		if not fast then
 			task.wait(0.9)
 		end
 		for i, s in stamps do
-			local st = UI.label({ Text = s[1], TextSize = 40, Color = s[2], Size = UDim2.fromOffset(240, 50), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(i == 1 and 0.86 or 0.14, 0, 0, 10), Rotation = s[3], ZIndex = 30, Parent = panel })
+			local st = UI.label({ Text = s[1], TextSize = 40, Color = s[2], Size = UDim2.fromOffset(240, 50), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(STAMP_POS[i][1], 0, 0, STAMP_POS[i][2]), Rotation = s[3], ZIndex = 30, Parent = panel })
 			local ss = Instance.new("UIScale")
 			ss.Scale = 3
 			ss.Parent = st
@@ -296,20 +361,25 @@ function Reveal.play(res: any, pos: Vector3, o: RevealOpts?)
 	end
 	local prevMode = Hud.mode
 	Hud.setMode("cinematic")
+	-- V61: размер особи по весу (крупные тяжелее) и настоящий размер вида рядом с игроком
+	local sz = if res.item then Fauna150.SizeFromWeight(res.sp, res.item.w) else 1
+	local worldScale = Fauna150.WorldScale(res.sp, sz)
 	local h = sp and Fauna150.Attr(sp.id, "Height") or 2
-	h = h or 2
+	h = (h or 2) * worldScale
 	local from = opts.from or camera.CFrame.Position
 	local zoneId = res.zone or (sp and sp.zone) or 1
 	local coverSpec = assert(CoverFactoryV15.Get(string.format("spawn_cover_%02d",math.clamp(zoneId,1,25))))
-	local visualAnimal = FaunaFactoryV15.Get(res.sp)
+	local visualAnimal = CoverStageV15.ScaleAnimal(FaunaFactoryV15.Get(res.sp), worldScale)
 	if visualAnimal then h=visualAnimal.h end
-	local plan = CoverStageV15.Plan(pos,from,coverSpec,visualAnimal)
+	local coverScale = CoverStageV15.CoverScale(coverSpec, visualAnimal)
+	local plan = CoverStageV15.Plan(pos,from,coverSpec,visualAnimal,coverScale)
+	local spec = CoverStageV15.Spec(res.sp)
 	local effectPos = plan.Center
 	Occlusion.begin(plan.Focus, math.max(h,plan.Height))
 	if not opts.noCam then
 		task.spawn(moveCam, camShot(plan.Focus,plan.Height,from), fast and 0.3 or 0.7)
 	end
-	local bushSize = math.clamp(h * 0.55, 1.6, 5)
+	local bushSize = math.clamp(h * 0.55, 1.6, 5 * coverScale)
 	local bush,shake,openCover,cleanupCover,coverColor,coverColor2 = makeBush(plan,zoneId)
 	local shakeConn: RBXScriptConnection? = nil
 	local emergingRig: any = nil
@@ -320,6 +390,16 @@ function Reveal.play(res: any, pos: Vector3, o: RevealOpts?)
 		if not emergenceDone and emergingRig and emergingRig.alive then emergingRig:destroy() end
 	end
 	activeCoverCleanup = cleanupScene
+	activeSkipCleanup = function()
+		if skipBtn then
+			skipBtn:Destroy()
+			skipBtn = nil
+		end
+		if skipConn then
+			skipConn:Disconnect()
+			skipConn = nil
+		end
+	end
 	local glowLight = Fx.light(effectPos + Vector3.new(0, 2, 0), Color3.new(1, 1, 1), 16, 0, 60)
 	local bb, q = questionMark(effectPos + Vector3.new(0, bushSize + 2.5, 0))
 	bb.Enabled = false
@@ -384,12 +464,18 @@ function Reveal.play(res: any, pos: Vector3, o: RevealOpts?)
 	alive = false
 	if shakeConn then shakeConn:Disconnect();shakeConn=nil end
 	bb:Destroy()
+	-- V61: затишье: куст замирает, свет гаснет, секунда тишины, и только потом испуг
+	if not (fast or skipFlag) then
+		glowLight.Brightness = 0
+		wait(spec.hold)
+	end
 	local col = escaped and Theme.C.red or rar.color
-	Fx.burst(effectPos + Vector3.new(0, bushSize * 0.5, 0), { tex = "square", color = coverColor, color2 = coverColor2, n = 30, speed = NumberRange.new(10, 22), size = 0.5, life = 1.4, rot = true, accel = Vector3.new(0, -30, 0), light = 0 })
+	Fx.burst(effectPos + Vector3.new(0, bushSize * 0.5, 0), { tex = "square", color = coverColor, color2 = coverColor2, n = 30, speed = NumberRange.new(10, 22), size = 0.5 * math.min(coverScale, 2.5), life = 1.4, rot = true, accel = Vector3.new(0, -30, 0), light = 0 })
 	Fx.burst(effectPos + Vector3.new(0, bushSize * 0.5, 0), { tex = "star", color = col, n = 12 + r * 6, speed = NumberRange.new(12, 26), size = 1 + r * 0.15, life = 1.2, rot = true, accel = Vector3.new(0, -6, 0) })
 	Fx.sphere(effectPos + Vector3.new(0, h * 0.5, 0), col, 3 + h * 0.6, 0.35)
 	Fx.ring(effectPos + Vector3.new(0, 0.2, 0), col, 8 + r * 2, 0.6)
-	openCover()
+	startle(spec.scare, effectPos + Vector3.new(0, bushSize + 1.5, 0))
+	openCover(spec.open)
 	glowLight.Brightness = 0
 	UI.flash(col, 0.35, r >= 4 and 0.15 or 0.45)
 	if r >= 3 and not escaped then
@@ -403,17 +489,27 @@ function Reveal.play(res: any, pos: Vector3, o: RevealOpts?)
 	-- Open enough before any animal geometry is created. Skip shortens rarity
 	-- anticipation, never the physical curtain clearance.
 	local openStarted=os.clock()
-	while os.clock()-openStarted<.45 and bush.Parent do RunService.RenderStepped:Wait() end
+	local lead = math.max(spec.lead, spec.open * 0.55)
+	while os.clock()-openStarted<lead and bush.Parent do RunService.RenderStepped:Wait() end
 	local look = Vector3.new(from.X,pos.Y,from.Z)
 	if (look-pos).Magnitude<.1 then look=pos+Vector3.zAxis end
-	local rig = AnimalRig.spawn(res.sp,CFrame.lookAt(plan.Start,plan.Start+plan.Direction),Fx.folder,res.item and res.item.mut or nil)
+	local rig = AnimalRig.spawn(res.sp,CFrame.lookAt(plan.Start,plan.Start+plan.Direction),Fx.folder,res.item and res.item.mut or nil,worldScale)
 	emergingRig=rig
-	if rig then CoverStageV15.Walk(rig,plan) end
+	if rig then
+		local hooks = {
+			fast = fast or skipFlag,
+			noFlourish = escaped,
+			fx = function(kind: string, at: Vector3, strength: number)
+				sceneFx(kind, at, strength, h, coverColor, coverColor2)
+			end,
+		}
+		CoverStageV15.Emerge(rig, plan, spec, hooks)
+	end
 	emergenceDone=true
 	cleanupScene()
 	if activeCoverCleanup==cleanupScene then activeCoverCleanup=nil end
 	-- чужим игрокам
-	FxEv:FireServer({ k = "reveal", sp = res.sp, rarity = r, mut = res.item and res.item.mut or nil, pos = pos, escaped = escaped })
+	FxEv:FireServer({ k = "reveal", sp = res.sp, rarity = r, mut = res.item and res.item.mut or nil, pos = pos, escaped = escaped, sz = sz })
 	if skipBtn then
 		skipBtn:Destroy()
 		skipBtn = nil
@@ -422,7 +518,7 @@ function Reveal.play(res: any, pos: Vector3, o: RevealOpts?)
 		skipConn:Disconnect()
 		skipConn = nil
 	end
-	local panel, waitDone = resultPanel(res, sp, rar, fast or skipFlag)
+	local panel, waitDone = resultPanel(res, sp, rar, fast or skipFlag, sz)
 	if escaped then
 		task.delay(0.9, function()
 			if rig and rig.model.Parent then
@@ -475,6 +571,7 @@ local playScene = Reveal.play
 function Reveal.play(res: any, pos: Vector3, opts: RevealOpts?)
 	local ok, problem = xpcall(playScene, debug.traceback, res, pos, opts)
 	if activeCoverCleanup then local cleanup=activeCoverCleanup;activeCoverCleanup=nil;cleanup() end
+	if activeSkipCleanup then local cleanup=activeSkipCleanup;activeSkipCleanup=nil;cleanup() end
 	Occlusion.finish()
 	if not ok then
 		Backend.hold(false)
@@ -503,12 +600,13 @@ FxEv.OnClientEvent:Connect(function(pl: any)
 	if sp.rarity >= 4 then
 		Fx.pillar(pos, rar.color, 140, 3, 3)
 	end
-	local rig = AnimalRig.spawn(pl.sp, CFrame.new(pos) * CFrame.Angles(0, math.random() * 6, 0), Fx.folder, pl.mut)
+	local theirSize = if type(pl.sz) == "number" then math.clamp(pl.sz, 0.5, 2) else 1
+	local rig = AnimalRig.spawn(pl.sp, CFrame.new(pos) * CFrame.Angles(0, math.random() * 6, 0), Fx.folder, pl.mut, Fauna150.WorldScale(pl.sp, theirSize))
 	if rig then
 		rig:play(pl.escaped and "flee" or "happy")
 	end
 	local who = Players:GetPlayerByUserId(pl.by or 0)
-	Fx.text(pos + Vector3.new(0, 5, 0), (who and who.DisplayName .. ": " or "") .. sp.icon .. " " .. sp.name, col, 30, 2.4)
+	Fx.text(pos + Vector3.new(0, math.max(5, (rig and rig.h or 2) + 3), 0), (who and who.DisplayName .. ": " or "") .. (Fauna150.IsGiant(theirSize) and "GIANT " or "") .. sp.icon .. " " .. sp.name, col, 30, 2.4)
 	task.delay(2.6, function()
 		if rig then
 			rig:destroy()

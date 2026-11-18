@@ -64,6 +64,208 @@ function Fauna.Attr(id: string, name: string): number?
 end
 
 ---------------------------------------------------------------------
+-- V61: размер в мире. Рисунки моделей нормированы для карточек, а в сцене зверь должен быть настоящего размера рядом с игроком.
+-- Значения лежат в tools/creature_data.py (python tools/creature_data.py patch перепишет блок ниже).
+---------------------------------------------------------------------
+-- BEGIN V61 SIZES (tools/creature_data.py)
+local SIZE_M: { [string]: number } = {
+	rabbit = 0.45,
+	squirrel = 0.35,
+	hedgehog = 0.25,
+	fox = 1.0,
+	dodo = 0.9,
+	moonrabbit = 0.55,
+	roe = 1.2,
+	boar = 1.5,
+	badger = 0.75,
+	wolf = 1.4,
+	lynx = 1.0,
+	sabertooth = 2.0,
+	deer = 2.0,
+	moose = 3.0,
+	bear = 2.0,
+	bison = 3.0,
+	cavebear = 2.6,
+	spiritdeer = 2.4,
+	megadeer = 3.2,
+	rhino = 3.5,
+	mammoth = 5.5,
+	cavelion = 2.8,
+	icemammoth = 6.0,
+	yeti = 2.8,
+	gazelle = 1.4,
+	hyena = 1.4,
+	sunlion = 2.4,
+	mountain_goat = 1.5,
+	armadillo = 0.6,
+	canyon_condor = 1.2,
+	fennec = 0.6,
+	dune_scorpion = 0.6,
+	sand_wyrm = 5.0,
+	toucan = 0.65,
+	jaguar = 1.7,
+	jungle_gorilla = 1.7,
+	otter = 1.2,
+	crocodile = 3.5,
+	marsh_hydra = 3.5,
+	storm_ram = 1.6,
+	thunder_eagle = 1.1,
+	storm_griffin = 3.0,
+	sea_turtle = 1.4,
+	sea_lion = 2.0,
+	coral_wyvern = 3.0,
+	reef_ray = 1.8,
+	hammer_shark = 3.0,
+	abyss_leviathan = 7.0,
+	ash_lizard = 0.9,
+	ember_boar = 1.8,
+	lava_golem = 3.5,
+	obsidian_crab = 1.4,
+	magma_rhino = 3.8,
+	phoenix = 2.2,
+	crystal_bat = 1.0,
+	amethyst_fox = 1.2,
+	quartz_dragon = 5.0,
+	arctic_hare = 0.7,
+	lunar_wolf = 1.8,
+	aurora_bear = 2.8,
+	cloud_sheep = 1.4,
+	sky_stag = 2.8,
+	sky_drake = 4.0,
+	dusk_panther = 1.9,
+	shadow_mantis = 2.0,
+	void_behemoth = 5.0,
+	comet_fox = 1.3,
+	stellar_stag = 3.0,
+	astral_dragon = 6.0,
+	watchful_meerkat = 0.4,
+	savanna_ostrich = 2.4,
+	amber_giraffe = 5.0,
+	rock_hyrax = 0.5,
+	canyon_roadrunner = 0.7,
+	redthorn_lizard = 0.4,
+	oasis_scarab = 0.4,
+	dune_jerboa = 0.2,
+	mirage_camel = 3.0,
+	jade_tapir = 2.0,
+	leafcutter_ant = 0.5,
+	emerald_treefrog = 0.4,
+	mudskipper = 0.3,
+	mangrove_fiddler = 0.4,
+	mangrove_flamingo = 1.5,
+	storm_stone_spider = 1.8,
+	highland_yak = 2.5,
+	tempest_pterosaur = 2.5,
+	spiral_hermit_crab = 1.0,
+	lagoon_pelican = 1.4,
+	azure_horseshoe_crab = 0.6,
+	pearl_nautilus = 1.4,
+	coral_seahorse = 2.0,
+	reef_lobster = 1.2,
+	cinder_porcupine = 1.1,
+	ash_anteater = 1.8,
+	ember_mandrill = 1.7,
+	furnace_stag_beetle = 0.9,
+	caldera_toad = 1.0,
+	obsidian_pangolin = 1.6,
+	prism_moth = 1.2,
+	geode_mole = 1.0,
+	crystal_anemone = 1.4,
+	aurora_weasel = 0.9,
+	moon_owl = 1.4,
+	tundra_muskox = 2.2,
+	aether_ribbonfish = 2.0,
+	island_chameleon = 0.8,
+	cloud_glider = 2.2,
+	void_lamprey = 1.8,
+	gloom_sloth = 1.3,
+	rift_axolotl = 0.9,
+	nebula_tardigrade = 0.8,
+	astral_starfish = 1.0,
+	orbital_jellyfish = 2.0,
+	spring_strider = 2.2,
+	copper_weevil = 1.0,
+	gear_sentinel = 4.0,
+	magnet_tripod = 2.6,
+	iron_hound = 2.0,
+	clockwork_basilisk = 4.0,
+	shelf_millipede = 1.2,
+	peat_leech = 0.9,
+	lantern_slug = 1.2,
+	mycelium_bloomstalker = 2.8,
+	spore_marauder = 3.0,
+	cap_mantis = 2.2,
+	fossil_trilobite = 0.5,
+	dune_ankylosaur = 4.0,
+	fossil_ceratopsian = 5.0,
+	skeletal_colossus = 7.0,
+	sand_reaper = 3.5,
+	bone_vulture = 2.0,
+	abyss_sea_urchin = 1.0,
+	citadel_cuttlefish = 1.2,
+	cathedral_clam = 1.6,
+	trench_angler = 3.0,
+	pressure_colossus = 6.0,
+	abyss_octopus = 3.0,
+	fulgurite_cricket = 1.0,
+	rift_kangaroo = 2.2,
+	thunder_centaur = 3.2,
+	prism_revenant = 3.2,
+	storm_harrier = 1.6,
+	rift_serpent = 6.0,
+	caldera_tarsier = 0.9,
+	ember_salamander = 1.8,
+	magma_hippo = 3.5,
+	lava_dragonfly = 1.5,
+	volcanic_wyrm = 8.0,
+	primordial_titan = 12.0,
+}
+-- END V61 SIZES
+
+local STUDS_PER_M = 3.0 -- игрок ростом 1,8 м занимает около 5,4 студа
+local MIN_STUDS, MAX_STUDS = 1.0, 36
+
+-- Во сколько раз нарисованную модель нужно увеличить или уменьшить, чтобы она была настоящего размера;
+-- size (необязательно): множитель конкретной особи, см. SizeFromWeight.
+function Fauna.WorldScale(id: string, size: number?): number
+	local d = Fauna.Get(id)
+	local m = SIZE_M[id]
+	local k = size or 1
+	if not d or not m then
+		return k
+	end
+	local biggest = math.max(d.h, d.len, 0.5)
+	-- гиганты крупнее вида, но не выше 48 студов
+	local target = math.min(math.clamp(m * STUDS_PER_M, MIN_STUDS, MAX_STUDS) * k, 48)
+	return target / biggest
+end
+
+-- Настоящий размер вида в студах (самая большая сторона)
+function Fauna.WorldStuds(id: string): number?
+	local m = SIZE_M[id]
+	return m and math.clamp(m * STUDS_PER_M, MIN_STUDS, MAX_STUDS) or nil
+end
+
+-- Размер конкретной особи по её весу: никогда меньше обычного (x1,0), тяжёлые крупнее; верхняя пятая весового
+-- диапазона даёт «гигантов» (до x1,7). Одно и то же число считается везде (сцена, чужие игроки), сохранять его не нужно.
+function Fauna.SizeFromWeight(id: string, w: number?): number
+	if type(w) ~= "number" then
+		return 1
+	end
+	local sp = require(RS:WaitForChild("Shared"):WaitForChild("Config")).SPECIES_BY_ID[id]
+	if not sp or sp.wMax <= sp.wMin then
+		return 1
+	end
+	local r = math.clamp((w - sp.wMin) / (sp.wMax - sp.wMin), 0, 1)
+	local giant = math.clamp((r - 0.8) / 0.2, 0, 1)
+	return 1 + 0.3 * r + 0.4 * giant * giant
+end
+
+function Fauna.IsGiant(size: number): boolean
+	return size >= 1.25
+end
+
+---------------------------------------------------------------------
 -- Модель (порт CollectionTools/Factory без пауз)
 ---------------------------------------------------------------------
 local function part(name: string, size: Vector3, cf: CFrame, visible: boolean): Part

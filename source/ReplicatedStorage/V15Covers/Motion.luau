@@ -21,7 +21,7 @@ end
 
 function Motion.new(root: Model,options: any?): any
  local opts=options or {}
- local self=setmetatable({Root=root,Options=opts,ZoneId=opts.ZoneId or root:GetAttribute("BiomeId")or 1,Groups={},Parts={},Frames={},State="ready",OpenFraction=0,Elapsed=0,Running=false,Destroyed=false,CurrentLeft=CFrame.identity,CurrentRight=CFrame.identity},Motion)
+ local self=setmetatable({Root=root,Options=opts,ZoneId=opts.ZoneId or root:GetAttribute("BiomeId")or 1,Style=(root:GetAttribute("OpenStyle")or "curtain"),CoverHeight=(root:GetAttribute("CoverHeight")or 5),Groups={},Parts={},Frames={},State="ready",OpenFraction=0,Elapsed=0,Running=false,Destroyed=false,CurrentLeft=CFrame.identity,CurrentRight=CFrame.identity},Motion)
  local frame=root:GetPivot()
  for id,name in ipairs({"LeftLobe","RightLobe"})do
   local folder=root:FindFirstChild(name)
@@ -56,7 +56,9 @@ function Motion:Rustle(amplitude: number,elapsed: number?)
  self.State="anticipation"
  local t=elapsed or os.clock();local amp=math.clamp(amplitude,0,3)
  local stone=self.ZoneId==6 or self.ZoneId==14 or self.ZoneId==15 or self.ZoneId==16 or self.ZoneId==19 or self.ZoneId==22 or self.ZoneId==24 or self.ZoneId==25
- local intensity=if stone then .012 else .035
+ local style=self.Style
+ -- V61: дрожь зависит от того, как куст раскроется: камень и кости дрожат мелко, облака и звёзды парят, створки качаются
+ local intensity=if style=="burst" or style=="sink" then .012 elseif style=="swing" then .02 elseif style=="rise" then .05 elseif stone then .012 else .035
  local a=math.sin(t*27)*intensity*amp;local b=math.sin(t*31+.6)*intensity*amp
  self:_apply(CFrame.Angles(0,a*.35,a),CFrame.Angles(0,-b*.35,b))
 end
@@ -67,8 +69,27 @@ function Motion:Open(duration: number?,spread: number?)
  self.Spread=math.max(.5,spread or self.Options.Spread or 4.8)
  self.FromLeft=self.CurrentLeft;self.FromRight=self.CurrentRight
  local angle=if self.ZoneId==16 or self.ZoneId==12 or self.ZoneId==15 then .065 else .14
- self.TargetLeft=CFrame.new(-self.Spread,0,0)*CFrame.Angles(0,.045,angle)
- self.TargetRight=CFrame.new(self.Spread,0,0)*CFrame.Angles(0,-.045,-angle)
+ local style,spread,height=self.Style,self.Spread,self.CoverHeight
+ -- V61: пять манер раскрытия. Створки твёрдые и двигаются целиком (кубики не масштабируются):
+ --  curtain: разъезжаются в стороны; swing: распахиваются, как двери, вокруг внешнего края (шарнир задан в рисунке);
+ --  burst: разлетаются в стороны и назад; sink: уходят под землю; rise: всплывают вверх и расходятся.
+ if style=="swing" then
+  -- сначала створка отъезжает наружу на долю Spread (широкому зверю нужен проход), затем поворачивается вокруг шарнира
+  self.TargetLeft=CFrame.new(-spread*.6,0,0)*CFrame.Angles(0,-1.45,0)
+  self.TargetRight=CFrame.new(spread*.6,0,0)*CFrame.Angles(0,1.45,0)
+ elseif style=="burst" then
+  self.TargetLeft=CFrame.new(-spread*1.5,.6,1.2)*CFrame.Angles(.25,-.7,.55)
+  self.TargetRight=CFrame.new(spread*1.5,.6,1.2)*CFrame.Angles(.25,.7,-.55)
+ elseif style=="sink" then
+  self.TargetLeft=CFrame.new(-spread*.5,-(height+.5),.3)*CFrame.Angles(0,0,.12)
+  self.TargetRight=CFrame.new(spread*.5,-(height+.5),.3)*CFrame.Angles(0,0,-.12)
+ elseif style=="rise" then
+  self.TargetLeft=CFrame.new(-spread*.9,height*1.2+2,-.5)*CFrame.Angles(0,.3,.4)
+  self.TargetRight=CFrame.new(spread*.9,height*1.2+2,-.5)*CFrame.Angles(0,-.3,-.4)
+ else
+  self.TargetLeft=CFrame.new(-self.Spread,0,0)*CFrame.Angles(0,.045,angle)
+  self.TargetRight=CFrame.new(self.Spread,0,0)*CFrame.Angles(0,-.045,-angle)
+ end
  self.Running=true
  if self.Options.Auto~=false and RunService:IsClient()then active[self]=true;schedule()end
 end

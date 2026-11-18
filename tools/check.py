@@ -88,10 +88,19 @@ def check_place() -> None:
     results.append(("код совпадает с файлом места", p.returncode == 0, shown[:600]))
 
 
+def check_creatures() -> None:
+    """V61: таблицы размеров и выходов зверей в коде совпадают с tools/creature_data.py; 25 кустов проходят проверку рисунка"""
+    for label, args in (("размеры и выходы 150 зверей", ["-X", "utf8", "tools/creature_data.py", "verify"]), ("25 кустов биомов", ["-X", "utf8", "tools/biome_covers.py", "check"])):
+        p = subprocess.run([sys.executable, *args], cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace")
+        tail = (p.stdout.strip().splitlines() or [""])[-1] if p.returncode == 0 else (p.stdout + p.stderr).strip()[-600:]
+        results.append((label, p.returncode == 0, tail))
+
+
 def main() -> int:
     run("синтаксис .luau (source, tests, demo)", ["-I", "tools/luau_check.py", "source", "tests", "demo"])
     run("имена без объявления", ["tools/luau_names.py", "source", "tests", "demo"])
     check_models()
+    check_creatures()
     check_readme()
     check_secrets()
     if "--fast" not in sys.argv:

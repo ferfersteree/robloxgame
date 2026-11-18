@@ -283,7 +283,8 @@ RunService.RenderStepped:Connect(function(dt)
 			continue
 		end
 		local d = (rig.cf.Position - cpos).Magnitude
-		local every = d < 65 and (rig.model:GetAttribute("NativeV15") and 1/60 or 1/30) or (d < 130 and 1/15 or (d < 260 and 1/8 or math.huge))
+		local emerging = rig.model:GetAttribute("V15_Emerging") == true -- выходящий из куста зверь: каждый кадр
+		local every = emerging and 1/60 or d < 65 and (rig.model:GetAttribute("NativeV15") and 1/60 or 1/30) or (d < 130 and 1/15 or (d < 260 and 1/8 or math.huge))
 		local ahead = cam.LookVector:Dot(rig.cf.Position - cpos) > -10
 		if not ahead then
 			every = math.max(every, 1 / 4)

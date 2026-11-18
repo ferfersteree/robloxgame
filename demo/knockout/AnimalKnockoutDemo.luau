@@ -8,7 +8,11 @@
 -- Копьё, бросок и охота не участвуют.
 --
 -- Клавиши: N или стрелка вправо: следующий зверь; P или влево: предыдущий; R: повторить; 1-6: первый зверь этой редкости;
--- Пробел, Enter или E: закрыть карточку результата.
+-- G: самая крупная особь (вкл/выкл); L: крутить одного зверя без конца (вкл/выкл); Пробел, Enter или E: закрыть карточку результата.
+-- Фильтр (поле под подсказкой): впишите слова через пробел и нажмите Enter, и по кругу пойдут только подходящие звери:
+-- имя или id (wolf, дракон не ищется, имена английские), биом (zone 12), манера выхода (rise, leap, burst, swoop...),
+-- жест (roar, spin, coil...), редкость (epic). Все слова должны подходить сразу. Пустое поле: снова все 150.
+-- Текущий показ закрывается Пробелом (или идёт до конца), следующим будет первый зверь из фильтра.
 local Players = game:GetService("Players")
 local RS = game:GetService("ReplicatedStorage")
 local StarterGui = game:GetService("StarterGui")
@@ -20,7 +24,7 @@ local STAGE = Vector3.new(-60, 0.1, 60) -- где зверь остановит�
 local VIEWER = STAGE + Vector3.new(0, 3, 30) -- откуда смотрит камера (игрок стоит здесь, камера сцены ближе к кусту)
 local GAP = 6.6 -- пауза между показами: зверь стоит на месте ещё 6 секунд после карточки, новый куст не должен появиться раньше
 
-local function makeLabel(): TextLabel
+local function makeLabel(): (TextLabel, TextBox)
 	local gui = Instance.new("ScreenGui")
 	gui.Name = "KnockoutDemoHelp"
 	gui.ResetOnSpawn = false
@@ -47,7 +51,28 @@ local function makeLabel(): TextLabel
 	corner.CornerRadius = UDim.new(0, 10)
 	corner.Parent = l
 	l.Parent = gui
-	return l
+	local box = Instance.new("TextBox")
+	box.Name = "Filter"
+	box.BackgroundColor3 = Color3.fromRGB(30, 34, 70)
+	box.BackgroundTransparency = 0.15
+	box.Position = UDim2.fromOffset(12, 74)
+	box.Size = UDim2.fromOffset(640, 34)
+	box.Font = Enum.Font.Gotham
+	box.TextSize = 16
+	box.TextXAlignment = Enum.TextXAlignment.Left
+	box.TextColor3 = Color3.new(1, 1, 1)
+	box.PlaceholderColor3 = Color3.fromRGB(170, 175, 200)
+	box.PlaceholderText = "Filter: name, id, zone 12, rise / leap / burst / swoop..., roar / spin..., epic. Enter applies, empty = all"
+	box.ClearTextOnFocus = false
+	box.Text = ""
+	local bpad = Instance.new("UIPadding")
+	bpad.PaddingLeft = UDim.new(0, 10)
+	bpad.Parent = box
+	local bcorner = Instance.new("UICorner")
+	bcorner.CornerRadius = UDim.new(0, 10)
+	bcorner.Parent = box
+	box.Parent = gui
+	return l, box
 end
 
 function Guide.init()
@@ -71,16 +96,62 @@ function Guide.init()
 		pcall(function()
 			StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.All, false)
 		end)
-		local label = makeLabel()
+		local label, box = makeLabel()
+		local Stage = require(RS:WaitForChild("V15Covers"):WaitForChild("Stage"))
 
-		local species = Config.SPECIES
+		local all = Config.SPECIES
+		local species: { any } = all
+		local filterText = ""
 		local firstOfRarity: { [number]: number } = {}
-		for i, sp in species do
-			if not firstOfRarity[sp.rarity] then
-				firstOfRarity[sp.rarity] = i
+		local function rebuildRarity()
+			table.clear(firstOfRarity)
+			for i, sp in species do
+				if not firstOfRarity[sp.rarity] then
+					firstOfRarity[sp.rarity] = i
+				end
 			end
 		end
+		rebuildRarity()
+		-- все слова фильтра должны найтись в имени, id, номере биома, манере выхода, жесте или названии редкости
+		local function matches(sp: any, words: { string }): boolean
+			local spec = Stage.Spec(sp.id)
+			local rar = Config.RARITIES[sp.rarity]
+			local hay = table.concat({ sp.id, string.lower(sp.name or ""), "zone " .. tostring(sp.zone), tostring(sp.zone), spec.fam, spec.flo, string.lower(rar and rar.name or "") }, " | ")
+			for _, w in words do
+				if not string.find(hay, w, 1, true) then
+					return false
+				end
+			end
+			return true
+		end
 		local pending: any = nil
+		local giantMode = false -- клавиша G показывает самую тяжёлую (самую крупную) особь вида
+		local loopOne = false -- клавиша L крутит одного и того же зверя
+		local idx = 1
+		local filterNote = ""
+		box.FocusLost:Connect(function()
+			local text = string.lower(box.Text)
+			local words = {}
+			for w in string.gmatch(text, "[^%s,]+") do
+				table.insert(words, w)
+			end
+			local found = {}
+			for _, sp in all do
+				if matches(sp, words) then
+					table.insert(found, sp)
+				end
+			end
+			if #found == 0 then
+				filterNote = "nothing matches '" .. box.Text .. "', still showing the previous list"
+				return
+			end
+			species = found
+			filterText = box.Text
+			filterNote = ""
+			idx = 1
+			pending = "restart"
+			rebuildRarity()
+		end)
 		UserInputService.InputBegan:Connect(function(input: InputObject, processed: boolean)
 			if processed then
 				return
@@ -92,6 +163,11 @@ function Guide.init()
 				pending = "prev"
 			elseif k == Enum.KeyCode.R then
 				pending = "replay"
+			elseif k == Enum.KeyCode.G then
+				giantMode = not giantMode
+				pending = "replay"
+			elseif k == Enum.KeyCode.L then
+				loopOne = not loopOne
 			else
 				for r, code in ipairs({ Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.Three, Enum.KeyCode.Four, Enum.KeyCode.Five, Enum.KeyCode.Six }) do
 					if k == code then
@@ -101,7 +177,6 @@ function Guide.init()
 			end
 		end)
 
-		local idx = 1
 		while true do
 			-- игрок стоит на месте и не мешает кадру
 			local char = player.Character
@@ -111,12 +186,17 @@ function Guide.init()
 				char:PivotTo(CFrame.new(VIEWER))
 				hrp.Anchored = true
 			end
+			idx = math.clamp(idx, 1, #species)
 			local sp = species[idx]
 			local rarity = Config.RARITIES[sp.rarity]
-			label.Text = string.format("%s · %s · zone %d  (%d of %d)\nN next · P previous · R replay · 1-6 rarity · Space closes the card", sp.name, rarity and rarity.name or "?", sp.zone or 0, idx, #species)
+			local spec = Stage.Spec(sp.id)
+			label.Text = string.format("%s · %s · zone %d · %s + %s  (%d of %d%s)\nN next · P previous · R replay · 1-6 rarity · G giant %s · L loop one %s · Space closes the card%s", sp.name, rarity and rarity.name or "?", sp.zone or 0, spec.fam, spec.flo, idx, #species, filterText ~= "" and (", filter: " .. filterText) or "", giantMode and "ON" or "off", loopOne and "ON" or "off", filterNote ~= "" and ("\n" .. filterNote) or "")
 			Reveal.count = 0 -- без кнопки «Skip» и без ускоренного показа
 			local ok, res = Backend.call("Demo", "fake", { sp = sp.id, mut = nil, m = Config.TIERS[math.min(#Config.TIERS, sp.rarity)].m })
 			if ok and res then
+				if giantMode and res.item then
+					res.item.w = sp.wMax
+				end
 				local okPlay, err = pcall(Reveal.play, res, STAGE, { from = VIEWER, fake = true, pedestal = true })
 				if not okPlay then
 					warn("[KnockoutDemo] reveal failed for " .. sp.id .. ": " .. tostring(err))
@@ -127,9 +207,11 @@ function Guide.init()
 				task.wait(1)
 			end
 			task.wait(GAP)
-			if pending == "prev" then
+			if pending == "restart" then
+				idx = 1
+			elseif pending == "prev" then
 				idx = (idx - 2) % #species + 1
-			elseif pending == "replay" then
+			elseif pending == "replay" or (loopOne and pending == nil) then
 				idx = idx
 			elseif type(pending) == "number" then
 				idx = firstOfRarity[pending] or idx
