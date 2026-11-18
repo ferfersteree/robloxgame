@@ -2,6 +2,9 @@
 -- Процедурные позы R15 для ВСЕХ персонажей: засада, натяжение, 6 бросков по ступеням, срыв, радость,
 -- гантели, упаковка. Свой персонаж — мгновенно (Animator.play), остальные — по атрибутам Pose/PoseT (Relay).
 -- Во время поз инструмент скрыт, а в руке рисуется клиентская копия копья (атрибут персонажа SpearId).
+-- V64: броски снова идут по ключевым позам PoseData (у каждой ступени своя хореография: замах, прыжок, вихрь,
+-- зависание), ключи сглажены (in/out/lin). Заряд (клип Charge) строится по уровню натяжения: стойка ready
+-- перетекает в chargeLow, руки дрожат тем сильнее, чем ближе срыв. Копьё в руке смотрит туда, куда полетит.
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local RS = game:GetService("ReplicatedStorage")
@@ -12,16 +15,8 @@ local Net = require(RS.Shared.Net)
 local Animator = {}
 local NativeAssets = RS:WaitForChild("V15SpearPresentation")
 local NativeFactory = require(NativeAssets.SpearFactoryV15)
-local NativeThrow = require(NativeAssets.PlayerThrowV15)
-local THROW_POWER = {Throw1=.25,Throw2=.42,Throw5=.58,Throw10=.72,Throw25=.88,Throw100=1}
-for name,power in pairs(THROW_POWER) do
-	local clip = PoseData.clips[name]
-	if clip then
-		local timing = NativeThrow.Timing(power)
-		clip.release = timing.Release
-		clip.keys = {{0,clip.keys[1][2]},{timing.Duration,clip.keys[#clip.keys][2]}}
-	end
-end
+-- клипы бросков (копьё в руке держится по направлению броска, а не по кисти)
+local THROW = { Throw1 = true, Throw2 = true, Throw5 = true, Throw10 = true, Throw25 = true, Throw100 = true }
 
 local JOINTS = {
 	"Root", "Waist", "Neck",
@@ -43,6 +38,9 @@ type Rig = {
 	spear: Model?,
 	spearId: string?,
 	tool: Tool?,
+	lastSpearCF: CFrame?,
+	lastSpearT: number?,
+	chargeLift: number?,
 }
 
 local rigs: { [Model]: Rig } = {}
@@ -51,6 +49,10 @@ local PoseEv = Net.ev("Pose")
 local localClip: string? = nil
 local localT0 = 0
 local holdOverride: boolean? = nil -- принудительно показать/скрыть копьё в руке (витрина)
+-- V64: уровень заряда своего персонажа (0..1) и дрожь перед срывом (0..1); задаёт HuntCtl каждый кадр
+local chargeK: number? = nil
+local chargeTremble = 0
+local CHARGE_RAMP = 2.6 -- у чужих персонажей и на витрине заряд растёт сам за столько секунд
 
 local spearsFolder = Instance.new("Folder")
 spearsFolder.Name = "HandSpears"
@@ -105,17 +107,62 @@ local function resolve(name: string, t: number, depth: number?): (string?, numbe
 	return name, math.min(t, dur)
 end
 
-local function evalClip(name: string, t: number)
-	local power = THROW_POWER[name]
-	if power then
-		local sample = NativeThrow.SampleAngles(t,power)
-		for _,j in JOINTS do
-			local value = sample[j] or ZERO
-			local result = poseOut[j]
-			result[1],result[2],result[3] = math.deg(value[1]),math.deg(value[2]),math.deg(value[3])
+-- V64: как приходим в ключевую позу: in (разгон, поза проходится на скорости), out (торможение), lin, иначе плавно
+local function ease(kind: any, u: number): number
+	u = math.clamp(u, 0, 1)
+	if kind == "in" then
+		return u * u
+	elseif kind == "out" then
+		return 1 - (1 - u) * (1 - u)
+	elseif kind == "lin" then
+		return u
+	end
+	return u * u * (3 - 2 * u)
+end
+
+-- V64: уровень заряда персонажа: свой задаёт HuntCtl, у остальных он растёт по времени с начала позы
+local function chargeOf(rig: any): (number, number)
+	if rig and rig.char == player.Character then
+		if chargeK ~= nil then
+			return chargeK, chargeTremble
 		end
-		local root = sample.root or ZERO
-		poseOut.root[1],poseOut.root[2],poseOut.root[3] = root[1],root[2],root[3]
+		return math.clamp((os.clock() - localT0) / CHARGE_RAMP, 0, 1), 0
+	end
+	local t0 = rig and rig.char:GetAttribute("PoseT")
+	local t = workspace:GetServerTimeNow() - (type(t0) == "number" and t0 or 0)
+	return math.clamp(t / CHARGE_RAMP, 0, 1), 0
+end
+
+-- V64: стойка заряда: ready -> chargeLow по уровню, дыхание, дрожь рук и корпуса
+local function evalCharge(rig: any): boolean
+	local a, b = PoseData.poses.ready, PoseData.poses.chargeLow
+	if not a or not b then
+		return false
+	end
+	local k, tremble = chargeOf(rig)
+	blendInto(a, b, smooth(k))
+	local t = os.clock()
+	-- V65: частота дыхания постоянная (переменная частота от os.clock давала дребезг), заряд меняет только размах
+	local breathe = math.sin(t * 2.6) * (1 + 0.6 * k)
+	poseOut.root[2] += breathe * 0.035
+	poseOut.Waist[1] += breathe * 1.1
+	poseOut.LeftShoulder[1] += breathe * 1.4
+	local amp = 0.35 + 1.9 * k * k + 4.5 * tremble
+	local n1 = math.noise(t * 21, 1.7)
+	local n2 = math.noise(3.1, t * 24)
+	local n3 = math.noise(t * 18, t * 5 + 9.2)
+	poseOut.RightShoulder[1] += n1 * amp
+	poseOut.RightShoulder[3] += n2 * amp * 0.7
+	poseOut.RightElbow[1] += n3 * amp * 1.2
+	poseOut.RightWrist[1] += n2 * amp * 1.5
+	poseOut.LeftShoulder[3] += n1 * amp * 0.5
+	poseOut.Waist[2] += n3 * amp * 0.35
+	poseOut.Neck[1] += n2 * amp * 0.25
+	return true
+end
+
+local function evalClip(name: string, t: number, rig: any)
+	if name == "Charge" and evalCharge(rig) then
 		return
 	end
 	local keys = PoseData.clips[name].keys
@@ -123,7 +170,7 @@ local function evalClip(name: string, t: number)
 		local a, b = keys[i], keys[i + 1]
 		if t <= b[1] then
 			local u = (t - a[1]) / math.max(b[1] - a[1], 1e-3)
-			blendInto(PoseData.poses[a[2]], PoseData.poses[b[2]], smooth(u))
+			blendInto(PoseData.poses[a[2]], PoseData.poses[b[2]], ease(b[3], u))
 			return
 		end
 	end
@@ -284,7 +331,7 @@ RunService.PreSimulation:Connect(function(dt)
 				rig.active = true
 				rig.cur = {}
 			end
-			evalClip(clip, t)
+			evalClip(clip, t, rig)
 			local s = math.clamp(rig.hum.HipHeight / 2, 0.5, 2)
 			for _, j in JOINTS do
 				local m = rig.motors[j]
@@ -318,6 +365,7 @@ RunService.PreSimulation:Connect(function(dt)
 		elseif rig.active then
 			rig.active = false
 			rig.cur = {}
+			rig.chargeLift = nil
 			dropSpear(rig)
 			setToolHidden(rig, false)
 		end
@@ -337,6 +385,13 @@ RunService.PreRender:Connect(function()
 			end
 		end
 		if not clip and findTool(char) then inHand=true end
+		-- V65: игрок на точке броска (Solo) скрыт от остальных: его копья в руке другие тоже не видят
+		if char ~= player.Character and inHand then
+			local owner = Players:GetPlayerFromCharacter(char)
+			if owner and owner:GetAttribute("Solo") == true then
+				inHand = false
+			end
+		end
 		if clip or inHand then
 			setToolHidden(rig, true)
 		elseif rig.tool then
@@ -344,6 +399,8 @@ RunService.PreRender:Connect(function()
 		end
 		local hand = char:FindFirstChild("RightHand") :: BasePart?
 		local torso = (char:FindFirstChild("UpperTorso") or char:FindFirstChild("HumanoidRootPart")) :: BasePart?
+		-- V64: таз поворачивается только вместе со всем телом (вихрь, разворот в прыжке), скрутка корпуса его не трогает
+		local hips = (char:FindFirstChild("LowerTorso") or char:FindFirstChild("HumanoidRootPart")) :: BasePart?
 		if inHand and hand and torso then
 			local id = char:GetAttribute("SpearId")
 			id = type(id) == "string" and id or "stick"
@@ -361,17 +418,38 @@ RunService.PreRender:Connect(function()
 			if sp then
 				local fwd = torso.CFrame.LookVector
 				local dir
+				local aimed = false
 				if clip == "Hide" then
 					dir = (Vector3.yAxis * 0.95 + fwd * 0.3).Unit
+				elseif clip == "Charge" or (clip and THROW[clip]) then
+					-- V64: копьё смотрит туда, куда полетит: вперёд по тазу и немного вверх, с зарядом выше
+					local look = (hips or torso).CFrame.LookVector
+					local flat = Vector3.new(look.X, 0, look.Z)
+					flat = if flat.Magnitude > 1e-3 then flat.Unit else Vector3.new(0, 0, -1)
+					local lift = 0.3
+					if clip == "Charge" then
+						local k = chargeOf(rig)
+						lift = 0.18 + 0.14 * k
+						rig.chargeLift = lift
+					else
+						-- V65: после короткого заряда копьё плавно, за 0.12 с, переходит к наклону броска, без скачка
+						local from = rig.chargeLift or 0.3
+						lift = from + (0.3 - from) * math.clamp(t / 0.12, 0, 1)
+					end
+					dir = (flat + Vector3.yAxis * lift).Unit
+					aimed = true
 				else
 					dir = (fwd + Vector3.yAxis * 0.16).Unit
 				end
-				if sp:GetAttribute("V15Spear") and (THROW_POWER[clip] or not clip) then
-					local orientation = if THROW_POWER[clip] then CFrame.Angles(math.pi,0,0) else CFrame.identity
-					sp:PivotTo(NativeFactory.AtGrip(sp,hand.CFrame*CFrame.new(.02,-.1,-.07)*orientation))
+				if aimed then
+					sp:PivotTo(Animator.spearCF(hand.Position, dir))
+				elseif sp:GetAttribute("V15Spear") and not clip then
+					sp:PivotTo(NativeFactory.AtGrip(sp,hand.CFrame*CFrame.new(.02,-.1,-.07)))
 				else
 					sp:PivotTo(Animator.spearCF(hand.Position - dir * 0.2, dir))
 				end
+				rig.lastSpearCF = sp:GetPivot()
+				rig.lastSpearT = os.clock()
 			end
 		elseif rig.spear then
 			dropSpear(rig)
@@ -411,6 +489,18 @@ function Animator.setHold(on: boolean?)
 	holdOverride = on
 end
 
+-- V64: уровень заряда своего персонажа (0..1) и дрожь перед срывом; nil возвращает рост по времени
+function Animator.setCharge(k: number?, tremble: number?)
+	chargeK = if k ~= nil then math.clamp(k, 0, 1) else nil
+	chargeTremble = math.clamp(tremble or 0, 0, 1)
+end
+
+-- V64: события клипа (прыжок, приземление, топот): { { время, имя }, ... }
+function Animator.events(clip: string): { any }
+	local c = PoseData.clips[clip]
+	return c and c.events or {}
+end
+
 function Animator.handPosition(char: Model?): Vector3?
 	local hand = char and char:FindFirstChild("RightHand") :: BasePart?
 	return hand and hand.Position or nil
@@ -421,6 +511,10 @@ function Animator.handSpearCF(char: Model?): CFrame?
 	local rig = char and rigs[char]
 	if rig and rig.spear then
 		return rig.spear:GetPivot()
+	end
+	-- V64: копьё только что вышло из руки (в этот же кадр): отдаём его последнее положение, чтобы полёт начался оттуда
+	if rig and rig.lastSpearCF and rig.lastSpearT and os.clock() - rig.lastSpearT < 0.3 then
+		return rig.lastSpearCF
 	end
 	return nil
 end

@@ -110,6 +110,16 @@ function Occlusion.refresh()
 	end
 end
 
+-- V65: камера переехала к зверю: дальше расчищаем вид на новую точку (без нового обхода всей карты)
+function Occlusion.setFocus(position: Vector3, animalHeight: number)
+	if not active then
+		return
+	end
+	focus = position
+	height = animalHeight
+	Occlusion.refresh()
+end
+
 function Occlusion.finish()
 	active = false
 	RunService:UnbindFromRenderStep(renderName)

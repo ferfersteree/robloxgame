@@ -901,7 +901,8 @@ function Hud.setMode(mode: string)
 	if mode == "hunt" then
 		Hud.tensionReset()
 		Hud.meterVisible(true)
-		Hud.setHint(UI.mobile and "Hold the 🗡️ button, then release in time" or "Hold LMB / Space · release before SLIP · Q to leave")
+		-- V64: на телефоне заряд держит палец в любом месте экрана (кнопка 🗡️ тоже работает)
+		Hud.setHint(UI.mobile and "Hold anywhere on the screen, release in time" or "Hold LMB / Space · release before SLIP · Q to leave")
 	end
 end
 

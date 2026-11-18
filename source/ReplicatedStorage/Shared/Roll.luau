@@ -37,9 +37,15 @@ local function pickSpecies(list: { any }, rng: Random): any
 end
 
 -- Скрытая точка срыва: P(m* ≥ m) = m^(-alpha). math.huge — не сорвётся до капа.
+-- V65: alpha копья умножается на Config.TENSION.slipEase (срывы реже); подсказки reachChance считают так же
+local function easedAlpha(alpha: number): number
+	return math.max(alpha * (Config.TENSION.slipEase or 1), 0.05)
+end
+Roll.easedAlpha = easedAlpha
+
 function Roll.crashPoint(alpha: number, rng: Random): number
 	local u = math.max(rng:NextNumber(), 1e-9)
-	local m = u ^ (-1 / math.max(alpha, 0.05))
+	local m = u ^ (-1 / easedAlpha(alpha))
 	if m >= Config.TENSION.cap then
 		return math.huge
 	end
@@ -48,7 +54,7 @@ end
 
 -- Шанс дотянуть до множителя m (для подсказок)
 function Roll.reachChance(m: number, alpha: number): number
-	return math.min(1, math.max(m, 1) ^ -alpha)
+	return math.min(1, math.max(m, 1) ^ -easedAlpha(alpha))
 end
 
 local function tierChance(rarity: number, luck: number, capMul: number?): number

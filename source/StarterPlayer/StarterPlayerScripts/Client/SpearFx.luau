@@ -40,6 +40,9 @@ export type Flight = {
 	landPos: Vector3?,
 	revealHeld: boolean?,
 	v15: any?,
+	marker: Part?,
+	apex: boolean?,
+	nextThunder: number?,
 }
 
 local flights: { Flight } = {}
@@ -180,9 +183,10 @@ function SpearFx.launch(o: LaunchOpts): Flight
 				end
 			end
 		end
-		local hand = o.isLocal and Players.LocalPlayer.Character and Players.LocalPlayer.Character:FindFirstChild("RightHand")
-		if m:GetAttribute("V15Spear") and hand and hand:IsA("BasePart") then
-			m:PivotTo(NativeFactory.AtGrip(m,hand.CFrame*CFrame.new(.02,-.1,-.07)*CFrame.Angles(math.pi,0,0)))
+		-- V64: полёт начинается ровно из того положения, в котором копьё было в руке (без переворота на старте)
+		local held = if o.isLocal then Animator.handSpearCF(Players.LocalPlayer.Character) else nil
+		if held then
+			m:PivotTo(held)
 		else
 			m:PivotTo(Animator.spearCF(o.from, f.dir))
 		end
@@ -200,23 +204,48 @@ function SpearFx.launch(o: LaunchOpts): Flight
 		Sfx.at(o.from, "crash", 1, 0.8)
 	else
 		Sfx.at(o.from, "throw", 1.15 - 0.06 * tierIdx, 0.6 + 0.08 * tierIdx)
-		if not f.v15 and tierIdx >= 2 then
+		-- V64: условия «не V15» ниже убраны: все копья летят через V15, и эти эффекты не показывались ни у одного
+		-- V65: своё кольцо у ног даёт HuntCtl (launchFx), здесь оно висело диском в воздухе у пояса
+		if tierIdx >= 2 and not f.isLocal then
 			Fx.ring(o.from - Vector3.new(0, 1.6, 0), tier.color, 3 + tierIdx * 1.5, 0.45)
 		end
-		if not f.v15 and tierIdx >= 4 then
-			Fx.sphere(o.from, tier.color, 2 + tierIdx * 0.6, 0.35)
-			Fx.light(o.from, tier.color, 20, 6, 0.4)
+		if tierIdx >= 4 then
+			if Fx.lowFx ~= true then
+				Fx.sphere(o.from, tier.color, 2 + tierIdx * 0.6, 0.35)
+				Fx.light(o.from, tier.color, 20, 6, 0.4)
+			end
 			if f.isLocal then
 				Fx.shake(tier.shake * 0.6, 0.35)
 			end
 		end
-		if not f.v15 and tierIdx >= 5 then
+		if tierIdx >= 5 then
 			Sfx.at(o.from, "thunder", 1, 0.8)
 		end
+	end
+	-- V63: светящийся маркер на земле: сужается и пульсирует, пока копьё летит к цели
+	if f.isLocal and not f.crashed then
+		local mk = Instance.new("Part")
+		mk.Name = "LandMarker"
+		mk.Anchored = true
+		mk.CanCollide = false
+		mk.CanQuery = false
+		mk.CanTouch = false
+		mk.CastShadow = false
+		mk.Shape = Enum.PartType.Cylinder
+		mk.Material = Enum.Material.Neon
+		mk.Color = tier.color
+		mk.Transparency = 0.6
+		mk.Size = Vector3.new(0.12, 8, 8)
+		mk.CFrame = CFrame.new(to + Vector3.new(0, 0.12, 0)) * CFrame.Angles(0, 0, math.pi / 2)
+		mk.Parent = Fx.folder
+		game:GetService("Debris"):AddItem(mk, 30)
+		f.marker = mk
 	end
 	table.insert(flights, f)
 	return f
 end
+
+
 
 local function land(f: Flight)
 	f.done = true
@@ -228,6 +257,14 @@ local function land(f: Flight)
 	local s = Config.SPEAR_BY_ID[f.spear] or Config.SPEARS[1]
 	local tier = Config.TIERS[f.tier]
 	local p = f.to
+	if f.marker then
+		local mk = f.marker
+		f.marker = nil
+		Fx.tween(mk, 0.3, { Transparency = 1, Size = Vector3.new(0.12, 14, 14) })
+		task.delay(0.35, function()
+			mk:Destroy()
+		end)
+	end
 	f.landPos = p
 	local m = f.model
 	if m then
@@ -249,20 +286,31 @@ local function land(f: Flight)
 			local dir = Vector3.new(f.dir.X, math.min(f.dir.Y, -0.6), f.dir.Z).Unit
 			m:PivotTo(Animator.spearCF(p - dir * 4.2, dir))
 		end
-		task.delay(f.isLocal and 4 or 2.5, function()
-			-- The bush reveal can last longer than the normal landed-spear lifetime.
-			-- Its owner releases this hold after the result card closes.
-			while f.revealHeld and m.Parent do task.wait(0.1) end
+		-- V66: копьё исчезает сразу после удара (раньше торчало в земле до конца сцены улова и закрывало зверя):
+		-- за 0.16 с сжимается к середине и пропадает во вспышке
+		task.delay(0.05, function()
+			if not m.Parent then
+				return
+			end
+			local mid = m:GetPivot().Position
+			local t0 = os.clock()
+			while m.Parent and os.clock() - t0 < 0.16 do
+				local k = (os.clock() - t0) / 0.16
+				pcall(function()
+					m:ScaleTo(math.max(0.05, 1 - k * k))
+				end)
+				RunService.RenderStepped:Wait()
+			end
 			if m.Parent then
-				for _, d in m:GetDescendants() do
-					if d:IsA("BasePart") then
-						Fx.tween(d, 0.6, { Transparency = 1 })
-					end
-				end
-				task.wait(0.65)
 				m:Destroy()
 			end
+			Fx.burst(mid, { tex = "sparkle", color = s.trail[1], color2 = Color3.new(1, 1, 1), n = 8, speed = NumberRange.new(3, 8), size = 0.5, life = 0.45, accel = Vector3.new(0, 3, 0) })
 		end)
+	end
+	-- V66: от точки удара по земле расходится волна кубиков (у срыва маленькая)
+	local okWave, errWave = pcall(Fx.groundWave, p - Vector3.new(0, 0.4, 0), if f.crashed then 3.5 else 4.5 + 1.3 * f.tier, if f.crashed then 0.5 else 0.6 + 0.18 * f.tier)
+	if not okWave then
+		warn("[SpearFx] ground wave: " .. tostring(errWave))
 	end
 	if f.v15 then
 		f.v15:Land(p-Vector3.yAxis*.35,f.dir)
@@ -302,6 +350,10 @@ RunService.RenderStepped:Connect(function(dt)
 	for i = #flights, 1, -1 do
 		local f = flights[i]
 		if f.done then
+			if f.marker then
+				f.marker:Destroy()
+				f.marker = nil
+			end
 			table.remove(flights, i)
 			continue
 		end
@@ -310,6 +362,24 @@ RunService.RenderStepped:Connect(function(dt)
 		local p, dir = pathAt(f, f.u)
 		f.pos = p
 		f.dir = dir
+		local mk = f.marker
+		if mk and mk.Parent then
+			-- цель могла сместиться (мишень в тире): маркер идёт за ней
+			mk.CFrame = CFrame.new(f.to.X, mk.Position.Y, f.to.Z) * CFrame.Angles(0, 0, math.pi / 2)
+			local k = (1 - f.u) * 0.9 + 0.35 + 0.08 * math.sin(f.t * 9)
+			local d = 8 * k
+			mk.Size = Vector3.new(0.12, d, d)
+			mk.Transparency = 0.5 + 0.2 * math.sin(f.t * 9)
+		end
+		if not f.apex and f.u >= 0.5 then
+			f.apex = true
+			-- V64: условие «не V15» убрано: все копья летят через V15, и вспышка в V63 не показывалась
+			if not f.crashed and f.tier >= 2 and Fx.lowFx ~= true then
+				local tr = Config.TIERS[f.tier]
+				Fx.burst(p, { tex = "star", color = tr.color, color2 = tr.color2, n = 4 + f.tier * 2, speed = NumberRange.new(3, 8), size = 0.5 + f.tier * 0.1, life = 0.6, rot = true, accel = Vector3.new(0, -4, 0) })
+				Fx.ring(p, tr.color, 2 + f.tier, 0.35)
+			end
+		end
 		local m = f.model
 		if m then
 			local cf
@@ -331,11 +401,13 @@ RunService.RenderStepped:Connect(function(dt)
 			end
 		end
 		-- молнии вдоль полёта (ГРОМ и выше)
-		if not f.v15 and not f.crashed and f.tier >= 5 and f.t >= f.nextBolt and Fx.lowFx ~= true then
+		if not f.crashed and f.tier >= 5 and f.t >= f.nextBolt and Fx.lowFx ~= true then
 			f.nextBolt = f.t + (f.tier >= 6 and 0.18 or 0.3)
 			local tier = Config.TIERS[f.tier]
 			Fx.lightning(p + Vector3.new(math.random(-14, 14), 45, math.random(-14, 14)), p, tier.color, 8, 0.3)
-			if math.random() < 0.4 then
+			-- V65: гром не чаще раза в 1.2 с (молнии каждые 0.18-0.3 с давали десяток раскатов разом)
+			if math.random() < 0.4 and f.t >= (f.nextThunder or 0) then
+				f.nextThunder = f.t + 1.2
 				Sfx.at(p, "thunder", 1.1 + math.random() * 0.3, 0.4)
 			end
 		end

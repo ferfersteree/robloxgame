@@ -186,6 +186,99 @@ local function moveCam(target: CFrame, dur: number)
 	end
 end
 
+-- V65: зверь всегда в кадре. Карточка результата занимает низ экрана, поэтому камера ставит зверя в свободную
+-- верхнюю часть и подбирает расстояние по его размеру. Размер берётся из данных вида (рост, длина, ширина), а не из
+-- живой рамки модели: зверь в этот момент ещё доигрывает свой выход и может прыгать или крутиться.
+local CARD_TOP = 24 + 250 + 34 -- от низа экрана до верха карточки вместе с шапкой и штампами, в единицах холста
+local GROUND_NAMES = { Ground = true, FarGround = true, Field = true, Floor = true, Path = true, Terrain = true }
+
+-- высота земли под точкой (кроны, кусты и крыши пропускаются), nil если земли не нашлось
+local function groundY(p: Vector3): number?
+	local ignored: { Instance } = { Fx.folder }
+	local char = Players.LocalPlayer.Character
+	if char then
+		table.insert(ignored, char)
+	end
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	for _ = 1, 12 do
+		params.FilterDescendantsInstances = ignored
+		local r = workspace:Raycast(p + Vector3.new(0, 60, 0), Vector3.new(0, -260, 0), params)
+		if not r then
+			return nil
+		end
+		if r.Instance:IsA("Terrain") or GROUND_NAMES[r.Instance.Name] then
+			return r.Position.Y
+		end
+		table.insert(ignored, r.Instance)
+	end
+	return nil
+end
+
+local function framedShot(plan: any, animal: any?, h: number): CFrame
+	local fov = math.rad(math.clamp(camera.FieldOfView, 30, 100))
+	local tanV = math.tan(fov / 2)
+	local vp = camera.ViewportSize
+	local vpY = math.max(vp.Y, 1)
+	local aspect = math.max(vp.X, 1) / vpY
+	-- свободная полоса экрана: от верхней панели Roblox до верха карточки
+	local free0 = vpY * 0.08
+	local free1 = math.max(free0 + vpY * 0.22, vpY - CARD_TOP * UI.scale() - vpY * 0.02)
+	local cy = (free0 + free1) / 2
+	local ndcCenter = 1 - 2 * cy / vpY -- где на экране центр зверя: -1 низ, 1 верх
+	local ndcHalf = math.max(0.12, (free1 - free0) / vpY * 0.8) -- половина роста зверя на экране: 80% полосы
+	local len, wid = 2, 2
+	if animal then
+		wid = tonumber(animal.w) or wid
+		local b = animal.bounds
+		if type(b) == "table" and type(b[1]) == "table" and type(b[2]) == "table" then
+			len = math.abs((b[2][3] or 0) - (b[1][3] or 0))
+			wid = math.max(wid, math.abs((b[2][1] or 0) - (b[1][1] or 0)))
+		end
+	end
+	local halfV = math.max(h, 0.5) * 0.55
+	local halfH = math.max(len, wid, 0.5) * 0.55
+	local dist = math.max(halfV / (ndcHalf * tanV), halfH / (0.8 * tanV * aspect), 3.5) + len * 0.5
+	dist = math.min(dist, 160)
+	local dir = plan.Direction
+	local center = plan.Finish + Vector3.yAxis * (h * 0.5)
+	local elevation = math.rad(14)
+	local eye = center + dir * (dist * math.cos(elevation)) + Vector3.yAxis * (dist * math.sin(elevation))
+	-- камера не уходит под землю
+	local gy = groundY(eye)
+	if gy and eye.Y < gy + 1.2 then
+		eye = Vector3.new(eye.X, gy + 1.2, eye.Z)
+	end
+	-- наклон вниз: зверь встаёт в центр свободной полосы над карточкой
+	local tilt = math.atan(ndcCenter * tanV)
+	return CFrame.lookAt(eye, center) * CFrame.Angles(-tilt, 0, 0)
+end
+
+-- Держать кадр каждый кадр, пока открыта карточка: толчки камеры (Fx.shake) накладываются поверх и не уводят его.
+-- Снимается сам, как только раскрытие закончилось (в том числе после ошибки).
+local holdToken = 0
+local function holdCamera(target: CFrame, dur: number): () -> ()
+	holdToken += 1
+	local token = holdToken
+	local name = "RevealHold" .. tostring(token)
+	local start = camera.CFrame
+	local t0 = os.clock()
+	local function stop()
+		pcall(RunService.UnbindFromRenderStep, RunService, name)
+	end
+	RunService:BindToRenderStep(name, Enum.RenderPriority.Camera.Value + 1, function()
+		if token ~= holdToken or not Reveal.active then
+			stop()
+			return
+		end
+		camera.CameraType = Enum.CameraType.Scriptable
+		local k = math.min(1, (os.clock() - t0) / math.max(dur, 0.01))
+		local e = 1 - (1 - k) ^ 3
+		camera.CFrame = start:Lerp(target, e)
+	end)
+	return stop
+end
+
 -- Срыв — отдельная короткая сцена неудачи, без гачи, животного и награды.
 function Reveal.playCrash(_res: any, pos: Vector3, o: any)
 	local opts = o or {}
@@ -226,7 +319,7 @@ local function resultPanel(res: any, sp: any, rar: any, fast: boolean, sz: numbe
 	sc.Scale = 0.3
 	sc.Parent = panel
 	UI.tween(sc, 0.35, { Scale = 1 }, Enum.EasingStyle.Back)
-	local rays = UI.rays(panel, col, 12, 900, 18)
+	local rays = UI.rays(panel, col, 12, 560, 18) -- V65: было 900, лучи закрывали зверя
 	rays.ZIndex = 19
 	-- шапка с редкостью
 	local head = UI.panel({ Color = col, Size = UDim2.new(0, 10, 0, 44), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0, 0), Radius = 14, ZIndex = 24, Parent = panel })
@@ -506,8 +599,65 @@ function Reveal.play(res: any, pos: Vector3, o: RevealOpts?)
 		CoverStageV15.Emerge(rig, plan, spec, hooks)
 	end
 	emergenceDone=true
+	-- V63: светящийся круг под зверем цвета редкости и надпись GIANT у крупных особей
+	local glyph: Part? = nil
+	if rig and not escaped then
+		local g = Instance.new("Part")
+		g.Name = "RevealGlyph"
+		g.Anchored = true
+		g.CanCollide = false
+		g.CanQuery = false
+		g.CanTouch = false
+		g.CastShadow = false
+		g.Shape = Enum.PartType.Cylinder
+		g.Material = Enum.Material.Neon
+		g.Color = col
+		g.Transparency = 1
+		-- V65: круг по следу зверя (раньше не меньше 8 стадов: у мелких зверей он закрывал их золотым куполом)
+		local foot = 1.2
+		if visualAnimal then
+			foot = tonumber(visualAnimal.w) or foot
+			local b = visualAnimal.bounds
+			if type(b) == "table" and type(b[1]) == "table" and type(b[2]) == "table" then
+				foot = math.max(foot, math.abs((b[2][3] or 0) - (b[1][3] or 0)))
+			end
+		end
+		local gr = math.clamp(foot * 0.6 + 0.3, 0.8, 20)
+		g.Size = Vector3.new(0.08, 1, 1)
+		local gp = rig.cf.Position
+		g.CFrame = CFrame.new(gp.X, effectPos.Y + 0.15, gp.Z) * CFrame.Angles(0, 0, math.pi / 2)
+		g.Parent = Fx.folder
+		game:GetService("Debris"):AddItem(g, 60)
+		Fx.tween(g, 0.5, { Transparency = 0.78, Size = Vector3.new(0.08, gr * 2, gr * 2) }, Enum.EasingStyle.Back)
+		glyph = g
+		task.spawn(function()
+			local t0 = os.clock()
+			while g.Parent and not g:GetAttribute("Fading") do
+				if os.clock() - t0 > 0.55 then
+					g.Transparency = 0.8 + 0.08 * math.sin((os.clock() - t0) * 4)
+				end
+				RunService.RenderStepped:Wait()
+			end
+		end)
+		if Fauna150.IsGiant(sz) then
+			Fx.text(gp + Vector3.new(0, math.max(2, h * 1.15 + 1), 0), "GIANT!", Theme.C.gold, 44, 2.2)
+			Fx.shake(0.4, 0.5)
+			Sfx.play("boom", 0.9, 0.7)
+		end
+	end
 	cleanupScene()
 	if activeCoverCleanup==cleanupScene then activeCoverCleanup=nil end
+	-- V65: зверь всегда в кадре: над карточкой результата, размер по виду
+	local stopHold: (() -> ())? = nil
+	if rig and not opts.noCam then
+		local okShot, shot = pcall(framedShot, plan, visualAnimal, h)
+		if okShot then
+			stopHold = holdCamera(shot, if fast or skipFlag then 0.3 else 0.65)
+			pcall(Occlusion.setFocus, plan.Finish, math.max(h, 1))
+		else
+			warn("[Reveal] framing: " .. tostring(shot))
+		end
+	end
 	-- чужим игрокам
 	FxEv:FireServer({ k = "reveal", sp = res.sp, rarity = r, mut = res.item and res.item.mut or nil, pos = pos, escaped = escaped, sz = sz })
 	if skipBtn then
@@ -537,6 +687,17 @@ function Reveal.play(res: any, pos: Vector3, o: RevealOpts?)
 		end)
 	end
 	waitDone()
+	if stopHold then
+		stopHold()
+	end
+	if glyph then
+		local gl = glyph
+		gl:SetAttribute("Fading", true)
+		Fx.tween(gl, 0.4, { Transparency = 1 })
+		task.delay(0.45, function()
+			gl:Destroy()
+		end)
+	end
 	-- карточка улетает в сумку
 	local center = UI.screenPos(panel)
 	local sc = panel:FindFirstChildOfClass("UIScale")

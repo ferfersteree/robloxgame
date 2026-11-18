@@ -422,6 +422,121 @@ function UI.flash(color: Color3?, dur: number?, alpha: number?)
 	end)
 end
 
+-- V64: затемнение экрана (переход на площадку броска). UI.fade(1, 0.2) темнит, UI.fade(0, 0.4) возвращает.
+-- Чёрный экран не может остаться навсегда: через hold секунд (по умолчанию 3) он уходит сам.
+local fadeFrame: Frame? = nil
+local fadeToken = 0
+function UI.fade(alpha: number, dur: number?, hold: number?)
+	local f = fadeFrame
+	if not f or not f.Parent then
+		f = Instance.new("Frame")
+		f.Name = "Fade"
+		f.BorderSizePixel = 0
+		f.BackgroundColor3 = Color3.new(0, 0, 0)
+		f.BackgroundTransparency = 1
+		f.Size = UDim2.fromScale(1, 1)
+		f.ZIndex = 500
+		f.Parent = UI.top
+		fadeFrame = f
+	end
+	local frame = f :: Frame
+	fadeToken += 1
+	local token = fadeToken
+	local target = 1 - math.clamp(alpha, 0, 1)
+	if dur and dur > 0 then
+		UI.tween(frame, dur, { BackgroundTransparency = target }, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+	else
+		frame.BackgroundTransparency = target
+	end
+	if alpha > 0 then
+		task.delay((dur or 0) + (hold or 3), function()
+			if fadeToken == token and frame.Parent then
+				UI.tween(frame, 0.4, { BackgroundTransparency = 1 })
+			end
+		end)
+	end
+end
+
+-- V64: линии скорости по краям экрана (как в аниме): пучок полос из центра, середина прозрачная, полосы мерцают.
+-- Возвращает объект: set(alpha, color?) и destroy().
+function UI.focusLines(count: number?): any
+	local holder = Instance.new("Frame")
+	holder.Name = "FocusLines"
+	holder.BackgroundTransparency = 1
+	holder.Size = UDim2.fromScale(1, 1)
+	holder.ClipsDescendants = true
+	holder.ZIndex = 60
+	holder.Visible = false
+	local lines: { Frame } = {}
+	for _ = 1, count or 26 do
+		local l = Instance.new("Frame")
+		l.BorderSizePixel = 0
+		l.BackgroundColor3 = Color3.new(1, 1, 1)
+		l.AnchorPoint = Vector2.new(0.5, 0.5)
+		l.Position = UDim2.fromScale(0.5, 0.5)
+		l.Size = UDim2.new(1.7, 0, 0, 3)
+		l.Rotation = math.random() * 180
+		l.ZIndex = 60
+		local g = Instance.new("UIGradient")
+		g.Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.15),
+			NumberSequenceKeypoint.new(0.2, 0.7),
+			NumberSequenceKeypoint.new(0.3, 1),
+			NumberSequenceKeypoint.new(0.7, 1),
+			NumberSequenceKeypoint.new(0.8, 0.7),
+			NumberSequenceKeypoint.new(1, 0.15),
+		})
+		g.Parent = l
+		l.Parent = holder
+		table.insert(lines, l)
+	end
+	holder.Parent = UI.top
+	local self: any = { alpha = 0 }
+	local nextFlick = 0
+	local conn
+	conn = RunService.RenderStepped:Connect(function()
+		if not holder.Parent then
+			conn:Disconnect()
+			return
+		end
+		if self.alpha <= 0.01 then
+			return
+		end
+		local now = os.clock()
+		if now < nextFlick then
+			return
+		end
+		nextFlick = now + 0.05
+		-- V65: длина каждой линии по её углу, чтобы край экрана приходился на её яркие концы (на широком экране
+		-- концы длиной 1.7 экрана уходили за края, и линии были почти не видны)
+		local sc = math.max(UI.scale(), 1e-3)
+		local W = math.max(holder.AbsoluteSize.X / sc, 1)
+		local H = math.max(holder.AbsoluteSize.Y / sc, 1)
+		for _, l in lines do
+			local rot = math.random() * 180
+			l.Rotation = rot
+			local r = math.rad(rot)
+			local half = math.min(W / 2 / math.max(math.abs(math.cos(r)), 1e-3), H / 2 / math.max(math.abs(math.sin(r)), 1e-3))
+			l.Size = UDim2.new(0, half * 2 * 1.05, 0, 1 + math.random() * 5 * (0.4 + self.alpha))
+			l.BackgroundTransparency = 1 - self.alpha * (0.35 + 0.65 * math.random())
+		end
+	end)
+	function self.set(alpha: number, color: Color3?)
+		self.alpha = math.clamp(alpha, 0, 1)
+		holder.Visible = self.alpha > 0.01
+		if color then
+			for _, l in lines do
+				l.BackgroundColor3 = color
+			end
+		end
+	end
+	function self.destroy()
+		self.alpha = 0
+		holder:Destroy()
+	end
+	return self
+end
+
 -- Лучи (вращающиеся), вернуть Frame; удалить :Destroy()
 function UI.rays(parent: Instance, color: Color3, n: number?, size: number?, speed: number?): Frame
 	local holder = Instance.new("Frame")

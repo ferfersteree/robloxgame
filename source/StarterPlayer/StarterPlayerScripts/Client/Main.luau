@@ -83,6 +83,11 @@ end
 ---------------------------------------------------------------------
 Prompts.init(map)
 
+-- V65: красный пол зоны броска не переносит, пока идёт другое дело (полоса препятствий, тир и т.п.)
+HuntCtl.blocked = function(): boolean
+	return Activities.busy ~= nil
+end
+
 Prompts.on("hide", function(pr)
 	local m = pr.Parent and pr.Parent.Parent
 	if m and m:IsA("Model") then

@@ -154,10 +154,137 @@ end)
 -- Занятость хранится атрибутами Occupant / OccupantName на самой дорожке, их видят все клиенты.
 local ambushFolder = workspace:WaitForChild("Map"):WaitForChild("Ambushes")
 local occupied: { [Player]: BasePart } = {}
-local MAX_DISTANCE = 30 -- вход только вблизи зоны (подсказка работает с 14 студов, остальное запас на лаг)
-local HOLD_DISTANCE = 25 -- дальше этого от своей дорожки дольше HOLD_GRACE секунд держать её нельзя
+local MAX_DISTANCE = 36 -- вход только вблизи зоны: V65 вход с любой точки пола (дальний угол ~27 от точки Prompt), остальное запас на лаг
+local HOLD_DISTANCE = 9 -- V65: дальше этого от точки броска дольше HOLD_GRACE секунд Solo снимается (было 25)
 local HOLD_GRACE = 3
 local farSince: { [Player]: number } = {}
+
+-- V64: одно место для броска. Из дорожек зоны остаётся одна и встаёт по центру (напротив входа); лампы занятости
+-- и перегородки между дорожками убираются. Делается при старте сервера: в файле места дорожки лежат как были.
+local function consolidateZone(zone: Instance)
+	local stands = zone:FindFirstChild("Stands")
+	if not stands then
+		return
+	end
+	local keep: BasePart? = nil
+	local sum, count = Vector3.zero, 0
+	for _, s in stands:GetChildren() do
+		if s:IsA("BasePart") and type(s:GetAttribute("Index")) == "number" then
+			sum += s.Position
+			count += 1
+			if not keep or (s:GetAttribute("Index") :: number) < (keep:GetAttribute("Index") :: number) then
+				keep = s
+			end
+		end
+	end
+	if not keep or count < 2 then
+		return
+	end
+	local index = keep:GetAttribute("Index")
+	for _, s in stands:GetChildren() do
+		if s ~= keep then
+			s:Destroy()
+		end
+	end
+	local keepLane: Instance? = nil
+	local lanes = zone:FindFirstChild("Lanes")
+	if lanes then
+		for _, lane in lanes:GetChildren() do
+			if lane.Name == "Lane" .. tostring(index) then
+				keepLane = lane
+			else
+				lane:Destroy()
+			end
+		end
+	end
+	for _, name in { "Lamps", "Dividers" } do
+		local f = zone:FindFirstChild(name)
+		if f then
+			f:Destroy()
+		end
+	end
+	-- центр ряда дорожек: туда и переезжает оставшаяся
+	local center = sum / count
+	local shift = Vector3.new(center.X - keep.Position.X, 0, center.Z - keep.Position.Z)
+	if shift.Magnitude > 0.05 then
+		keep.CFrame += shift
+		if keepLane then
+			for _, d in keepLane:GetDescendants() do
+				if d:IsA("BasePart") then
+					d.CFrame += shift
+				end
+			end
+		end
+	end
+	if keepLane then
+		-- на площадке был номер дорожки: теперь она одна
+		for _, d in keepLane:GetDescendants() do
+			if d:IsA("TextLabel") and tonumber(d.Text) then
+				d.Text = "🗡️"
+			end
+		end
+	end
+	zone:SetAttribute("Lanes", 1)
+end
+-- V65: вместо ворот красный пол. Ворота (Gatehouse) убираются, весь настил зоны (Deck) красится в красный:
+-- шагнул на красный пол, и клиент (HuntCtl) переносит героя на точку броска. Подсказка у ворот выключается, её
+-- деталь Prompt остаётся (по ней ведёт Guide и проверяется расстояние). Выход ставится у входа, за краем пола.
+local RED = { Color3.fromRGB(196, 52, 52), Color3.fromRGB(178, 40, 44), Color3.fromRGB(210, 66, 60), Color3.fromRGB(186, 46, 48) }
+local RED_TRIM = Color3.fromRGB(122, 26, 30)
+local function redZone(zone: Instance)
+	local deck = zone:FindFirstChild("Deck")
+	if not deck then
+		return
+	end
+	-- ворота, забор по переднему краю пола со столбиками и фонарями (Rail) и (V66) домики по бокам от ворот:
+	-- стены и крыши (Lodge), окна и ящики с цветами на задней стене (Details), всё внутри (Interior).
+	-- Остальные заборы карты не трогаются: они лежат не в зоне броска
+	for _, name in { "Gatehouse", "Rail", "Lodge", "Details", "Interior" } do
+		local f = zone:FindFirstChild(name)
+		if f then
+			f:Destroy()
+		end
+	end
+	local minX, maxX, maxZ, top = math.huge, -math.huge, -math.huge, -math.huge
+	for _, p in deck:GetDescendants() do
+		if p:IsA("BasePart") then
+			if string.sub(p.Name, 1, 4) == "Trim" then
+				p.Color = RED_TRIM
+			else
+				-- оттенок по месту доски: пол пёстрый, как был деревянный, но красный
+				local k = math.floor(math.abs(p.Position.X * 7 + p.Position.Z * 13)) % #RED + 1
+				p.Color = RED[k]
+			end
+			local half = p.Size / 2
+			minX = math.min(minX, p.Position.X - half.X)
+			maxX = math.max(maxX, p.Position.X + half.X)
+			maxZ = math.max(maxZ, p.Position.Z + half.Z)
+			top = math.max(top, p.Position.Y + half.Y)
+		end
+	end
+	local pr = zone:FindFirstChild("Prompt")
+	local pp = pr and pr:FindFirstChildOfClass("ProximityPrompt")
+	if pp then
+		pp.Enabled = false
+	end
+	local ex = zone:FindFirstChild("Exit")
+	if ex and ex:IsA("BasePart") and maxZ > -math.huge then
+		-- у входа на дорожку к спавну: 3.9 стада за задним краем пола, корень героя на 3.4 над землёй входа
+		ex.CFrame = CFrame.new((minX + maxX) / 2, 3.4, maxZ + 3.9)
+	end
+	zone:SetAttribute("RedFloor", true)
+end
+
+for _, zone in ambushFolder:GetChildren() do
+	local okZone, errZone = pcall(consolidateZone, zone)
+	if not okZone then
+		warn("[Relay] single throwing spot: " .. tostring(errZone))
+	end
+	local okRed, errRed = pcall(redZone, zone)
+	if not okRed then
+		warn("[Relay] red throwing floor: " .. tostring(errRed))
+	end
+end
 
 local function leaveAmbush(player: Player)
 	farSince[player] = nil
@@ -223,8 +350,11 @@ AmbushFn.OnServerInvoke = function(player: Player, action: any, lane: any)
 	-- V62: одно место для всех. Игрок на нём невидим для остальных (атрибут Solo читают клиенты),
 	-- поэтому на одной дорожке могут стоять сколько угодно игроков, каждый бросает «сам с собой».
 	local pick = stands[1]
+	-- V65: повторный «enter» от того, кто уже стоит на точке, не обнуляет отсчёт ухода с неё
+	if not occupied[player] then
+		farSince[player] = nil
+	end
 	occupied[player] = pick
-	farSince[player] = nil
 	player:SetAttribute("Solo", true)
 	return true, pick:GetAttribute("Index")
 end
@@ -256,11 +386,28 @@ end)
 -- но по-прежнему стоят на земле (группа Solo сталкивается с Default).
 local PhysicsService = game:GetService("PhysicsService")
 local G_SOLO, G_CHAR = "SoloThrow", "PlayerChars"
-for _, g in { G_SOLO, G_CHAR } do
-	pcall(PhysicsService.RegisterCollisionGroup, PhysicsService, g)
+-- V64: группы регистрируются на Workspace (методы PhysicsService устарели); старый путь оставлен запасным
+local function registerGroup(name: string)
+	local ok = pcall(function()
+		(workspace :: any):RegisterCollisionGroup(name)
+	end)
+	if not ok then
+		pcall(PhysicsService.RegisterCollisionGroup, PhysicsService, name)
+	end
 end
-pcall(PhysicsService.CollisionGroupSetCollidable, PhysicsService, G_SOLO, G_SOLO, false)
-pcall(PhysicsService.CollisionGroupSetCollidable, PhysicsService, G_SOLO, G_CHAR, false)
+local function setCollidable(a: string, b: string, on: boolean)
+	local ok = pcall(function()
+		(workspace :: any):CollisionGroupSetCollidable(a, b, on)
+	end)
+	if not ok then
+		pcall(PhysicsService.CollisionGroupSetCollidable, PhysicsService, a, b, on)
+	end
+end
+for _, g in { G_SOLO, G_CHAR } do
+	registerGroup(g)
+end
+setCollidable(G_SOLO, G_SOLO, false)
+setCollidable(G_SOLO, G_CHAR, false)
 
 local function applyGroup(player: Player, char: Model)
 	local g = player:GetAttribute("Solo") and G_SOLO or G_CHAR
