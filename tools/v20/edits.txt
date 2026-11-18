@@ -1,0 +1,16 @@
+StarterPlayer/StarterPlayerScripts/Client/Sfx|/tmp/claude-0/-home-user-robloxgame/4603ddd4-28d2-5be1-8141-d4e144a53310/scratchpad/sound/Sfx.luau
+StarterPlayer/StarterPlayerScripts/Client/SpearFx|/tmp/claude-0/-home-user-robloxgame/4603ddd4-28d2-5be1-8141-d4e144a53310/scratchpad/sound/SpearFx.luau
+StarterPlayer/StarterPlayerScripts/Client/TrainCtl|/tmp/claude-0/-home-user-robloxgame/4603ddd4-28d2-5be1-8141-d4e144a53310/scratchpad/sound/TrainCtl.luau
+StarterPlayer/StarterPlayerScripts/Client/Dialog|/tmp/claude-0/-home-user-robloxgame/4603ddd4-28d2-5be1-8141-d4e144a53310/scratchpad/sound/Dialog.luau
+StarterPlayer/StarterPlayerScripts/Client/Main|/tmp/claude-0/-home-user-robloxgame/4603ddd4-28d2-5be1-8141-d4e144a53310/scratchpad/sound/Main.luau
+StarterPlayer/StarterPlayerScripts/Client/Menus|/tmp/claude-0/-home-user-robloxgame/4603ddd4-28d2-5be1-8141-d4e144a53310/scratchpad/sound/Menus.luau
+ReplicatedStorage/Fauna150|/tmp/claude-0/-home-user-robloxgame/4603ddd4-28d2-5be1-8141-d4e144a53310/scratchpad/sound/Fauna150.luau
+ReplicatedStorage/Shared/Config|/tmp/claude-0/-home-user-robloxgame/4603ddd4-28d2-5be1-8141-d4e144a53310/scratchpad/sound/Config.luau
++StarterPlayer/StarterPlayerScripts/Client|AudioIds|/tmp/claude-0/-home-user-robloxgame/4603ddd4-28d2-5be1-8141-d4e144a53310/scratchpad/sound/AudioIds.luau
++StarterPlayer/StarterPlayerScripts/Client|Footsteps|/tmp/claude-0/-home-user-robloxgame/4603ddd4-28d2-5be1-8141-d4e144a53310/scratchpad/sound/Footsteps.luau
+@Workspace/Map/Plots/Plot1/OwnerSign/OwnerGui|Face|2
+@Workspace/Map/Plots/Plot2/OwnerSign/OwnerGui|Face|2
+@Workspace/Map/Plots/Plot3/OwnerSign/OwnerGui|Face|2
+@Workspace/Map/Plots/Plot4/OwnerSign/OwnerGui|Face|2
+@Workspace/Map/Plots/Plot5/OwnerSign/OwnerGui|Face|2
+@Workspace/Map/Plots/Plot6/OwnerSign/OwnerGui|Face|2
