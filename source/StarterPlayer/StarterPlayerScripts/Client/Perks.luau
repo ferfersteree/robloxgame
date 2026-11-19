@@ -10,7 +10,7 @@ local K = Config.SHOP.PERK
 local Perks = {}
 Perks.Changed = Instance.new("BindableEvent")
 
-local state: any = { passes = {}, boosts = {}, server = 0, starter = false, studio = false, loaded = false, pending = {}, spent = 0, rank = 0, gift = 0, exotic = { owned = {}, equipped = {}, level = {}, shards = 0, hatch = {} } }
+local state: any = { hpass = { season = -1, premium = false, claimed = {} }, hpassCos = {}, passes = {}, boosts = {}, server = 0, starter = false, studio = false, loaded = false, pending = {}, spent = 0, rank = 0, gift = 0, exotic = { owned = {}, equipped = {}, level = {}, shards = 0, hatch = {} } }
 local stamp = os.clock()
 
 function Perks.set(s: any)
@@ -30,6 +30,8 @@ function Perks.set(s: any)
 		gift = tonumber(s.gift) or 0,
 		eggsOff = s.eggsOff == true, -- регион игрока: платные случайные предметы запрещены (PolicyService, считает сервер)
 		exotic = type(s.exotic) == "table" and s.exotic or { owned = {}, equipped = {}, level = {}, shards = 0, hatch = {} },
+		hpass = type(s.hpass) == "table" and s.hpass or { season = -1, premium = false, claimed = {} },
+		hpassCos = type(s.hpassCos) == "table" and s.hpassCos or {},
 	}
 	stamp = os.clock()
 	Perks.Changed:Fire()
@@ -166,6 +168,21 @@ end
 
 function Perks.gripMul(): number
 	return math.clamp(1 - (Perks.exotic().grip or 0), 0.5, 1.5)
+end
+
+-- V71: Hunter Pass. Премиум действует только в текущем сезоне (старый сезон = пусто).
+function Perks.hpassPremium(): boolean
+	local h = state.hpass
+	return type(h) == "table" and h.premium == true and h.season == Config.passSeason()
+end
+
+-- Награда серверного ряда уже забрана ("f3" / "p12"), только в текущем сезоне.
+function Perks.hpassServerClaimed(key: string): boolean
+	local h = state.hpass
+	if type(h) ~= "table" or h.season ~= Config.passSeason() or type(h.claimed) ~= "table" then
+		return false
+	end
+	return h.claimed[key] == true
 end
 
 -- Слоты сумки сверх бесплатных 100: только у рангов поддержки.

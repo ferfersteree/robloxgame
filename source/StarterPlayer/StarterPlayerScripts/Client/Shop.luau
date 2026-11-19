@@ -20,6 +20,7 @@ local Perks = require(script.Parent.Perks)
 local Card = require(script.Parent.Card)
 
 local Shop = {}
+Shop.onHpassChange = nil :: any -- Hunter Pass: Menus вешает перерисовку окна, пока оно открыто
 local SHOP = Config.SHOP
 local player = Players.LocalPlayer
 local ROBUX = utf8.char(0xE002)
@@ -71,6 +72,14 @@ local K = {
 	winLine = rgb(12, 36, 104), winGlow = rgb(176, 232, 255),
 	cream = rgb(255, 255, 255), creamLine = rgb(10, 36, 104), deepRed = rgb(92, 13, 13),
 	tile = rgb(10, 20, 70), cardLine = rgb(26, 16, 64), cardBot = rgb(59, 29, 122),
+	-- V70: новый вид (салатовая шапка, графитовое тело, яркие плитки)
+	limeA = rgb(146, 226, 40), limeB = rgb(120, 200, 20), limeLine = rgb(22, 40, 12),
+	charTop = rgb(36, 38, 44), charBot = rgb(24, 26, 30), charLine = rgb(12, 14, 16),
+	edge = rgb(14, 14, 20), note = rgb(190, 196, 208),
+}
+-- цвета заголовков разделов
+local SEC = {
+	gold = rgb(255, 214, 64), orange = rgb(255, 128, 56), lime = rgb(150, 236, 56), cyan = rgb(80, 220, 255), pink = rgb(255, 120, 196), purple = rgb(198, 140, 255),
 }
 local ACCENT = {
 	charm = rgb(120, 255, 150), insight = rgb(130, 200, 255), broker = rgb(210, 220, 235), smith = rgb(255, 150, 80),
@@ -892,7 +901,7 @@ local function box(p: { [string]: any }): Frame
 	end
 	local g = Instance.new("UIGradient")
 	g.Rotation = 90
-	g.Color = bands(p.Top, p.Mid, p.Bottom or p.Top)
+	g.Color = if p.Smooth then ColorSequence.new(p.Top, p.Bottom or p.Top) else bands(p.Top, p.Mid, p.Bottom or p.Top) -- Smooth: плавный градиент
 	g.Parent = f
 	corner(p.Radius or 10).Parent = f
 	if p.Line then
@@ -925,11 +934,119 @@ local function glowSpot(parent: Instance, color: Color3, size: number, pos: UDim
 	g.ZIndex = 1
 end
 
--- Заголовок раздела: тёмная плашка с золотыми линиями (Exclusives / Passes в референсе)
-local function sectionBar(o, parent: Instance, text: string, order: number)
+---------------------------------------------------------------------
+-- V72: окно собрано из арт-спрайтов (docs/concepts_v70/art_brief.md): шапка, кнопки цены, плитки с лесным фоном
+---------------------------------------------------------------------
+local A = {}
+local FOREST_LINE = rgb(14, 28, 20)
+local NAVY = rgb(14, 26, 40)
+
+-- спрайт товара по ключу (нет спрайта: прежняя иконка)
+local SPRITE: { [string]: string } = {
+	charm = "charm", insight = "insight", broker = "broker", smith = "smith", wrap = "wrap", vip = "vip", founder = "founder",
+	fortune20 = "potion_sun", jackpot20 = "potion_clover", fair30 = "potion_hands", hour_bundle = "potion_target", server15 = "potion_people",
+	coins1 = "coins_satchel", coins2 = "coins_crate", coins3 = "coins_chest", coins4 = "coins_vault",
+	starter = "starter", bag = "ic_bag", egg_forest = "egg_forest", egg_amber = "egg_amber", egg_tide = "egg_tide", egg_storm = "p_egg_storm",
+}
+-- фон плитки буста
+local BOOST_TILE: { [string]: string } = {
+	fortune20 = "tile_orange", jackpot20 = "tile_purple", fair30 = "tile_blue", hour_bundle = "tile_red", server15 = "tile_green",
+}
+-- 9-slice кнопок: { слева/справа, сверху/снизу, высота спрайта }
+local BTN_SLICE: { [string]: { number } } = {
+	btn_buy = { 48, 40, 119 }, btn_blue = { 34, 28, 74 }, btn_green = { 34, 28, 74 }, btn_grey = { 28, 24, 64 },
+	btn_big = { 60, 44, 109 }, btn_yellow = { 28, 24, 64 },
+}
+
+-- Вырезка из листа: rect в пикселях спрайта (листья, шапка)
+function A.cut(key: string, rx: number, ry: number, rw: number, rh: number, props: { [string]: any }): ImageLabel
+	local img = UI.art(key, props)
+	img.ImageRectOffset = img.ImageRectOffset + Vector2.new(rx, ry)
+	img.ImageRectSize = Vector2.new(rw, rh)
+	return img
+end
+
+-- Шапка: середина с надписью Shop в натуральных пропорциях, по бокам растягиваются только полосы
+function A.header(parent: Instance, w: number, h: number)
+	-- V71: одна широкая картинка (1024x72) без швов; раньше шапка склеивалась из трёх кусков и полосы обрывались
+	UI.art("shop_header_wide", { Name = "HeaderArt", Size = UDim2.fromOffset(w, h), ZIndex = 1, Parent = parent })
+end
+
+-- Лист слева и справа от надписи (картинка leaves: пара листьев, делим пополам)
+function A.titleRow(parent: Instance, text: string, size: number, leafH: number, z: number)
+	local row = Instance.new("Frame")
+	row.Name = "TitleRow"
+	row.BackgroundTransparency = 1
+	row.Size = UDim2.fromScale(1, 1)
+	row.ZIndex = z
+	row.Parent = parent
+	UI.list(Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Center).Parent = row
+	local lw = leafH * 72 / 65
+	A.cut("leaves", 0, 0, 72, 65, { Name = "LeafL", Size = UDim2.fromOffset(lw, leafH), LayoutOrder = 1, ZIndex = z, Parent = row })
+	UI.label({ Text = text, TextSize = size, AutoX = true, Size = UDim2.fromOffset(0, size + 6), LayoutOrder = 2, ZIndex = z, Parent = row })
+	A.cut("leaves", 72, 0, 73, 65, { Name = "LeafR", Size = UDim2.fromOffset(lw, leafH), LayoutOrder = 3, ZIndex = z, Parent = row })
+end
+
+-- Рамка с лесным фоном: тёмный скруглённый кадр, фон-картинка (Crop или 9-slice), тонкая тёмная обводка
+function A.frame(p: { [string]: any }): Frame
+	local f = Instance.new("Frame")
+	f.Name = p.Name or "ForestFrame"
+	f.BackgroundColor3 = NAVY
+	f.BorderSizePixel = 0
+	f.Size = p.Size or UDim2.fromScale(1, 1)
+	if p.Position then
+		f.Position = p.Position
+	end
+	if p.AnchorPoint then
+		f.AnchorPoint = p.AnchorPoint
+	end
+	if p.LayoutOrder then
+		f.LayoutOrder = p.LayoutOrder
+	end
+	UI.corner(p.Radius or 12).Parent = f
+	UI.stroke(FOREST_LINE, p.Thick or 3, 0, true).Parent = f
+	local bg = UI.art(p.Key or "shop_banner", { Name = "Bg", Size = UDim2.fromScale(1, 1), Crop = p.Slice == nil, Slice = p.Slice, SliceScale = p.SliceScale, Color = p.Tint or rgb(198, 206, 192), ZIndex = 1, Parent = f })
+	UI.corner(p.Radius or 12).Parent = bg
+	if p.Parent then
+		f.Parent = p.Parent
+	end
+	return f
+end
+
+-- Тёмная плашка chip_dark (проценты, монеты)
+function A.chip(parent: Instance, size: UDim2, pos: UDim2, z: number, sliceScale: number): ImageLabel
+	return UI.art("chip_dark", { Name = "Chip", Size = size, Position = pos, Slice = { 30, 30, 30, 30 }, SliceScale = sliceScale, ZIndex = z, Parent = parent })
+end
+
+-- Кнопка-картинка с 9-slice; p.Size обязательно в пикселях по высоте (по ней считается масштаб углов)
+function A.button(key: string, p: { [string]: any }, onClick: (() -> ())?): any
+	local d = BTN_SLICE[key]
+	p.Slice = { d[1], d[2], d[1], d[2] }
+	p.SliceScale = math.min(1, p.Size.Y.Offset / d[3])
+	return UI.artButton(key, p, onClick)
+end
+
+-- Жёлтая плашка OWNED вместо кнопки цены
+function A.owned(parent: Instance, size: UDim2, pos: UDim2, anchor: Vector2?, textSize: number)
+	local b = UI.art("btn_yellow", { Name = "Owned", Size = size, Position = pos, AnchorPoint = anchor, Slice = { 28, 24, 28, 24 }, SliceScale = math.min(1, size.Y.Offset / 64), ZIndex = 3, Parent = parent })
+	UI.label({ Text = "OWNED", TextSize = textSize, Size = UDim2.fromScale(1, 1), ZIndex = 4, Parent = b })
+end
+
+-- Иконка товара: спрайт, а если его нет - прежняя 3D/мультяшная
+function A.icon(parent: Instance, key: string, z: number?)
+	local s = SPRITE[key]
+	if s then
+		UI.art(s, { Name = "Sprite", Size = UDim2.fromScale(1, 1), Fit = true, ZIndex = z or 3, Parent = parent })
+	else
+		icon(parent, key, 0)
+	end
+end
+
+-- Заголовок раздела: «~ Name ~» белым с контуром, по бокам листья
+local function sectionBar(o, parent: Instance, text: string, order: number, _color: Color3?)
 	local f = Instance.new("Frame")
 	f.BackgroundTransparency = 1
-	f.Size = UDim2.new(1, 0, 0, 32)
+	f.Size = UDim2.new(1, 0, 0, 28)
 	f.LayoutOrder = order
 	-- f — место в списке; всё содержимое и масштаб «выпрыгивания» — во внутреннем кадре с центром-якорем
 	local c = Instance.new("Frame")
@@ -938,34 +1055,7 @@ local function sectionBar(o, parent: Instance, text: string, order: number)
 	c.Position = UDim2.fromScale(0.5, 0.5)
 	c.Size = UDim2.fromScale(1, 1)
 	c.Parent = f
-	local bar = Instance.new("Frame")
-	bar.BorderSizePixel = 0
-	bar.BackgroundColor3 = K.barDark
-	bar.BackgroundTransparency = 0.3
-	bar.Size = UDim2.new(1, 0, 1, -6)
-	bar.Position = UDim2.fromOffset(0, 3)
-	bar.BackgroundTransparency = 0.12
-	corner(CUBE_R).Parent = bar
-	bar.Parent = c
-	for side = 0, 1 do -- золотые кубики-заклёпки по краям
-		local rv = Instance.new("Frame")
-		rv.BorderSizePixel = 0
-		rv.BackgroundColor3 = K.gold
-		rv.AnchorPoint = Vector2.new(side, 0.5)
-		rv.Position = UDim2.new(side, side == 0 and 8 or -8, 0.5, 0)
-		rv.Size = UDim2.fromOffset(10, 10)
-		rv.ZIndex = 3
-		rv.Parent = c
-	end
-	for side = 0, 1 do
-		local l = Instance.new("Frame")
-		l.BorderSizePixel = 0
-		l.BackgroundColor3 = K.gold
-		l.Size = UDim2.new(1, 0, 0, 2)
-		l.Position = UDim2.new(0, 0, 0, side == 0 and 3 or 27)
-		l.Parent = c
-	end
-	UI.label({ Text = text, TextSize = 21, Color = K.white, StrokeColor = K.navy, Stroke = 3, Size = UDim2.fromScale(1, 1), ZIndex = 3, Parent = c })
+	A.titleRow(c, "~ " .. text .. " ~", 22, 26, 3)
 	f.Parent = parent
 	if o.intro then
 		o.n += 1
@@ -979,11 +1069,6 @@ local function sectionBar(o, parent: Instance, text: string, order: number)
 			end
 		end)
 	end
-end
-
--- V39: строка-пояснение под заголовком раздела
-local function sectionNote(parent: Instance, text: string, order: number)
-	UI.label({ Text = text, TextSize = 14, Color = K.white, Stroke = 2, StrokeColor = K.navy, Wrap = true, Size = UDim2.new(1, 0, 0, 34), LayoutOrder = order, Parent = parent })
 end
 
 local function grid(parent: Instance, cols: number, cellHeight: number, order: number): Frame
@@ -1014,7 +1099,7 @@ local function priceText(item: any): string
 	return ROBUX .. " " .. tostring(priceCache[item.key] or item.price)
 end
 
-local function fetchPrice(item: any, btn: Frame)
+local function fetchPrice(item: any, btn: any)
 	if item.id <= 0 or priceCache[item.key] then
 		return
 	end
@@ -1065,8 +1150,9 @@ local function buy(item: any)
 	end
 end
 
-local function buyButton(item: any, size: UDim2, pos: UDim2, textSize: number, parent: Instance): Frame
-	local b = sbutton({ Text = priceText(item), TextSize = textSize, Color = K.green, Size = size, Position = pos, Sound = "shop_press" }, function()
+local function buyButton(item: any, size: UDim2, pos: UDim2, textSize: number, parent: Instance): any
+	-- V72: кнопка-картинка btn_buy (9-slice), текст ROBUX + цена
+	local b = A.button("btn_buy", { Text = priceText(item), TextSize = textSize, Size = size, Position = pos, ZIndex = 4, Sound = "shop_press" }, function()
 		buy(item)
 	end)
 	b.Parent = parent
@@ -1134,8 +1220,10 @@ end
 ---------------------------------------------------------------------
 -- Окно: небо, облака, самолёт с баннером, плитки
 ---------------------------------------------------------------------
-local BW = 768 -- ширина тела окна (окно 780 − 2×6)
-local HEAD_H = 66
+local WIN_W, WIN_H = 1100, 680 -- V72: окно как в концепте (шире и ниже прежнего 780x612)
+local BW = WIN_W - 12 -- ширина тела окна (окно − 2×6)
+local HEAD_H = 76
+local BODY_TOP = HEAD_H - 8 -- где начинается тёмная панель
 
 type Anim = { inst: Instance, fn: (number) -> () }
 type Open = {
@@ -1249,35 +1337,6 @@ local function buildMeadow(o: Open, sky: Frame)
 	end
 end
 
--- Красная корзинка (значок магазина)
-local function basketIcon(parent: Instance, z: number): Frame
-	local h = holder(parent, UDim2.fromOffset(56, 50), UDim2.fromOffset(0, 0), z)
-	local handle = Instance.new("Frame")
-	handle.BackgroundTransparency = 1
-	handle.Size = UDim2.fromOffset(32, 32)
-	handle.Position = UDim2.fromOffset(12, 0)
-	handle.ZIndex = z
-	UI.corner(0.5, true).Parent = handle
-	UI.stroke(rgb(255, 222, 228), 5, 0, true).Parent = handle
-	handle.Parent = h
-	local body = box({ Top = rgb(255, 98, 108), Bottom = rgb(190, 22, 44), Line = rgb(84, 6, 22), LineThick = 3, Radius = 9, Size = UDim2.fromOffset(52, 28), Position = UDim2.fromOffset(2, 18), ZIndex = z + 1, Parent = h })
-	for i = 1, 3 do
-		local slit = Instance.new("Frame")
-		slit.BorderSizePixel = 0
-		slit.BackgroundColor3 = rgb(110, 6, 26)
-		slit.BackgroundTransparency = 0.35
-		slit.Size = UDim2.fromOffset(4, 14)
-		slit.Position = UDim2.fromOffset(10 + (i - 1) * 14, 8)
-		slit.ZIndex = z + 2
-		corner(2).Parent = slit
-		slit.Parent = body
-	end
-	local rim = box({ Top = rgb(255, 150, 156), Bottom = rgb(236, 56, 72), Line = rgb(84, 6, 22), LineThick = 2, Radius = 5, Size = UDim2.fromOffset(58, 9), Position = UDim2.fromOffset(-1, 14), ZIndex = z + 3, Parent = h })
-	rim.Name = "Rim"
-	h.Rotation = -8
-	return h
-end
-
 -- Летящее копьё (настоящая модель из игры) тянет баннер: острие вправо, позади искры и верёвка
 local function flySpear(parent: Instance, o: Open): Frame
 	local j = Instance.new("Frame")
@@ -1344,23 +1403,22 @@ local function playIntro(o: Open, body: Frame, mask: Frame, ribbon: Frame, popTa
 		return open == o and body.Parent ~= nil
 	end
 	local j = flySpear(body, o)
-	j.Position = UDim2.fromOffset(-150, 33)
+	j.Position = UDim2.fromOffset(-150, HEAD_H / 2)
 	local lin = Enum.EasingStyle.Linear
-	UI.tween(j, 0.14, { Position = UDim2.fromOffset(34, 33) }, lin)
+	UI.tween(j, 0.14, { Position = UDim2.fromOffset(34, HEAD_H / 2) }, lin)
 	task.delay(0.14, function()
 		if not alive() then
 			return
 		end
 		Sfx.play("sparkle", 1.3, 0.35)
-		UI.tween(j, 0.55, { Position = UDim2.fromOffset(BW + 34, 33) }, lin)
+		UI.tween(j, 0.55, { Position = UDim2.fromOffset(BW + 34, HEAD_H / 2) }, lin)
 		UI.tween(mask, 0.55, { Size = UDim2.new(0, BW, 0, HEAD_H) }, lin)
 	end)
 	task.delay(0.69, function()
 		if not alive() then
 			return
 		end
-		UI.tween(j, 0.14, { Position = UDim2.fromOffset(BW + 230, 33) }, lin)
-		UI.shine(ribbon, 0.7)
+		UI.tween(j, 0.14, { Position = UDim2.fromOffset(BW + 230, HEAD_H / 2) }, lin)
 		UI.burst(mask.AbsolutePosition + Vector2.new(mask.AbsoluteSize.X - 20, mask.AbsoluteSize.Y / 2), K.frameGlow, 8, 240)
 	end)
 	task.delay(0.9, function()
@@ -1382,7 +1440,7 @@ local function playIntro(o: Open, body: Frame, mask: Frame, ribbon: Frame, popTa
 	-- небо раскатывается вниз
 	task.delay(0.42, function()
 		if alive() then
-			UI.tween(o.sky, 0.4, { Size = UDim2.new(1, 0, 1, -58) }, Enum.EasingStyle.Quad)
+			UI.tween(o.sky, 0.4, { Size = UDim2.new(1, 0, 1, -BODY_TOP) }, Enum.EasingStyle.Quad)
 		end
 	end)
 	task.delay(1.7, function()
@@ -1468,142 +1526,96 @@ local function bob(o: Open, h: GuiObject, base: UDim2, amp: number, phase: numbe
 	end)
 end
 
-local function gloss(f: Frame, h: number)
-	local g = Instance.new("Frame")
-	g.BorderSizePixel = 0
-	g.BackgroundColor3 = K.white
-	g.BackgroundTransparency = 0.84
-	g.Size = UDim2.new(1, -12, 0, h)
-	g.Position = UDim2.fromOffset(6, 4)
-	g.ZIndex = 2
-	corner(9).Parent = g
-	g.Parent = f
-end
-
 local function renderHero(o: Open, parent: Instance, order: number)
 	local item = Config.SHOP_BY_KEY.starter
 	local st = SHOP.STARTER
-	local f = box({ Top = K.heroTop, Mid = K.heroMid, Bottom = K.heroBot, Line = K.heroLine, Studs = 18, Size = CENTER.Size, AnchorPoint = CENTER.AnchorPoint, Position = CENTER.Position, Clip = true, Parent = slot(parent, order, 176) })
-	glowSpot(f, rgb(214, 170, 255), 460, UDim2.fromOffset(95, 92), 0.55)
-	for i = 1, 6 do
-		sparkle(o.cards, f, 0.1 + i * 0.14, 0.2 + (i % 3) * 0.28, 12 + (i % 3) * 4, i * 1.7, 2)
-	end
-	local art = holder(f, UDim2.fromOffset(150, 150), UDim2.fromOffset(10, 14), 2)
-	glowSpot(art, rgb(255, 210, 90), 190, UDim2.fromScale(0.5, 0.5), 0.3)
-	icon(holder(art, UDim2.fromScale(1, 1), UDim2.new(), 2), "spear:" .. st.spear, 0.7)
-	bob(o, art, UDim2.fromOffset(10, 14), 4, 0)
-	UI.label({ Text = "STARTER PACK!", TextSize = 32, Color = K.white, StrokeColor = K.heroLine, Stroke = 4, Size = UDim2.new(1, -330, 0, 36), Position = UDim2.fromOffset(170, 8), XAlign = Enum.TextXAlignment.Left, ZIndex = 3, Parent = f })
-	UI.label({ Text = "BEST DEAL!", TextSize = 22, Color = K.goldText, StrokeColor = rgb(90, 42, 0), Stroke = 3, Size = UDim2.fromOffset(150, 26), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 12), XAlign = Enum.TextXAlignment.Right, ZIndex = 3, Parent = f })
-	local row = holder(f, UDim2.new(1, -182, 0, 68), UDim2.fromOffset(170, 50), 3)
-	local lay = UI.list(Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
-	lay.Parent = row
+	local f = A.frame({ Size = CENTER.Size, AnchorPoint = CENTER.AnchorPoint, Position = CENTER.Position, Parent = slot(parent, order, 178) })
+	local art = holder(f, UDim2.fromOffset(132, 142), UDim2.fromOffset(10, 12), 2)
+	A.icon(art, "starter", 3)
+	bob(o, art, UDim2.fromOffset(10, 12), 4, 0)
+	UI.label({ Text = "STARTER PACK!", TextSize = 32, Size = UDim2.new(1, -330, 0, 36), Position = UDim2.fromOffset(156, 8), XAlign = Enum.TextXAlignment.Left, ZIndex = 3, Parent = f })
+	UI.label({ Text = "BEST DEAL!", TextSize = 22, Color = K.goldText, StrokeColor = rgb(90, 42, 0), Stroke = 3, Size = UDim2.fromOffset(150, 26), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -40, 0, 12), XAlign = Enum.TextXAlignment.Right, ZIndex = 3, Parent = f })
+	local row = holder(f, UDim2.new(1, -172, 0, 62), UDim2.fromOffset(156, 50), 3)
+	UI.list(Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center).Parent = row
 	local spear = Config.SPEAR_BY_ID[st.spear]
 	local tiles = {
-		{ "spear:" .. st.spear, spear and spear.name or "Spear", rgb(77, 184, 255) },
-		{ "coins1", Num.short(st.coins) .. " Coins", rgb(255, 210, 62) },
-		{ "bag", "Bag Level " .. tostring(st.bagLvl), rgb(92, 240, 106) },
-		{ st.boost == "fortune" and "fortune20" or "luck30", (Config.BOOSTS[st.boost] and Config.BOOSTS[st.boost].name or "Boost") .. " " .. Num.time(st.dur), rgb(199, 125, 255) },
+		{ "spear:" .. st.spear, spear and spear.name or "Spear" },
+		{ "coins1", Num.short(st.coins) .. " Coins" },
+		{ "bag", "Bag Level " .. tostring(st.bagLvl) },
+		{ st.boost == "fortune" and "fortune20" or "luck30", (Config.BOOSTS[st.boost] and Config.BOOSTS[st.boost].name or "Boost") .. " " .. Num.time(st.dur) },
 	}
 	for i, t in tiles do
-		local tile = box({ Top = K.tile, Bottom = K.tile, Line = t[3], LineThick = 2, Radius = 8, Size = UDim2.new(0.25, -6, 1, 0), LayoutOrder = i, Parent = row })
-		tile.BackgroundTransparency = 0.3
-		icon(holder(tile, UDim2.fromOffset(52, 52), UDim2.fromOffset(4, 8), 2), t[1], 0)
-		UI.label({ Text = t[2], TextSize = 15, Stroke = 2, Wrap = true, Size = UDim2.new(1, -62, 1, -8), Position = UDim2.fromOffset(58, 4), XAlign = Enum.TextXAlignment.Left, ZIndex = 3, Parent = tile })
+		local tile = A.chip(row, UDim2.new(0.25, -6, 1, 0), UDim2.new(), 3, 0.7)
+		tile.LayoutOrder = i
+		A.icon(holder(tile, UDim2.fromOffset(46, 46), UDim2.fromOffset(6, 8), 4), t[1], 4)
+		UI.label({ Text = t[2], TextSize = 15, Stroke = 2, Wrap = true, Size = UDim2.new(1, -60, 1, -8), Position = UDim2.fromOffset(54, 4), XAlign = Enum.TextXAlignment.Left, ZIndex = 4, Parent = tile })
 	end
-	UI.label({ Text = "One per hunter. Leaves the shop at level " .. tostring(SHOP.STARTER_MAX_LEVEL) .. ".", TextSize = 17, Color = K.white, StrokeColor = K.heroLine, Stroke = 2, Wrap = true, Size = UDim2.new(1, -400, 0, 40), Position = UDim2.fromOffset(170, 128), XAlign = Enum.TextXAlignment.Left, ZIndex = 3, Parent = f })
-	buyButton(item, UDim2.fromOffset(200, 42), UDim2.new(1, -212, 0, 126), 22, f).ZIndex = 4
-	tileInfo(f, item, false, 8, 168) -- V42: подробности стартового набора
+	UI.label({ Text = "One per hunter. Leaves the shop at level " .. tostring(SHOP.STARTER_MAX_LEVEL) .. ".", TextSize = 17, Stroke = 2, Wrap = true, Size = UDim2.new(1, -420, 0, 40), Position = UDim2.fromOffset(156, 118), XAlign = Enum.TextXAlignment.Left, ZIndex = 3, Parent = f })
+	buyButton(item, UDim2.fromOffset(210, 54), UDim2.new(1, -224, 1, -62), 26, f).ZIndex = 4
+	tileInfo(f, item, false, 8, 0) -- V42: подробности стартового набора
 	table.insert(o.shiny, f)
 	introPop(o, f)
 	tileHover(f)
 end
 
--- Широкий баннер (Server Luck! в референсе)
-local function renderBanner(o: Open, parent: Instance, item: any, order: number)
-	local base = TILE[item.key] or rgb(52, 196, 96)
-	local top, bot, line, bright = base:Lerp(rgb(36, 14, 84), 0.38), base:Lerp(rgb(18, 6, 46), 0.72), base:Lerp(Color3.new(0, 0, 0), 0.68), base:Lerp(Color3.new(1, 1, 1), 0.18)
-	local f = box({ Top = top, Bottom = bot, Line = bright, LineThick = 4, Studs = 18, Size = CENTER.Size, AnchorPoint = CENTER.AnchorPoint, Position = CENTER.Position, Clip = true, Parent = slot(parent, order, 120) })
-	glowSpot(f, rgb(230, 255, 200), 340, UDim2.fromOffset(78, 60), 0.55)
-	for i = 1, 5 do
-		sparkle(o.cards, f, 0.2 + i * 0.15, 0.2 + (i % 2) * 0.5, 12 + (i % 3) * 3, i * 2.1, 2)
-	end
-	local art = holder(f, UDim2.fromOffset(100, 100), UDim2.fromOffset(12, 10), 2)
-	glowSpot(art, rgb(255, 255, 200), 140, UDim2.fromScale(0.5, 0.5), 0.35)
-	icon(art, item.key, 0)
-	bob(o, art, UDim2.fromOffset(12, 10), 3, 1)
-	UI.label({ Text = string.upper(item.name) .. "!", TextSize = 30, Color = K.white, StrokeColor = line, Stroke = 4, Size = UDim2.new(1, -350, 0, 34), Position = UDim2.fromOffset(124, 10), XAlign = Enum.TextXAlignment.Left, ZIndex = 3, Parent = f })
-	local pitch = PITCH[item.key] or { "", "" }
-	UI.label({ Text = pitch[1], TextSize = 25, Color = K.goldText, StrokeColor = line, Stroke = 4, Size = UDim2.new(1, -350, 0, 30), Position = UDim2.fromOffset(124, 46), XAlign = Enum.TextXAlignment.Left, ZIndex = 3, Parent = f })
-	UI.label({ Text = pitch[2], TextSize = 16, Color = K.white, StrokeColor = line, Stroke = 3, Size = UDim2.new(1, -350, 0, 20), Position = UDim2.fromOffset(124, 80), XAlign = Enum.TextXAlignment.Left, ZIndex = 3, Parent = f })
-	o.status[item.key] = UI.label({ Text = "", TextSize = 16, Color = K.goldText, Stroke = 3, StrokeColor = line, Size = UDim2.fromOffset(220, 20), Position = UDim2.fromOffset(124, 100), XAlign = Enum.TextXAlignment.Left, ZIndex = 3, Parent = f })
-	if item.pass and Perks.has(item.key) then
-		local owned = box({ Top = rgb(255, 224, 102), Bottom = rgb(245, 163, 0), Line = rgb(74, 38, 0), LineThick = 2, Radius = 8, Size = UDim2.fromOffset(190, 44), AnchorPoint = Vector2.new(0, 0), Position = UDim2.new(1, -204, 0.5, -24), ZIndex = 3, Parent = f })
-		UI.label({ Text = "OWNED", TextSize = 22, StrokeColor = rgb(107, 61, 0), Size = UDim2.fromScale(1, 1), Parent = owned })
-	else
-		buyButton(item, UDim2.fromOffset(190, 44), UDim2.new(1, -204, 0.5, -24), 22, f).ZIndex = 4
-	end
-	table.insert(o.shiny, f)
-	introPop(o, f)
-	tileHover(f)
-	tileInfo(f, item, false, 8) -- banner: the chip sits in the top corner, clear of the price button
-end
-
--- Вертикальная плитка: пасс, буст или пак монет
 -- V28: окно шансов яйца (определяется ниже, плитки яиц зовут его по кнопке ODDS)
 local openOdds: (string) -> () = function(_: string) end
 
+-- Плитка: буст (потион слева, название, две строки, цена) или пак монет (иконка слева, название, сумма, цена)
 local function renderTile(o: Open, parent: Instance, item: any, order: number, kind: string)
-	local base = TILE[item.key] or rgb(70, 160, 245)
-	local top, bot, line, bright = base:Lerp(rgb(36, 14, 84), 0.38), base:Lerp(rgb(18, 6, 46), 0.72), base:Lerp(Color3.new(0, 0, 0), 0.68), base:Lerp(Color3.new(1, 1, 1), 0.18)
-	local f = box({ Top = top, Bottom = bot, Line = bright, LineThick = 4, Radius = 12, Studs = 5, Size = CENTER.Size, AnchorPoint = CENTER.AnchorPoint, Position = CENTER.Position, Clip = true, Parent = slot(parent, order) })
-	gloss(f, 52)
-	glowSpot(f, K.white, 170, UDim2.fromScale(0.5, 0.4), 0.6)
-	sparkle(o.cards, f, 0.18, 0.4, 14, order * 1.3, 2)
-	sparkle(o.cards, f, 0.82, 0.3, 11, order * 2.1 + 1, 2)
-	local plate = Instance.new("Frame")
-	plate.BorderSizePixel = 0
-	plate.BackgroundColor3 = line
-	plate.BackgroundTransparency = 0.45
-	plate.Size = UDim2.new(1, -10, 0, 26)
-	plate.Position = UDim2.fromOffset(5, 5)
-	plate.ZIndex = 2
-	corner(8).Parent = plate
-	plate.Parent = f
-	UI.label({ Text = string.upper(item.name), TextSize = 19, Scaled = true, MaxSize = 19, Color = K.white, StrokeColor = line, Size = UDim2.new(1, -16, 0, 24), Position = UDim2.fromOffset(8, 6), ZIndex = 3, Parent = f })
-	local art = holder(f, UDim2.fromOffset(136, 100), UDim2.new(0.5, -68, 0, 28), 2)
-	icon(art, item.key, 0)
-	bob(o, art, UDim2.new(0.5, -68, 0, 28), 3, order * 0.9)
-	if kind == "pack" then
-		UI.label({ Text = "+" .. Num.short(Config.shopCoins(Backend.data, item.k)) .. " COINS", TextSize = 24, Scaled = true, MaxSize = 24, Color = K.goldText, StrokeColor = line, Stroke = 4, Size = UDim2.new(1, -12, 0, 28), Position = UDim2.fromOffset(6, 128), ZIndex = 3, Parent = f })
+	local boost = kind == "boost"
+	local f = A.frame({
+		Key = if boost then (BOOST_TILE[item.key] or "tile_blue") else nil,
+		Slice = if boost then 30 else nil, SliceScale = if boost then 0.45 else nil,
+		Tint = if boost then Color3.new(1, 1, 1) else rgb(196, 204, 190),
+		Radius = if boost then 10 else 12, Thick = if boost then 2 else 3,
+		Size = CENTER.Size, AnchorPoint = CENTER.AnchorPoint, Position = CENTER.Position, Parent = slot(parent, order),
+	})
+	if boost then
+		local pot = holder(f, UDim2.fromOffset(56, 62), UDim2.fromOffset(6, 6), 2)
+		A.icon(pot, item.key, 3)
+		bob(o, pot, UDim2.fromOffset(6, 6), 2, order * 0.9)
+		local pitch = PITCH[item.key] or { string.upper(item.name), "" }
+		UI.label({ Text = item.name, TextSize = 18, Scaled = true, MaxSize = 18, Size = UDim2.new(1, -96, 0, 20), Position = UDim2.fromOffset(66, 4), ZIndex = 3, Parent = f })
+		UI.label({ Text = pitch[1], TextSize = 14, Scaled = true, MaxSize = 14, Stroke = 2, Size = UDim2.new(1, -72, 0, 15), Position = UDim2.fromOffset(66, 26), ZIndex = 3, Parent = f })
+		UI.label({ Text = pitch[2], TextSize = 12, Scaled = true, MaxSize = 12, Color = rgb(236, 242, 255), Stroke = 2, Size = UDim2.new(1, -72, 0, 14), Position = UDim2.fromOffset(66, 41), ZIndex = 3, Parent = f })
+		buyButton(item, UDim2.fromOffset(100, 28), UDim2.new(0.5, -20, 1, -32), 16, f).ZIndex = 4
+		o.status[item.key] = UI.label({ Text = "", TextSize = 11, XAlign = Enum.TextXAlignment.Left, Color = K.goldText, Stroke = 2, Size = UDim2.fromOffset(76, 14), Position = UDim2.fromOffset(4, 72), ZIndex = 4, Parent = f })
+	else
+		local art = holder(f, UDim2.fromOffset(80, 72), UDim2.fromOffset(6, 6), 2)
+		A.icon(art, item.key, 3)
+		bob(o, art, UDim2.fromOffset(6, 6), 3, order * 0.9)
+		UI.label({ Text = item.name, TextSize = 22, Scaled = true, MaxSize = 22, Size = UDim2.new(1, -130, 0, 24), Position = UDim2.fromOffset(96, 5), ZIndex = 3, Parent = f })
+		UI.label({ Text = "+" .. Num.short(Config.shopCoins(Backend.data, item.k)) .. " Coins", TextSize = 18, Scaled = true, MaxSize = 18, Color = K.goldText, Size = UDim2.new(1, -106, 0, 18), Position = UDim2.fromOffset(96, 27), ZIndex = 3, Parent = f })
+		buyButton(item, UDim2.fromOffset(124, 32), UDim2.new(0.5, -17, 1, -38), 18, f).ZIndex = 4
 		if item.best then
-			local rib = box({ Top = rgb(255, 80, 88), Bottom = rgb(204, 22, 36), Line = rgb(84, 6, 22), LineThick = 2, Radius = 6, Size = UDim2.fromOffset(86, 18), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -8, 0, 36), ZIndex = 5, Parent = f })
+			local rib = box({ Top = rgb(255, 80, 88), Bottom = rgb(204, 22, 36), Line = rgb(84, 6, 22), LineThick = 2, Radius = 6, Size = UDim2.fromOffset(78, 18), AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 6, 1, -6), ZIndex = 5, Parent = f })
 			UI.label({ Text = "BEST VALUE", TextSize = 12, Stroke = 2, Size = UDim2.fromScale(1, 1), ZIndex = 6, Parent = rib })
 		end
+	end
+	tileInfo(f, item, false, 4)
+	table.insert(o.shiny, f)
+	introPop(o, f)
+	tileHover(f)
+end
+
+-- Плитка пасса (2 в ряд; Founder - на всю ширину): иконка слева, название, две строки, справа кнопка цены или OWNED
+local function renderPassTile(o: Open, parent: Instance, item: any, order: number, height: number?)
+	local f = A.frame({ Size = CENTER.Size, AnchorPoint = CENTER.AnchorPoint, Position = CENTER.Position, Parent = slot(parent, order, height) })
+	local art = holder(f, UDim2.fromOffset(92, 80), UDim2.fromOffset(10, 7), 2)
+	A.icon(art, item.key, 3)
+	bob(o, art, UDim2.fromOffset(10, 7), 3, order * 0.9)
+	local pitch = PITCH[item.key] or { string.upper(item.name), "" }
+	UI.label({ Text = item.name, TextSize = 26, Scaled = true, MaxSize = 26, Size = UDim2.new(1, -310, 0, 28), Position = UDim2.fromOffset(120, 6), XAlign = Enum.TextXAlignment.Left, ZIndex = 3, Parent = f })
+	UI.label({ Text = pitch[1], TextSize = 18, Scaled = true, MaxSize = 18, Color = K.goldText, Stroke = 3, Size = UDim2.new(1, -310, 0, 22), Position = UDim2.fromOffset(120, 36), XAlign = Enum.TextXAlignment.Left, ZIndex = 3, Parent = f })
+	UI.label({ Text = pitch[2], TextSize = 15, Scaled = true, MaxSize = 15, Stroke = 2, Size = UDim2.new(1, -310, 0, 18), Position = UDim2.fromOffset(120, 60), XAlign = Enum.TextXAlignment.Left, ZIndex = 3, Parent = f })
+	if Perks.has(item.key) then
+		A.owned(f, UDim2.fromOffset(160, 46), UDim2.new(1, -14, 0.5, 2), Vector2.new(1, 0.5), 22)
 	else
-		local pitch = PITCH[item.key] or { string.upper(item.name), "" }
-		UI.label({ Text = pitch[1], TextSize = 24, Scaled = true, MaxSize = 24, Color = K.goldText, StrokeColor = line, Stroke = 4, Size = UDim2.new(1, -12, 0, 28), Position = UDim2.fromOffset(6, 124), ZIndex = 3, Parent = f })
-		UI.label({ Text = pitch[2], TextSize = 14, Scaled = true, MaxSize = 14, Color = K.white, StrokeColor = line, Stroke = 3, Size = UDim2.new(1, -12, 0, 18), Position = UDim2.fromOffset(6, 152), ZIndex = 3, Parent = f })
+		local b = buyButton(item, UDim2.fromOffset(160, 48), UDim2.new(1, -174, 0.5, -22), 26, f)
+		b.ZIndex = 4
 	end
-	if item.pass and Perks.has(item.key) then
-		local owned = box({ Top = rgb(255, 224, 102), Bottom = rgb(245, 163, 0), Line = rgb(74, 38, 0), LineThick = 2, Radius = 8, Size = UDim2.new(1, -20, 0, 34), Position = UDim2.fromOffset(10, 172), ZIndex = 3, Parent = f })
-		UI.label({ Text = "OWNED", TextSize = 19, StrokeColor = rgb(107, 61, 0), Size = UDim2.fromScale(1, 1), Parent = owned })
-	else
-		buyButton(item, kind == "egg" and UDim2.new(1, -84, 0, 34) or UDim2.new(1, -20, 0, 34), UDim2.fromOffset(10, 172), 19, f).ZIndex = 4
-	end
-	if kind ~= "egg" then
-		tileInfo(f, item, kind == "pack")
-	end
-	if kind == "boost" then
-		o.status[item.key] = UI.label({ Text = "", TextSize = 13, Color = K.goldText, Stroke = 2, StrokeColor = line, Size = UDim2.new(1, -12, 0, 16), Position = UDim2.fromOffset(6, 34), XAlign = Enum.TextXAlignment.Left, ZIndex = 4, Parent = f })
-	end
-	if kind == "egg" then
-		-- V28: шансы выпадения до покупки (требование правил Roblox для платных случайных предметов)
-		local ob = sbutton({ Text = "ODDS", TextSize = 15, Color = rgb(70, 110, 230), Size = UDim2.fromOffset(60, 34), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -10, 0, 172), Sound = "press" }, function()
-			openOdds(item.key)
-		end)
-		ob.ZIndex = 6
-		ob.Parent = f
-	end
+	tileInfo(f, item, false, 1)
 	table.insert(o.shiny, f)
 	introPop(o, f)
 	tileHover(f)
@@ -1764,6 +1776,16 @@ end
 -- "Exo" ("id,id,id"), поэтому питомцев видят и другие игроки (в радиусе range, не больше maxOthers чужих питомцев).
 -- На слабой графике (lowFx): только свои питомцы и без частиц, следов и лучей. Один общий Heartbeat на всех.
 ---------------------------------------------------------------------
+-- V83: яркие цвета частиц по редкости (Common … Divine); легендарные жёлтые, мифические красные
+local PET_FX_COLOR = {
+	Color3.fromRGB(235, 240, 250),
+	Color3.fromRGB(60, 255, 70),
+	Color3.fromRGB(40, 160, 255),
+	Color3.fromRGB(200, 70, 255),
+	Color3.fromRGB(255, 225, 0),
+	Color3.fromRGB(255, 25, 35),
+	Color3.fromRGB(255, 255, 235),
+}
 local Pets = { range = 90, maxOthers = 6, yaw = 0, -- yaw 0: голова моделей Fauna150 смотрит вперёд вместе с игроком (проверено в Play: с yaw = pi головы были повёрнуты назад)
 	 byPlayer = {} :: { [Player]: any }, folder = nil :: Folder? }
 -- +Z = позади игрока. Все три по бокам, никто не стоит между камерой и персонажем и не лежит на линии прицела
@@ -1884,23 +1906,13 @@ function Pets.build(ex: any, low: boolean): any?
 	m.WorldPivot = (m:GetBoundingBox()) -- центр по габаритам: питомец парит ровно вокруг точки
 	local rar = Config.EXOTIC.RARITIES[ex.rarity]
 	local st = EXO_STYLE[ex.style]
-	local c1 = rar.color
-	local c2 = (st and st.color) or rar.color:Lerp(Color3.new(1, 1, 1), 0.45)
-	local seq = (st and st.hue) and PET_RAINBOW or ColorSequence.new(c1, c2)
+	-- V83: у питомца только частицы яркого цвета редкости (луч вверх и след убраны: выглядели полупрозрачными треугольниками)
+	local fx = PET_FX_COLOR[ex.rarity] or rar.color
 	if not low then
 		local r = ex.rarity
-		newI('ParticleEmitter', { Texture = 'rbxasset://textures/sparkle.png', Color = seq, LightEmission = 1, Rate = 5 + r * 3, Lifetime = NumberRange.new(0.9, 1.6), Speed = NumberRange.new(0.4, 1.2), SpreadAngle = Vector2.new(180, 180), Shape = Enum.ParticleEmitterShape.Box, Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.25, 0.45 + r * 0.06), NumberSequenceKeypoint.new(1, 0) }), Transparency = NumberSequence.new(0.1, 1), Rotation = NumberRange.new(0, 360), RotSpeed = NumberRange.new(-60, 60), Acceleration = Vector3.new(0, 0.6, 0), Drag = 1 }, core)
-		local sz = core.Size
-		local t0 = newI('Attachment', { Position = Vector3.new(0, sz.Y / 2, 0) }, core)
-		local t1 = newI('Attachment', { Position = Vector3.new(0, -sz.Y / 2, 0) }, core)
-		newI('Trail', { Attachment0 = t0, Attachment1 = t1, Color = seq, Lifetime = 0.7, LightEmission = 1, FaceCamera = true, MinLength = 0.05, Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.25), NumberSequenceKeypoint.new(1, 1) }), WidthScale = NumberSequence.new(1, 0) }, core)
-		if r >= 5 then
-			local b0 = newI('Attachment', {}, core)
-			local b1 = newI('Attachment', { Position = Vector3.new(0, 9, 0) }, core)
-			newI('Beam', { Attachment0 = b0, Attachment1 = b1, Color = seq, LightEmission = 1, LightInfluence = 0, FaceCamera = true, Width0 = 1.1, Width1 = 0.15, Segments = 1, Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.45), NumberSequenceKeypoint.new(1, 1) }) }, core)
-		end
+		newI('ParticleEmitter', { Texture = 'rbxasset://textures/sparkle.png', Color = ColorSequence.new(fx), LightEmission = 0.75, Rate = 6 + r * 4, Lifetime = NumberRange.new(0.9, 1.6), Speed = NumberRange.new(0.4, 1.2), SpreadAngle = Vector2.new(180, 180), Shape = Enum.ParticleEmitterShape.Box, Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.25, 0.45 + r * 0.06), NumberSequenceKeypoint.new(1, 0) }), Transparency = NumberSequence.new(0.1, 1), Rotation = NumberRange.new(0, 360), RotSpeed = NumberRange.new(-60, 60), Acceleration = Vector3.new(0, 0.6, 0), Drag = 1 }, core)
 		if r >= 4 then
-			newI('PointLight', { Color = c1, Brightness = 1.5, Range = 9, Shadows = false }, core)
+			newI('PointLight', { Color = fx, Brightness = 1.5, Range = 9, Shadows = false }, core)
 		end
 	end
 	if st and st.hue and exoPrune() < 14 then
@@ -1922,7 +1934,21 @@ function Pets.build(ex: any, low: boolean): any?
 			anim = a
 		end
 	end
-	return { model = m, slot = 1, cf = nil, anim = anim }
+	local mv = Pets.moveOf(ex.id, anim)
+	if anim then
+		if mv == 'fly' then
+			anim.flyer = true -- у жуков крылья-надкрылья (Shell): всё равно машут
+		end
+		anim:setHover(mv ~= 'walk') -- летит / парит: ноги не шагают, крылья машут и на месте
+	end
+	local half = 1
+	local okB, _, bsz = pcall(function()
+		return m:GetBoundingBox()
+	end)
+	if okB and bsz then
+		half = bsz.Y / 2 -- pivot в центре габарита: низ модели на half ниже pivot
+	end
+	return { model = m, slot = 1, cf = nil, anim = anim, move = mv, half = half }
 end
 
 function Pets.clear(p: Player)
@@ -1937,6 +1963,7 @@ end
 
 -- Раз в полсекунды: кого показывать (свои всегда, чужие в радиусе и в пределах лимита) и пересборка при смене набора
 function Pets.refresh()
+	Pets.updateFilter()
 	local low = lowFx()
 	local cam = workspace.CurrentCamera
 	local othersUsed = 0
@@ -1986,28 +2013,218 @@ function Pets.refresh()
 	end
 end
 
+-- V36: тип движения питомца. walk - бегает по земле и садится рядом, когда игрок стоит; fly - парит у плеча и машет крыльями;
+-- float - скользит низко над землёй (водные, призраки, облака). Явная таблица по id важнее авто-определения по скелету.
+local PET_MOVE: { [string]: string } = {
+	-- яйца (25 питомцев из пака)
+	clover_beetle = 'fly', moss_bunny = 'walk', hazelnut_squirrel = 'walk', flower_hedgehog = 'walk', guardian_fawn = 'walk',
+	sand_jerboa = 'walk', amber_armadillo = 'walk', sun_lion_cub = 'walk', honey_griffin = 'fly', amber_basilisk = 'walk',
+	bubble_crab = 'walk', coral_turtle = 'walk', pearl_axolotl = 'float', tide_ray = 'float', little_leviathan = 'float',
+	spark_salamander = 'walk', cloud_lamb = 'float', storm_falcon = 'fly', storm_dragon = 'fly', heavenly_kitsune = 'walk',
+	comet_kitten = 'walk', moon_owlet = 'fly', nebula_moth = 'fly', eclipse_dragon = 'fly', astral_phoenix = 'fly',
+	-- старые экзотики (статуи без скелета: просто скользят, бег с подпрыгиванием)
+	candy_hopper = 'walk', neon_fox = 'walk', bubble_boar = 'walk', glow_wolf = 'walk', frost_bear = 'walk', ruby_stag = 'walk',
+	prism_otter = 'walk', storm_kitsune = 'walk', magma_titan = 'walk', ghost_lynx = 'float', solar_lion = 'walk', void_mammoth = 'walk',
+	aurora_phoenix = 'fly', astral_wyrm = 'fly', leviathan_prime = 'float', prismatic_overlord = 'float',
+}
+local PET_FAR = 120 -- дальше от камеры: без анимации конечностей и лучей
+local PET_RAY = RaycastParams.new()
+PET_RAY.FilterType = Enum.RaycastFilterType.Exclude
+PET_RAY.RespectCanCollide = true
+
+-- Тип по id; для неизвестных - по скелету (крылья -> fly, нет ног -> float), иначе walk
+function Pets.moveOf(id: string, anim: any): string
+	local m = PET_MOVE[id]
+	if m then
+		return m
+	end
+	if anim and anim.joints then
+		local legs = false
+		for _, j in anim.joints do
+			if j.role == 'fore' or j.role == 'hind' or j.role == 'sleg' then
+				legs = true
+			end
+		end
+		if anim.flyer then
+			return 'fly'
+		elseif not legs then
+			return 'float'
+		end
+	end
+	return 'walk'
+end
+
+-- Фильтр луча по земле: персонажи и питомцы не считаются землёй (раз в полсекунды из refresh)
+function Pets.updateFilter()
+	local list = {}
+	if Pets.folder then
+		table.insert(list, Pets.folder)
+	end
+	for _, p in Players:GetPlayers() do
+		if p.Character then
+			table.insert(list, p.Character)
+		end
+	end
+	PET_RAY.FilterDescendantsInstances = list
+end
+
+local function wrapAngle(a: number): number
+	return (a + math.pi) % (2 * math.pi) - math.pi
+end
+
 function Pets.step(dt: number)
+	if dt <= 0 then
+		return
+	end
 	local t = os.clock()
-	local k = 1 - math.exp(-7 * dt)
+	local cam = workspace.CurrentCamera
+	local camPos = cam and cam.CFrame.Position
 	for p, e in Pets.byPlayer do
 		local root = p.Character and p.Character:FindFirstChild('HumanoidRootPart')
-		if root and root:IsA('BasePart') then
-			for _, pt in e.list do
-				local target = root.CFrame * CFrame.new(PET_SLOTS[pt.slot] + Vector3.new(0, math.sin(t * 2.2 + pt.slot * 2.1) * 0.35, 0))
-				if not pt.cf or (pt.cf.Position - target.Position).Magnitude > 40 then
-					pt.cf = target
-				else
-					pt.cf = pt.cf:Lerp(target, k)
+		if not (root and root:IsA('BasePart')) then
+			e.lastPos = nil -- респавн: без скачка скорости
+			continue
+		end
+		local rp = root.Position
+		-- скорость игрока по смещению (у чужих персонажей позиция реплицируется): стоит ли он
+		local pvx, pvz = e.vx or 0, e.vz or 0
+		if e.lastPos then
+			local dx, dz = rp.X - e.lastPos.X, rp.Z - e.lastPos.Z
+			if dx * dx + dz * dz > 1600 then
+				pvx, pvz = 0, 0 -- телепорт
+			else
+				local a = math.min(1, dt * 12)
+				pvx += (dx / dt - pvx) * a
+				pvz += (dz / dt - pvz) * a
+			end
+		end
+		e.lastPos, e.vx, e.vz = rp, pvx, pvz
+		local pSpeed = math.sqrt(pvx * pvx + pvz * pvz)
+		if pSpeed > 1.5 then
+			e.stillT = 0
+		else
+			e.stillT = (e.stillT or 0) + dt
+		end
+		local look = root.CFrame.LookVector
+		local pyaw = math.atan2(-look.X, -look.Z)
+		local base = CFrame.new(rp) * CFrame.Angles(0, pyaw, 0)
+		local far = camPos ~= nil and (rp - camPos).Magnitude > PET_FAR
+		local cap = math.max(pSpeed * 1.25 + 4, 20)
+		for _, pt in e.list do
+			local model = pt.model
+			if not model or not model.Parent then
+				continue
+			end
+			local kind = pt.move or 'walk'
+			local slotV = PET_SLOTS[pt.slot] or PET_SLOTS[1]
+			local tgt = base:PointToWorldSpace(Vector3.new(slotV.X, 0, slotV.Z))
+			tgt = Vector3.new(tgt.X, 0, tgt.Z) -- только плоскость: высоту считает луч по земле
+			if kind ~= 'walk' then
+				tgt += Vector3.new(math.sin(t * 0.9 + pt.slot * 2) * 0.7, 0, math.cos(t * 0.7 + pt.slot) * 0.7) -- парит с лёгким дрейфом
+			end
+			if not pt.pos or (pt.pos - tgt).Magnitude > 40 then
+				-- первый кадр или далеко отстал: сразу к игроку
+				pt.pos = Vector3.new(tgt.X, 0, tgt.Z)
+				pt.vx, pt.vz, pt.sp = 0, 0, 0
+				pt.yaw = pyaw
+				pt.gy = nil
+				pt.gyT = nil
+				pt.y = nil
+				pt.rayT = 0
+				pt.sit = false
+				pt.moving = false
+				pt.bank = 0
+			end
+			local pos = pt.pos
+			local dx, dz = tgt.X - pos.X, tgt.Z - pos.Z
+			local dist = math.sqrt(dx * dx + dz * dz)
+			-- сесть: ходячий питомец у своего места, игрок стоит дольше 1.2 с; встать: игрок двинулся или питомец оттеснён
+			if pt.sit then
+				if e.stillT < 0.2 or dist > 2.5 then
+					pt.sit = false
 				end
-				pt.model:PivotTo(pt.cf * CFrame.Angles(0, Pets.yaw, 0))
-				if pt.anim then
-					-- V35: идёт - цикл ходьбы, стоит - покой (дыхание, взгляд, уши, хвост)
-					local moving = (pt.cf.Position - target.Position).Magnitude > 0.3
-					pt.anim:setMode(moving and 'move' or 'idle')
-					pcall(function()
-						pt.anim:update(dt)
-					end)
+			elseif kind == 'walk' and pt.anim and e.stillT > 1.2 and dist < 1.2 then
+				pt.sit = true
+			end
+			if pt.sit then
+				pt.vx, pt.vz = 0, 0
+			else
+				-- догоняет точку строя: скорость растёт с расстоянием, плюс скорость игрока, потолок чуть выше бега игрока
+				local dirx, dirz = 0, 0
+				if dist > 1e-3 then
+					dirx, dirz = dx / dist, dz / dist
 				end
+				local want = math.min(dist * 4, cap)
+				local dvx, dvz = pvx * 0.9 + dirx * want, pvz * 0.9 + dirz * want
+				local dm = math.sqrt(dvx * dvx + dvz * dvz)
+				if dm > cap then
+					dvx, dvz = dvx / dm * cap, dvz / dm * cap
+				end
+				local a = math.min(1, dt * 7)
+				pt.vx += (dvx - pt.vx) * a
+				pt.vz += (dvz - pt.vz) * a
+			end
+			local sp = math.sqrt(pt.vx * pt.vx + pt.vz * pt.vz)
+			pt.sp = sp
+			if pt.moving then
+				pt.moving = sp > 0.6
+			else
+				pt.moving = sp > 1.5
+			end
+			pos = Vector3.new(pos.X + pt.vx * dt, 0, pos.Z + pt.vz * dt)
+			pt.pos = pos
+			-- поворот: по ходу движения, иначе туда же, куда смотрит игрок
+			local wantYaw = pyaw
+			if pt.moving and not pt.sit then
+				wantYaw = math.atan2(-pt.vx, -pt.vz)
+			end
+			local turn = wrapAngle(wantYaw - pt.yaw) * math.min(1, dt * (pt.moving and 10 or 5))
+			pt.yaw += turn
+			pt.bank += (math.clamp(turn / dt * 0.14, -0.55, 0.55) - pt.bank) * math.min(1, dt * 6)
+			-- земля под питомцем: луч ~10 Гц, высота сглаживается; далеко от камеры луч не пускаем
+			pt.rayT -= dt
+			if pt.rayT <= 0 and not far then
+				pt.rayT = 0.09 + math.random() * 0.04
+				local top = math.max(rp.Y, pt.gy or rp.Y) + 4
+				local hit = workspace:Raycast(Vector3.new(pos.X, top, pos.Z), Vector3.new(0, -50, 0), PET_RAY)
+				pt.gyT = hit and hit.Position.Y or (rp.Y - 3)
+			elseif not pt.gyT then
+				pt.gyT = rp.Y - 3
+			end
+			if not pt.gy then
+				pt.gy = pt.gyT
+			else
+				pt.gy += (pt.gyT - pt.gy) * (1 - math.exp(-12 * dt))
+			end
+			-- высота над землёй по типу движения (низ габарита модели = pivot - half)
+			local lift, pitch, roll = 0, 0, 0
+			if kind == 'fly' then
+				lift = 3.2 + (pt.slot - 1) * 0.7 + math.sin(t * 2.2 + pt.slot * 2.1) * (pt.moving and 0.15 or 0.4)
+				pitch = -math.clamp(sp / 20, 0, 1) * 0.3
+				roll = pt.bank
+			elseif kind == 'float' then
+				lift = 1.5 + math.sin(t * 1.3 + pt.slot * 1.7) * 0.25
+				roll = math.sin(t * 1.1 + pt.slot) * 0.08 + pt.bank * 0.4
+				pitch = math.sin(t * 0.9 + pt.slot * 2.3) * 0.05
+			elseif not pt.anim and pt.moving then
+				lift = math.abs(math.sin(t * 9 + pt.slot)) * 0.3 -- статуя: небольшие прыжки на бегу
+			end
+			local y: number
+			if kind == 'walk' then
+				y = pt.gy + pt.half + lift
+			else
+				local yT = pt.gy + pt.half + lift
+				pt.y = (pt.y or yT) + (yT - (pt.y or yT)) * (1 - math.exp(-8 * dt))
+				y = pt.y
+			end
+			pt.cf = CFrame.new(pos.X, y, pos.Z) * CFrame.Angles(0, pt.yaw, 0) * CFrame.Angles(pitch, 0, roll)
+			model:PivotTo(pt.cf * CFrame.Angles(0, Pets.yaw, 0))
+			local anim = pt.anim
+			if anim and not far then
+				-- сидит - поза sit, бежит - цикл с темпом по скорости, иначе покой
+				anim:setMode(if pt.sit then 'sit' elseif pt.moving then 'move' else 'idle')
+				anim:setSpeed(sp)
+				pcall(anim.update, anim, dt)
 			end
 		end
 	end
@@ -2028,39 +2245,6 @@ function Pets.start()
 	end)
 end
 
----------------------------------------------------------------------
--- V29: новый вид магазина по референсу: фиолетовый кристальный зал и широкие баннеры яиц
----------------------------------------------------------------------
--- фиолетовый зал: мягкие световые пятна и кристаллы, медленно плывущие вверх
-local function buildCrystals(o: Open, sky: Frame)
-	glowSpot(sky, rgb(196, 96, 255), 460, UDim2.fromOffset(120, 110), 0.7)
-	glowSpot(sky, rgb(255, 90, 206), 500, UDim2.fromOffset(BW - 120, 280), 0.78)
-	glowSpot(sky, rgb(96, 124, 255), 560, UDim2.fromOffset(BW / 2, 560), 0.74)
-	local cols = { rgb(222, 128, 255), rgb(128, 206, 255), rgb(255, 138, 226), rgb(168, 138, 255) }
-	for i = 1, 14 do
-		local s = 14 + (i * 7) % 24
-		local d = Instance.new("Frame")
-		d.BorderSizePixel = 0
-		d.BackgroundColor3 = cols[i % 4 + 1]
-		d.BackgroundTransparency = 0.5
-		d.AnchorPoint = Vector2.new(0.5, 0.5)
-		d.Size = UDim2.fromOffset(s, s)
-		d.ZIndex = 1
-		corner(3).Parent = d
-		UI.stroke(rgb(255, 236, 255), 1.5, 0.45, true).Parent = d
-		d.Parent = sky
-		local x0 = (i * 97) % (BW - 20) + 10
-		local speed = 7 + (i % 5) * 3
-		reg(o.anim, d, function(t)
-			d.Position = UDim2.fromOffset(x0 + math.sin(t * 0.5 + i) * 14, 700 - (t * speed + i * 83) % 760)
-			d.Rotation = math.sin(t * 0.7 + i) * 10
-		end)
-	end
-	for i = 1, 10 do
-		sparkle(o.anim, sky, (i * 0.137) % 1, 0.06 + ((i * 0.31) % 0.8), 10 + (i % 3) * 4, i * 1.9, 1)
-	end
-end
-
 -- "6.5%" без лишних нулей
 local function oddsText(p: number): string
 	if p >= 10 then
@@ -2070,71 +2254,46 @@ local function oddsText(p: number): string
 	return (s:gsub("%.0$", "")) .. "%"
 end
 
--- Широкий баннер яйца: яйцо слева, карточки редкостей с точными процентами (из Config.EGGS, там же бросает сервер), цена справа внизу.
--- В карточке одно животное редкости (с самым большим шансом), процент - сумма всех животных этой редкости; полный список - по кнопке ODDS.
-local function renderEggBanner(o: Open, parent: Instance, item: any, order: number)
+-- Широкий баннер яйца (как «Featured Egg» в концепте): яйцо слева, название, четыре самых вероятных питомца с точными процентами
+-- (из Config.EGGS, там же бросает сервер), справа табличка, ODDS и цена. Полный список шансов - по кнопке ODDS.
+local function renderEggBanner(o: Open, parent: Instance, item: any, order: number, featured: boolean?)
 	local egg = Config.EGGS[item.key]
 	local base: Color3 = egg.color
-	local line = base:Lerp(Color3.new(1, 1, 1), 0.2)
-	local f = box({ Top = base:Lerp(rgb(24, 8, 56), 0.6), Mid = base:Lerp(rgb(30, 10, 72), 0.78), Bottom = rgb(22, 8, 54), Line = line, LineThick = 4, Radius = 16, Studs = 18, Size = CENTER.Size, AnchorPoint = CENTER.AnchorPoint, Position = CENTER.Position, Clip = true, Parent = slot(parent, order, 244) })
-	pcall(function()
-		local r = UI.rays(f, base:Lerp(Color3.new(1, 1, 1), 0.35), 10, 400, 8)
-		r.Position = UDim2.fromOffset(96, 126)
-		r.ZIndex = 1
-	end)
-	local gs = UI.glow(f, base, 400, 0.42)
-	gs.Position = UDim2.fromOffset(96, 126)
-	gs.ZIndex = 1
-	for i = 1, 7 do
-		sparkle(o.cards, f, 0.1 + i * 0.12, 0.1 + (i % 3) * 0.3, 11 + (i % 3) * 4, i * 1.9 + order, 2)
-	end
-	local art = holder(f, UDim2.fromOffset(238, 302), UDim2.fromOffset(-22, -16), 4)
+	local H = 196
+	local f = A.frame({ Tint = if featured then Color3.new(1, 1, 1) else Color3.new(1, 1, 1):Lerp(base, 0.4):Lerp(Color3.new(0, 0, 0), 0.12), Radius = 16, Size = CENTER.Size, AnchorPoint = CENTER.AnchorPoint, Position = CENTER.Position, Parent = slot(parent, order, H) })
+	local art = holder(f, UDim2.fromOffset(156, H - 14), UDim2.fromOffset(8, 7), 4)
 	art.AnchorPoint = Vector2.new(0, 0)
-	local img = Instance.new("ImageLabel")
-	img.BackgroundTransparency = 1
-	img.ScaleType = Enum.ScaleType.Fit
-	img.Size = UDim2.fromScale(1, 1)
-	img.ZIndex = 4
-	img.Parent = art
-	if EggArt and EggArt.has(item.key) then
-		EggArt.apply(img, item.key, function()
+	if item.key == "egg_astral" and not SPRITE.egg_astral and UI.ART and UI.ART.egg_astral then
+		SPRITE.egg_astral = "egg_astral" -- спрайт добавлен в атлас: баннер берёт его, иначе остаётся воксельное яйцо
+	end
+	if SPRITE[item.key] then
+		A.icon(art, item.key, 4)
+	else
+		local img = Instance.new("ImageLabel")
+		img.BackgroundTransparency = 1
+		img.ScaleType = Enum.ScaleType.Fit
+		img.Size = UDim2.fromScale(1, 1)
+		img.ZIndex = 4
+		img.Parent = art
+		if EggArt and EggArt.has(item.key) then
+			EggArt.apply(img, item.key, function()
+				img:Destroy()
+				icon(art, item.key, 0)
+			end)
+		else
 			img:Destroy()
 			icon(art, item.key, 0)
-		end)
-	else
-		img:Destroy()
-		icon(art, item.key, 0)
+		end
 	end
-	bob(o, art, UDim2.fromOffset(-22, -16), 4, order)
-	-- яйцо "дышит": мягкий пульс масштаба и покачивание, свечение пульсирует, вокруг кружатся искры
+	bob(o, art, UDim2.fromOffset(8, 7), 4, order)
+	-- яйцо "дышит": мягкий пульс масштаба и покачивание
 	local pulse = Instance.new("UIScale")
 	pulse.Parent = art
 	reg(o.cards, art, function(t)
 		pulse.Scale = 1 + 0.03 * math.sin(t * 2.2 + order)
 		art.Rotation = math.sin(t * 1.3 + order * 1.7) * 2.2
 	end)
-	reg(o.cards, gs, function(t)
-		if gs:IsA("ImageLabel") then
-			gs.ImageTransparency = 0.34 + 0.14 * math.sin(t * 2.0 + order)
-		end
-	end)
-	for i = 1, 6 do
-		local d = Instance.new("Frame")
-		d.BorderSizePixel = 0
-		d.BackgroundColor3 = i % 2 == 0 and K.white or base:Lerp(Color3.new(1, 1, 1), 0.55)
-		d.AnchorPoint = Vector2.new(0.5, 0.5)
-		local ds = 5 + (i % 3) * 3
-		d.Size = UDim2.fromOffset(ds, ds)
-		d.Rotation = 45
-		d.ZIndex = 6
-		d.Parent = f
-		reg(o.cards, d, function(t)
-			local a = t * (0.7 + i * 0.11) + i * 1.3
-			d.Position = UDim2.fromOffset(97 + math.cos(a) * (92 + i * 4), 120 + math.sin(a) * (104 + i * 3) * 0.55)
-			d.BackgroundTransparency = 0.1 + 0.55 * (0.5 + 0.5 * math.sin(t * 3 + i))
-		end)
-	end
-	-- лента с честным обещанием (минимальная редкость берётся из таблицы шансов)
+	-- табличка: у избранного "FEATURED" (таймера ротации в игре нет), у остальных честное обещание (минимальная редкость из таблицы шансов)
 	local minR = 99
 	for _, od in Config.eggOdds(item.key) do
 		local ex0 = Config.EXOTIC_BY_ID[od.id]
@@ -2143,67 +2302,81 @@ local function renderEggBanner(o: Open, parent: Instance, item: any, order: numb
 		end
 	end
 	local ribText = if minR >= 2 and minR < 99 then string.upper(Config.EXOTIC.RARITIES[minR].name) .. " OR BETTER" else "ALL RARITIES"
-	local rib = box({ Top = base:Lerp(Color3.new(1, 1, 1), 0.2), Bottom = base:Lerp(Color3.new(0, 0, 0), 0.4), Line = Color3.new(1, 1, 1), LineThick = 2, Radius = 8, Size = UDim2.fromOffset(196, 26), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -16, 0, 12), ZIndex = 6, Parent = f })
-	UI.label({ Text = ribText, TextSize = 15, Color = K.white, StrokeColor = base:Lerp(Color3.new(0, 0, 0), 0.7), Stroke = 3, Size = UDim2.fromScale(1, 1), ZIndex = 7, Parent = rib })
-	UI.label({ Text = string.upper(item.name), TextSize = 36, Scaled = true, MaxSize = 36, Color = K.white, StrokeColor = base:Lerp(Color3.new(0, 0, 0), 0.6), Stroke = 5, Size = UDim2.new(1, -420, 0, 42), Position = UDim2.fromOffset(190, 6), XAlign = Enum.TextXAlignment.Left, ZIndex = 5, Parent = f })
-	UI.label({ Text = "Exotic pets you cannot find while hunting", TextSize = 15, Color = K.white, StrokeColor = base:Lerp(Color3.new(0, 0, 0), 0.6), Stroke = 3, Size = UDim2.new(1, -420, 0, 18), Position = UDim2.fromOffset(192, 46), XAlign = Enum.TextXAlignment.Left, ZIndex = 5, Parent = f })
-	local groups: { any } = {}
-	local byRarity: { [number]: any } = {}
+	-- V75: табличка шире, текст в одну строку правее часов (раньше «LEGENDARY OR BETTER» заходил на часы и за край)
+	local plaque = UI.art("timer", { Name = "Plaque", Size = UDim2.fromOffset(250, 50), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -10, 0, 6), Slice = { 100, 0, 30, 0 }, SliceScale = 50 / 92, ZIndex = 3, Parent = f })
+	local ribLabel = UI.label({ Text = if featured then "FEATURED" else ribText, TextSize = 17, Scaled = true, MaxSize = 17, Size = UDim2.new(1, -74, 0, 20), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 60, 0.5, 0), ZIndex = 4, Parent = plaque })
+	ribLabel.TextWrapped = false -- одна строка: текст сжимается под табличку, а не переносится за её край
+	-- середина: название с листьями, подпись, четыре питомца
+	local mid = holder(f, UDim2.new(1, -440, 1, 0), UDim2.fromOffset(172, 0), 3)
+	local tr = holder(mid, UDim2.new(1, 0, 0, 40), UDim2.fromOffset(0, 2), 3)
+	A.titleRow(tr, item.name, 32, 30, 3)
+	UI.label({ Text = "Exotic pets you cannot find while hunting", TextSize = 16, Stroke = 3, Size = UDim2.new(1, 0, 0, 16), Position = UDim2.fromOffset(0, 42), ZIndex = 3, Parent = mid })
+	-- карточки питомцев: рамка card_N по редкости, портрет внутри, шанс крупно в правом нижнем углу; самая редкая последней и крупнее
+	local odds = {}
 	for _, od in Config.eggOdds(item.key) do
-		local ex = Config.EXOTIC_BY_ID[od.id]
-		local g = byRarity[ex.rarity]
-		if not g then
-			g = { r = ex.rarity, pct = 0, ex = ex, best = 0, n = 0 }
-			byRarity[ex.rarity] = g
-			table.insert(groups, g)
-		end
-		g.pct += od.pct
-		g.n += 1
-		if od.pct > g.best then
-			g.best = od.pct
-			g.ex = ex
+		if Config.EXOTIC_BY_ID[od.id] then
+			table.insert(odds, od)
 		end
 	end
-	table.sort(groups, function(a, b)
-		return a.r < b.r
+	table.sort(odds, function(a, b)
+		local ra, rb = Config.EXOTIC_BY_ID[a.id].rarity, Config.EXOTIC_BY_ID[b.id].rarity
+		if ra ~= rb then
+			return ra < rb
+		end
+		if a.pct ~= b.pct then
+			return a.pct > b.pct
+		end
+		return a.id < b.id
 	end)
-	local x = 192
-	for gi, g in groups do
-		local rar = Config.EXOTIC.RARITIES[g.r]
-		local top = gi == #groups and #groups > 1
-		local w, h = top and 100 or 82, top and 112 or 98
-		local card = box({ Top = rgb(16, 30, 100), Bottom = rgb(10, 20, 70), Line = rar.color, LineThick = top and 4 or 3, Radius = 10, Size = UDim2.fromOffset(w, h), Position = UDim2.fromOffset(x, top and 66 or 78), ZIndex = 3, Parent = f })
-		if top then
-			glowSpot(card, rar.color, 150, UDim2.fromScale(0.5, 0.5), 0.55)
-			local stroke = card:FindFirstChildOfClass("UIStroke")
-			if stroke and g.r >= 5 then
-				-- самая редкая карточка переливается радугой: главный приз, ради которого и покупают
-				reg(o.cards, card, function(t)
-					stroke.Color = Color3.fromHSV((t * 0.25 + order * 0.2) % 1, 0.65, 1)
-				end)
+	local n = #odds
+	if n > 0 then
+		local CW, CH, GAP = 92, 108, 8 -- обычная карточка; рамка card_N ~172x202
+		local BIG = 1.14
+		local needW = n * CW + (n - 1) * GAP + CW * (BIG - 1) + 8
+		local row = holder(mid, UDim2.new(1, 0, 0, math.ceil(CH * BIG) + 4), UDim2.fromOffset(0, 62), 3)
+		UI.list(Enum.FillDirection.Horizontal, GAP, Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Bottom).Parent = row
+		-- узкий баннер: весь ряд сжимается, чтобы все карточки поместились
+		local rowScale = Instance.new("UIScale")
+		rowScale.Parent = row
+		local function fitRow()
+			local w = mid.AbsoluteSize.X
+			if w > 0 then
+				rowScale.Scale = math.clamp(w / needW, 0.5, 1)
 			end
 		end
-		local pb = holder(card, UDim2.new(1, -6, 1, -40), UDim2.fromOffset(3, 14), 3)
-		Pets.deferPortrait(pb, g.ex)
-		UI.label({ Text = string.upper(rar.name) .. (g.n > 1 and (" x" .. g.n) or ""), TextSize = 12, Scaled = true, MaxSize = 12, Color = rar.color, StrokeColor = Color3.new(0, 0, 0), Stroke = 2, Size = UDim2.new(1, -4, 0, 14), Position = UDim2.fromOffset(2, 1), ZIndex = 5, Parent = card })
-		UI.label({ Text = oddsText(g.pct), TextSize = top and 24 or 21, Color = top and K.goldText or K.white, StrokeColor = Color3.new(0, 0, 0), Stroke = 3, XAlign = Enum.TextXAlignment.Right, Size = UDim2.new(1, -6, 0, 24), Position = UDim2.new(0, 0, 1, -26), ZIndex = 5, Parent = card })
-		x += w + 8
+		mid:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitRow)
+		task.defer(fitRow)
+		for i = 1, n do
+			local od = odds[i]
+			local ex = Config.EXOTIC_BY_ID[od.id]
+			local last = i == n and n > 1
+			local k = if last then BIG else 1
+			local rIdx = math.clamp(ex.rarity, 1, 7)
+			local rar = Config.EXOTIC.RARITIES[rIdx]
+			local card = holder(row, UDim2.fromOffset(math.floor(CW * k), math.floor(CH * k)), UDim2.new(), 3)
+			card.LayoutOrder = i
+			if last and rar then
+				local g = UI.glow(card, rar.color, math.floor(CW * k * 1.9), 0.45)
+				g.ZIndex = 2
+			end
+			UI.art("card_" .. rIdx, { Name = "Card", Size = UDim2.fromScale(1, 1), ZIndex = 3, Parent = card })
+			local pb = holder(card, UDim2.fromScale(0.82, 0.78), UDim2.fromScale(0.09, 0.1), 4)
+			Pets.deferPortrait(pb, ex)
+			UI.label({ Text = ex.name, TextSize = 11, Scaled = true, MaxSize = 11, StrokeColor = Color3.new(0, 0, 0), Stroke = 2, Size = UDim2.new(1, -12, 0, 13), Position = UDim2.fromOffset(6, 5), ZIndex = 6, Parent = card })
+			UI.label({ Text = oddsText(od.pct), TextSize = if last then 24 else 22, Color = K.white, StrokeColor = Color3.new(0, 0, 0), Stroke = 4, XAlign = Enum.TextXAlignment.Right, Size = UDim2.new(1, -12, 0, 26), AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 6, 1, -6), ZIndex = 6, Parent = card })
+		end
 	end
-	local ob = sbutton({ Text = "ODDS", TextSize = 20, Color = rgb(70, 110, 230), Size = UDim2.fromOffset(104, 48), AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -268, 1, -10), Sound = "press" }, function()
+	local ob = A.button("btn_blue", { Text = "ODDS", TextSize = 20, Size = UDim2.fromOffset(110, 38), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 62), ZIndex = 6, Sound = "shop_odds" }, function()
 		openOdds(item.key)
 	end)
-	ob.ZIndex = 6
 	ob.Parent = f
-	local price = buyButton(item, UDim2.fromOffset(252, 56), UDim2.new(1, -14, 1, -10), 30, f)
-	price.AnchorPoint = Vector2.new(1, 1)
+	local price = buyButton(item, UDim2.fromOffset(200, 60), UDim2.new(1, -214, 1, -70), 30, f)
 	price.ZIndex = 6
-	table.insert(o.shiny, price) -- блики бегут по кнопке цены
 	table.insert(o.shiny, f)
 	introPop(o, f)
 	tileHover(f)
 end
 
--- Доля в проценты без ошибки округления для минусов (-0.10 -> -10, а не -11)
 local function pct(v: number): number
 	return v >= 0 and math.floor(v * 100 + 0.5) or -math.floor(-v * 100 + 0.5)
 end
@@ -2501,6 +2674,9 @@ local infoGui: ScreenGui? = nil
 
 openInfo = function(key: string)
 	local item = if key == "rank" then RANK_ITEM else Config.SHOP_BY_KEY[key]
+	if item and item.kind == "hpass" then
+		return -- у Hunter Pass своё окно, карточки товара нет
+	end
 	local info = item and infoFor(item)
 	if not info then
 		return
@@ -2661,13 +2837,11 @@ local function playHatchBasic(h: any, done: () -> ())
 	local tag = h.dupe and string.format('DUPLICATE  +%d shards', h.shards or 0) or 'NEW PET!'
 	UI.label({ Text = tag, TextSize = 24, Color = h.dupe and rgb(160, 220, 255) or K.goldText, StrokeColor = Color3.new(0, 0, 0), Stroke = 4, Size = UDim2.new(1, 0, 0, 30), Position = UDim2.fromOffset(0, 500), ZIndex = 12, Parent = reveal })
 	local finish: () -> () = function() end -- настоящая задаётся ниже, кнопка вызывает её по имени
-	local cont = sbutton({ Text = 'CONTINUE', TextSize = 22, Color = K.green, Size = UDim2.fromOffset(200, 46), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 1, -56), Sound = 'press' }, function()
+	local cont = UI.artButton("btn_green", { Text = 'CONTINUE', TextSize = 22, TextColor = K.white, Size = UDim2.fromOffset(200, 46), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0.5, 300), Slice = { 30, 0, 30, 0 }, SliceScale = 46 / UI.artSize("btn_green").Y, ZIndex = 40, Sound = 'shop_press' }, function()
 		finish()
 	end)
 	cont.Visible = false
-	cont.ZIndex = 40
 	cont.Parent = dim
-	cont.Position = UDim2.new(0.5, 0, 0.5, 300)
 	local flash = newI('Frame', { BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), ZIndex = 50, Active = false }, dim)
 
 	local DUR = low and 1.5 or 2.5
@@ -2801,11 +2975,10 @@ local function playHatch(h: any, done: () -> ())
 				end
 				local tag = h.dupe and string.format('DUPLICATE  +%d shards', h.shards or 0) or 'NEW PET!'
 				UI.label({ Text = tag, TextSize = 20, Color = h.dupe and rgb(160, 220, 255) or K.goldText, StrokeColor = Color3.new(0, 0, 0), Stroke = 3, Size = UDim2.new(1, -170, 0, 26), Position = UDim2.new(0, 10, 1, -38), XAlign = Enum.TextXAlignment.Left, ZIndex = 21, Parent = card })
-				local cont = sbutton({ Text = 'CONTINUE', TextSize = 20, Color = K.green, Size = UDim2.fromOffset(160, 42), AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -12, 1, -10), Sound = 'press' }, function()
+				-- яркая зелёная кнопка-картинка (раньше тёмная кнопка сливалась с фоном карточки)
+				local cont = UI.artButton("btn_green", { Text = 'CONTINUE', TextSize = 20, TextColor = K.white, Size = UDim2.fromOffset(160, 42), AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -12, 1, -10), Slice = { 30, 0, 30, 0 }, SliceScale = 42 / UI.artSize("btn_green").Y, ZIndex = 25, Sound = 'shop_press', Parent = card }, function()
 					finish()
 				end)
-				cont.ZIndex = 25
-				cont.Parent = card
 				newI('TextLabel', { Text = 'Tap the pet', Font = Enum.Font.GothamBold, TextSize = 14, TextColor3 = rgb(201, 210, 255), BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 0, -6), Size = UDim2.fromOffset(200, 18), ZIndex = 21 }, card)
 			end,
 			onDone = finishOnce,
@@ -2976,48 +3149,85 @@ local function openExotic()
 	render()
 end
 
--- Значки надетой экзотики на экране (маленькие портреты внизу слева). Пересобираются только при смене набора.
-local exoHudGui: ScreenGui? = nil
-local exoHudKey = ''
-local function updateExoHud()
+Shop.openExotic = openExotic
+
+-- Для вкладки Pets в сумке (вызывают лениво через require Shop)
+-- Список своих питомцев: надетые первыми, дальше по редкости (высокая первой)
+function Shop.petList(): { any }
 	local E = Perks.state().exotic
+	local out = {}
 	if not E then
-		return
+		return out
 	end
-	local key = table.concat(E.equipped, ',')
+	local eq = {}
 	for _, id in E.equipped do
-		key ..= ':' .. tostring(E.level[id] or 0)
+		eq[id] = true
 	end
-	if key == exoHudKey and exoHudGui then
-		return
-	end
-	exoHudKey = key
-	if exoHudGui then
-		exoHudGui:Destroy()
-		exoHudGui = nil
-	end
-	if #E.equipped == 0 then
-		return
-	end
-	local sg = newI('ScreenGui', { Name = 'ExoticHud', DisplayOrder = 6, ResetOnSpawn = false }, UI.top.Parent)
-	local row = newI('Frame', { BackgroundTransparency = 1, Size = UDim2.fromOffset(#E.equipped * 66, 62), Position = UDim2.new(0, 200, 1, -150) }, sg)
-	newI('UIListLayout', { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 6) }, row)
-	for _, id in E.equipped do
-		local ex = Config.EXOTIC_BY_ID[id]
-		if ex then
+	for _, ex in Config.EXOTICS do
+		local n = tonumber(E.owned[ex.id]) or 0
+		if n > 0 then
 			local rar = Config.EXOTIC.RARITIES[ex.rarity]
-			local chip = newI('TextButton', { Text = '', AutoButtonColor = false, BackgroundColor3 = rar.color:Lerp(Color3.new(0.05, 0.03, 0.14), 0.7), Size = UDim2.fromOffset(60, 60) }, row)
-			corner(12).Parent = chip
-			newI('UIStroke', { Thickness = 3, Color = rar.color }, chip)
-			local pb = newI('Frame', { BackgroundTransparency = 1, Size = UDim2.new(1, -6, 1, -6), Position = UDim2.fromOffset(3, 3) }, chip)
-			exoticPortrait(pb, ex, false, 0, 3)
-			chip.MouseButton1Click:Connect(openExotic)
+			table.insert(out, {
+				id = ex.id,
+				name = ex.name,
+				rarity = ex.rarity,
+				rarityName = rar.name,
+				color = rar.color,
+				owned = n,
+				level = tonumber(E.level[ex.id]) or 0,
+				equipped = eq[ex.id] == true,
+				fx = fxOneLine(ex),
+				move = PET_MOVE[ex.id] or 'walk',
+				index = ex.index or 0,
+			})
 		end
 	end
-	exoHudGui = sg
+	table.sort(out, function(a, b)
+		if a.equipped ~= b.equipped then
+			return a.equipped
+		end
+		if a.rarity ~= b.rarity then
+			return a.rarity > b.rarity
+		end
+		return a.index < b.index
+	end)
+	return out
 end
 
-Shop.openExotic = openExotic
+-- Надето / максимум
+function Shop.petEquipped(): (number, number)
+	local E = Perks.state().exotic
+	return E and #E.equipped or 0, Config.EXOTIC.EQUIP_MAX
+end
+
+-- Надеть или снять через то же серверное действие, что и окно Exotic; true, если сервер принял (yield)
+function Shop.petToggle(id: string): boolean
+	local fn = ShopFn
+	local E = Perks.state().exotic
+	if not fn or not E or type(id) ~= 'string' or not Config.EXOTIC_BY_ID[id] then
+		return false
+	end
+	local on = table.find(E.equipped, id) ~= nil
+	local ok, res = pcall(function()
+		return fn:InvokeServer(on and 'exoticUnequip' or 'exoticEquip', id)
+	end)
+	return ok and res == true
+end
+
+-- 3D-портрет питомца во весь parent (ViewportFrame) или nil
+function Shop.petPortrait(parent: GuiObject, id: string): Instance?
+	local ex = Config.EXOTIC_BY_ID[id]
+	if not ex or not parent then
+		return nil
+	end
+	local ok, vp = pcall(exoticPortrait, parent, ex, false, 0, 4)
+	return ok and vp or nil
+end
+
+-- Открыть окно коллекции (Exotic)
+function Shop.openPets()
+	openExotic()
+end
 Shop.showOdds = function(key: string)
 	openOdds(key)
 end
@@ -3034,34 +3244,22 @@ local function renderRank(o: Open, parent: Instance, order: number)
 	local spent = tonumber(st.spent) or 0
 	local cur = R[rank]
 	local nxt = R[rank + 1]
-	local f = box({ Top = K.heroTop, Mid = K.heroMid, Bottom = K.heroBot, Line = K.heroLine, Studs = 18, Size = CENTER.Size, AnchorPoint = CENTER.AnchorPoint, Position = CENTER.Position, Clip = true, Parent = slot(parent, order, 150) })
-	glowSpot(f, rgb(214, 170, 255), 380, UDim2.fromOffset(80, 70), 0.6)
+	local f = A.frame({ Tint = rgb(170, 140, 205), Size = CENTER.Size, AnchorPoint = CENTER.AnchorPoint, Position = CENTER.Position, Parent = slot(parent, order, 150) })
 	UI.label({ Text = cur and (string.upper(cur.name) .. " SUPPORTER") or "SUPPORTER RANK", TextSize = 28, Color = cur and cur.color or K.white, StrokeColor = K.heroLine, Stroke = 4, Size = UDim2.new(1, -250, 0, 32), Position = UDim2.fromOffset(14, 8), XAlign = Enum.TextXAlignment.Left, ZIndex = 3, Parent = f })
 	UI.label({ Text = cur and rankPerks(cur) or "Spend Robux to earn a rank: a tag and aura everyone sees, a daily gift and perks.", TextSize = 15, Color = K.white, StrokeColor = K.heroLine, Stroke = 2, Wrap = true, Size = UDim2.new(1, -250, 0, 40), Position = UDim2.fromOffset(14, 44), XAlign = Enum.TextXAlignment.Left, ZIndex = 3, Parent = f })
 	local from = cur and cur.at or 0
 	local frac = nxt and math.clamp((spent - from) / math.max(1, nxt.at - from), 0, 1) or 1
-	local bar = Instance.new("Frame")
-	bar.BorderSizePixel = 0
-	bar.BackgroundColor3 = K.heroLine
-	bar.Size = UDim2.new(1, -250, 0, 16)
-	bar.Position = UDim2.fromOffset(14, 94)
-	bar.ZIndex = 3
-	corner(8).Parent = bar
-	bar.Parent = f
-	local fill = Instance.new("Frame")
-	fill.BorderSizePixel = 0
-	fill.BackgroundColor3 = nxt and nxt.color or K.goldText
-	fill.Size = UDim2.fromScale(frac, 1)
-	fill.ZIndex = 4
-	corner(8).Parent = fill
-	fill.Parent = bar
+	local bar = UI.art("bar_track", { Name = "Bar", Size = UDim2.new(1, -250, 0, 20), Position = UDim2.fromOffset(14, 94), Slice = { 8, 8, 8, 8 }, SliceScale = 0.8, ZIndex = 3, Parent = f })
+	if frac > 0.04 then
+		UI.art("bar_purple", { Name = "Fill", Size = UDim2.new(frac, -6, 1, -6), Position = UDim2.fromOffset(3, 3), Slice = { 8, 8, 8, 8 }, SliceScale = 0.6, ZIndex = 4, Parent = bar })
+	end
 	UI.label({ Text = nxt and string.format("%d / %d R$ to %s: %s", spent, nxt.at, nxt.name, rankPerks(nxt)) or "Top rank reached. Thank you for supporting the game!", TextSize = 14, Color = K.white, StrokeColor = K.heroLine, Stroke = 2, Wrap = true, Size = UDim2.new(1, -250, 0, 34), Position = UDim2.fromOffset(14, 114), XAlign = Enum.TextXAlignment.Left, ZIndex = 3, Parent = f })
 	local left = Perks.giftLeft()
 	local ready = left <= 0
 	local k = (cur and cur.gift or SHOP.GIFT_BASE) + (Perks.has("founder") and 0.05 or 0)
-	UI.label({ Text = "DAILY GIFT", TextSize = 22, Color = K.goldText, StrokeColor = K.heroLine, Stroke = 3, Size = UDim2.fromOffset(200, 26), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 14), XAlign = Enum.TextXAlignment.Right, ZIndex = 3, Parent = f })
-	UI.label({ Text = "+" .. Num.short(Config.shopCoins(Backend.data, k)) .. " coins", TextSize = 18, Color = K.white, StrokeColor = K.heroLine, Stroke = 2, Size = UDim2.fromOffset(200, 22), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 42), XAlign = Enum.TextXAlignment.Right, ZIndex = 3, Parent = f })
-	local btn = sbutton({ Text = ready and "CLAIM" or fmtWait(left), TextSize = 22, Color = ready and K.green or rgb(96, 96, 120), Size = UDim2.fromOffset(190, 44), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 74), Sound = "press" }, function()
+	UI.label({ Text = "DAILY GIFT", TextSize = 22, Color = K.goldText, StrokeColor = K.heroLine, Stroke = 3, Size = UDim2.fromOffset(200, 26), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -40, 0, 14), XAlign = Enum.TextXAlignment.Right, ZIndex = 3, Parent = f })
+	UI.label({ Text = "+" .. Num.short(Config.shopCoins(Backend.data, k)) .. " coins", TextSize = 18, Color = K.white, StrokeColor = K.heroLine, Stroke = 2, Size = UDim2.fromOffset(200, 22), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -40, 0, 42), XAlign = Enum.TextXAlignment.Right, ZIndex = 3, Parent = f })
+	local btn = A.button(if ready then "btn_green" else "btn_grey", { Text = if ready then "CLAIM" else fmtWait(left), TextSize = 22, Size = UDim2.fromOffset(190, 46), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 74), ZIndex = 4, Sound = if ready then "shop_claim" else "shop_press" }, function()
 		local fn = ShopFn
 		if ready and fn then
 			task.spawn(function()
@@ -3071,9 +3269,8 @@ local function renderRank(o: Open, parent: Instance, order: number)
 			end)
 		end
 	end)
-	btn.ZIndex = 4
 	btn.Parent = f
-	tileInfo(f, RANK_ITEM, false, 10, 232) -- V42: все ранги, пороги и что даёт каждый
+	tileInfo(f, RANK_ITEM, false, 10, 0) -- V42: все ранги, пороги и что даёт каждый
 	table.insert(o.shiny, f)
 	introPop(o, f)
 	tileHover(f)
@@ -3098,27 +3295,12 @@ local function renderBody(o: Open)
 	if starterVisible() then
 		renderHero(o, scroll, nextOrder())
 	end
-	renderRank(o, scroll, nextOrder())
-	sectionBar(o, scroll, "Game Passes", nextOrder())
-	sectionNote(scroll, "Buy once, keep forever, on every server. Tap a card to see exactly what it gives.", nextOrder())
-	local passes = grid(scroll, 3, 212, nextOrder())
-	local n = 0
-	for _, it in SHOP.PASSES do
-		if it.key ~= "founder" then
-			n += 1
-			renderTile(o, passes, it, n, "pass")
-		end
-	end
-	local founder = Config.SHOP_BY_KEY.founder
-	if founder then
-		renderBanner(o, scroll, founder, nextOrder())
-	end
-	sectionBar(o, scroll, "Boosts", nextOrder())
-	sectionNote(scroll, "Timed bonuses. The time runs only while you are in the game. Tap a card to see the details.", nextOrder())
-	local server: any = nil
+	local eggsOff = Perks.state().eggsOff == true
 	local bundle: any = nil
+	local server: any = nil
 	local brews: { any } = {}
 	local packs: { any } = {}
+	local eggs: { any } = {}
 	for _, it in SHOP.PRODUCTS do
 		if it.kind == "server" then
 			server = it
@@ -3128,38 +3310,62 @@ local function renderBody(o: Open)
 			table.insert(brews, it)
 		elseif it.kind == "coins" then
 			table.insert(packs, it)
+		elseif it.kind == "egg" then
+			table.insert(eggs, it)
 		end
 	end
-	if server then
-		renderBanner(o, scroll, server, nextOrder())
+	-- Featured Egg: первое доступное яйцо большим баннером (настоящие шансы из Config.eggOdds)
+	local firstEgg = if eggsOff then nil else eggs[1]
+	if firstEgg then
+		sectionBar(o, scroll, "Featured Egg", nextOrder())
+		renderEggBanner(o, scroll, firstEgg, nextOrder(), true)
 	end
-	if bundle then
-		renderBanner(o, scroll, bundle, nextOrder())
+	-- Бусты: одна строка из пяти плиток
+	sectionBar(o, scroll, "Boosts", nextOrder())
+	local boosts = grid(scroll, 5, 90, nextOrder())
+	local bn = 0
+	for _, it in brews do
+		bn += 1
+		renderTile(o, boosts, it, bn, "boost")
 	end
-	local boosts = grid(scroll, 3, 212, nextOrder())
-	for i, it in brews do
-		renderTile(o, boosts, it, i, "boost")
-	end
-	sectionBar(o, scroll, "Eggs", nextOrder())
-	local collect = sbutton({ Text = "OPEN EXOTIC COLLECTION", TextSize = 20, Color = rgb(122, 62, 214), Size = UDim2.new(1, 0, 0, 46), LayoutOrder = nextOrder(), Sound = "press" }, function()
-		openExotic()
-	end)
-	collect.Parent = scroll
-	local eggsOff = Perks.state().eggsOff == true
-	for _, it in SHOP.PRODUCTS do
-		if it.kind == "egg" and not eggsOff then
-			renderEggBanner(o, scroll, it, nextOrder())
+	for _, it in { bundle, server } do
+		if it then
+			bn += 1
+			renderTile(o, boosts, it, bn, "boost")
 		end
 	end
-	UI.label({ Text = if eggsOff then "Eggs are not available in your region. Your exotic animals still work." else "Eggs hatch exotic animals you cannot find while hunting. Tap ODDS on any egg to see the exact chances.", TextSize = 14, Color = K.white, Stroke = 2, StrokeColor = K.navy, Wrap = true, Size = UDim2.new(1, 0, 0, 36), LayoutOrder = nextOrder(), Parent = scroll })
-	sectionBar(o, scroll, "Coins", nextOrder())
-	sectionNote(scroll, "Coin packs grow with you: each one is worth a share of the price of your next spear. Tap a card for details.", nextOrder())
-	local coins = grid(scroll, 4, 212, nextOrder())
+	sectionBar(o, scroll, "Coin Packs", nextOrder())
+	local coins = grid(scroll, 4, 84, nextOrder())
 	for i, it in packs do
 		renderTile(o, coins, it, i, "pack")
 	end
-	local note = UI.label({ Text = "Coin packs grow with the price of your next spear. Boost timers run only while you play.", TextSize = 14, Color = K.white, Stroke = 2, StrokeColor = K.navy, Wrap = true, Size = UDim2.new(1, 0, 0, 36), LayoutOrder = nextOrder(), Parent = scroll })
-	note.TextTransparency = 0.05
+	sectionBar(o, scroll, "Game Passes", nextOrder())
+	local passes = grid(scroll, 2, 94, nextOrder())
+	local n = 0
+	for _, it in SHOP.PASSES do
+		if it.key ~= "founder" then
+			n += 1
+			renderPassTile(o, passes, it, n)
+		end
+	end
+	local founder = Config.SHOP_BY_KEY.founder
+	if founder then
+		renderPassTile(o, scroll, founder, nextOrder(), 94)
+	end
+	sectionBar(o, scroll, "Pet Eggs", nextOrder())
+	local collect = A.button("btn_big", { Text = "OPEN EXOTIC COLLECTION", TextSize = 26, Size = UDim2.new(1, 0, 0, 56), LayoutOrder = nextOrder(), Sound = "shop_press" }, function()
+		openExotic()
+	end)
+	collect.Parent = scroll
+	if not eggsOff then
+		for i, it in eggs do
+			if i > 1 then
+				renderEggBanner(o, scroll, it, nextOrder())
+			end
+		end
+	end
+	renderRank(o, scroll, nextOrder())
+	UI.label({ Text = if eggsOff then "Eggs are not available in your region. Your exotic animals still work." else "Eggs hatch exotic animals you cannot find while hunting. Tap ODDS to see the exact chances.", TextSize = 14, Color = K.note, Stroke = 2, StrokeColor = K.charLine, Wrap = true, Size = UDim2.new(1, 0, 0, 36), LayoutOrder = nextOrder(), Parent = scroll })
 end
 
 local function refreshLive(o: Open)
@@ -3177,6 +3383,18 @@ function Shop.openInfo(key: string)
 	openInfo(key)
 end
 
+-- Hunter Pass: покупка по ключу (pass_premium / pass_bundle) и показ шансов яйца
+function Shop.buyKey(key: string)
+	local item = Config.SHOP_BY_KEY[key]
+	if item then
+		buy(item)
+	end
+end
+
+function Shop.openOdds(key: string)
+	openOdds(key)
+end
+
 function Shop.refresh()
 	local o = open
 	if o and o.win.Parent and not o.closing and UI.windowOpen("shop") then
@@ -3189,14 +3407,14 @@ end
 
 function Shop.open()
 	Sfx.skipOnce = "open" -- V47: UI.window играет общий open, а магазин свой shop_open ниже: они накладывались
-	local win, body = UI.window("shop", "", Vector2.new(780, 612), K.skyBot, function()
+	local win, body = UI.window("shop", "", Vector2.new(WIN_W, WIN_H), K.skyBot, function()
 		open = nil
 	end)
 	Sfx.skipOnce = nil
 	pcall(Sfx.preloadLibrary) -- V49: звуки открытия яйца (настоящие записи) грузятся, пока игрок смотрит магазин
-	-- Убираем стандартное оформление окна: вместо него небо, баннер и облака
+	-- Убираем стандартное оформление окна: вместо него шапка-картинка и тёмная панель
 	for _, c in win:GetChildren() do
-		if c.Name == "Header" or c.Name == "Button" or c:IsA("UIStroke") or c:IsA("UIGradient") then
+		if c.Name == "Header" or c.Name == "Button" or c.Name == "WinArt" or c:IsA("UIStroke") or c:IsA("UIGradient") then
 			c:Destroy()
 		end
 	end
@@ -3208,19 +3426,19 @@ function Shop.open()
 	body.Position = UDim2.fromOffset(6, 6)
 	body.Size = UDim2.new(1, -12, 1, -12)
 
-	-- Небо с дрейфующими облаками; раскатывается вниз при открытии
-	local sky = box({ Top = K.skyTop, Mid = K.skyMid, Bottom = K.skyBot, Line = K.frame, LineThick = 4, Radius = 16, Size = UDim2.new(1, 0, 0, 0), Position = UDim2.fromOffset(0, 58), ZIndex = 1, Clip = true, Parent = body })
+	-- Тело окна (поле «sky» держим под старым именем: intro и закрытие тянут его размер): тёмно-синяя панель (как в концепте) с тонкой рамкой, раскатывается вниз
+	local sky = box({ Top = NAVY, Bottom = NAVY, Line = rgb(6, 12, 18), LineThick = 3, Radius = 10, Size = UDim2.new(1, 0, 0, 0), Position = UDim2.fromOffset(0, BODY_TOP), ZIndex = 1, Clip = true, Parent = body })
 	local scroll = UI.scroll(sky, UDim2.fromScale(1, 1), UDim2.new())
-	scroll.ScrollBarImageColor3 = K.white
+	scroll.ScrollBarImageColor3 = K.limeA
 	local pad = Instance.new("UIPadding")
-	pad.PaddingLeft = UDim.new(0, 14)
-	pad.PaddingRight = UDim.new(0, 18)
-	pad.PaddingTop = UDim.new(0, 22)
-	pad.PaddingBottom = UDim.new(0, 16)
+	pad.PaddingLeft = UDim.new(0, 12)
+	pad.PaddingRight = UDim.new(0, 20)
+	pad.PaddingTop = UDim.new(0, 10)
+	pad.PaddingBottom = UDim.new(0, 14)
 	pad.Parent = scroll
-	UI.list(Enum.FillDirection.Vertical, 12).Parent = scroll
+	UI.list(Enum.FillDirection.Vertical, 6).Parent = scroll
 
-	-- Шапка: баннер, облака, корзинка, монеты, кнопка закрытия
+	-- Шапка: картинка shop_header, монеты, кнопка закрытия
 	local head = Instance.new("Frame")
 	head.Name = "Head"
 	head.BackgroundTransparency = 1
@@ -3239,83 +3457,38 @@ function Shop.open()
 	mask.Size = UDim2.fromOffset(0, HEAD_H)
 	mask.ZIndex = 1
 	mask.Parent = head
-	local ribbon = box({ Top = K.headTop, Bottom = K.headBot, Line = K.frame, LineThick = 4, Radius = 14, Studs = 20, Size = UDim2.fromOffset(BW - 8, HEAD_H - 8), Position = UDim2.fromOffset(4, 4), ZIndex = 1, Clip = true, Parent = mask })
-	local shine = Instance.new("Frame")
-	shine.BorderSizePixel = 0
-	shine.BackgroundColor3 = K.white
-	shine.BackgroundTransparency = 0.78
-	shine.Size = UDim2.new(1, -16, 0, 9)
-	shine.Position = UDim2.fromOffset(8, 4)
-	shine.ZIndex = 2
-	corner(5).Parent = shine
-	shine.Parent = ribbon
+	local ribbon = Instance.new("Frame")
+	ribbon.Name = "Ribbon"
+	ribbon.BackgroundTransparency = 1
+	ribbon.Size = UDim2.fromOffset(BW, HEAD_H)
+	ribbon.ZIndex = 1
+	ribbon.Parent = mask
+	A.header(ribbon, BW, HEAD_H)
 
 	local o: Open = {
 		win = win, scroll = scroll, pill = nil :: any, status = {}, sky = sky, headScale = headScale, headGroup = head,
 		anim = {}, cards = {}, shiny = {}, intro = true, closing = false, n = 0,
 	}
 
-	-- Узор шапки: треугольники-«самолётики» медленно плывут влево
-	for row = 1, 2 do
-		for i = 1, 11 do
-			local tri = Instance.new("ImageLabel")
-			tri.BackgroundTransparency = 1
-			tri.BackgroundColor3 = K.headPat
-			tri.BackgroundTransparency = 0.82
-			tri.BorderSizePixel = 0
-			tri.Size = UDim2.fromOffset(14, 14)
-			tri.ZIndex = 2
-			tri.Parent = ribbon
-			local y = row == 1 and 12 or 34
-			reg(o.anim, tri, function(t)
-				tri.Position = UDim2.fromOffset((i * 70 + row * 35 - t * 16) % 770 - 20, y)
-			end)
-		end
-	end
+	-- Монеты: маленькая тёмная плашка справа перед крестиком
+	local pillBox = A.chip(ribbon, UDim2.fromOffset(132, 40), UDim2.new(1, -76, 0.5, 0), 3, 0.5)
+	pillBox.AnchorPoint = Vector2.new(1, 0.5)
+	UI.art("ic_coin", { Name = "Coin", Size = UDim2.fromOffset(30, 31), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 9, 0.5, 0), Fit = true, ZIndex = 4, Parent = pillBox })
+	o.pill = UI.label({ Text = "0", TextSize = 22, Stroke = 2, Size = UDim2.new(1, -46, 1, 0), Position = UDim2.fromOffset(40, 0), ZIndex = 4, Parent = pillBox })
 
-	UI.label({ Text = "Shop", TextSize = 42, Color = K.white, StrokeColor = K.titleLine, Stroke = 4, Size = UDim2.fromOffset(200, HEAD_H), Position = UDim2.fromOffset(88, 0), XAlign = Enum.TextXAlignment.Left, ZIndex = 3, Parent = ribbon })
-	local pillBox = box({ Top = rgb(12, 52, 130), Bottom = rgb(20, 78, 170), Line = K.frame, LineThick = 2, Radius = 9, Size = UDim2.fromOffset(170, 38), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -66, 0.5, 0), ZIndex = 3, Parent = ribbon })
-	local coin = box({ Top = rgb(255, 233, 138), Bottom = rgb(240, 168, 0), Line = rgb(107, 61, 0), LineThick = 2, Radius = 13, Size = UDim2.fromOffset(26, 26), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 8, 0.5, 0), ZIndex = 4, Parent = pillBox })
-	UI.label({ Text = "$", TextSize = 17, Stroke = 2, StrokeColor = rgb(107, 61, 0), Size = UDim2.fromScale(1, 1), ZIndex = 5, Parent = coin })
-	o.pill = UI.label({ Text = "0", TextSize = 22, Stroke = 2, StrokeColor = K.frame, Size = UDim2.new(1, -46, 1, 0), Position = UDim2.fromOffset(40, 0), ZIndex = 4, Parent = pillBox })
-
-	-- Зверьки выглядывают из-за баннера (стоят позади него, видны только головы и уши)
-	local peekers = {}
-	for _, p in { { "squirrel", 270 }, { "moonrabbit", BW - 128 } } do
-		local a = animalView(head, p[1], -18, 96, 96)
-		a.AnchorPoint = Vector2.new(0.5, 1)
-		a.Position = UDim2.fromOffset(p[2] + 48, 32)
-		a.ZIndex = 0
-		table.insert(peekers, a)
-		local base = a.Position
-		reg(o.anim, a, function(t)
-			a.Position = UDim2.fromOffset(base.X.Offset, base.Y.Offset + math.sin(t * 1.8 + p[2]) * 3)
-		end)
-	end
-	-- Корзинка на круглой плашке слева сверху: ничем не перекрыта
-	local badgeRim = box({ Top = K.frame, Bottom = K.frame, Radius = 34, Size = UDim2.fromOffset(68, 68), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(38, 33), ZIndex = 5, Parent = head })
-	local badge = box({ Top = rgb(130, 236, 255), Bottom = rgb(30, 140, 240), Line = K.white, LineThick = 3, Radius = 30, Size = UDim2.fromOffset(60, 60), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), ZIndex = 1, Parent = badgeRim })
-	local basket = basketIcon(badge, 3)
-	basket.AnchorPoint = Vector2.new(0.5, 0.5)
-	basket.Position = UDim2.fromScale(0.5, 0.52)
 	-- Кнопка закрытия лежит в обёртке: у самой кнопки уже есть свой UIScale (наведение), второй на неё не вешаем
-	local closeHold = holder(head, UDim2.fromOffset(40, 40), UDim2.fromOffset(BW - 34, 26), 5)
+	local closeHold = holder(head, UDim2.fromOffset(52, 52), UDim2.fromOffset(BW - 38, HEAD_H / 2), 5)
 	closeHold.AnchorPoint = Vector2.new(0.5, 0.5)
-	local close = sbutton({ Text = "X", TextSize = 24, Color = K.red, Size = UDim2.fromScale(1, 1), ZIndex = 5, Sound = "press", Burst = false }, function()
+	local close = UI.artButton("btn_x", { Size = UDim2.fromScale(1, 1), ZIndex = 5 }, function()
 		closeAnimated(o)
 	end)
 	close.Parent = closeHold
-	reg(o.anim, basket, function(t)
-		basket.Rotation = -8 + math.sin(t * 2) * 4
-	end)
-
-	buildCrystals(o, sky)
 
 	open = o
 	Sfx.play("shop_open")
 	renderBody(o)
 	refreshLive(o)
-	playIntro(o, body, mask, ribbon, { { badgeRim, 0.5 }, { peekers[1], 0.62 }, { peekers[2], 0.68 }, { closeHold, 0.75 } })
+	playIntro(o, body, mask, ribbon, { { closeHold, 0.75 } })
 
 	-- Единый цикл анимации; живёт, пока окно открыто
 	local conn: RBXScriptConnection? = nil
@@ -3421,18 +3594,58 @@ local function processPending(pending: any)
 	end
 end
 
+local function fireHpass()
+	local f = Shop.onHpassChange
+	if type(f) == "function" then
+		task.spawn(f)
+	end
+end
+
+-- Hunter Pass: награда серверной полосы. Перед запросом сохраняем прогресс, чтобы сервер видел свежий опыт
+function Shop.hpassClaim(tier: number, lane: string): boolean
+	local fn = ShopFn
+	if not fn then
+		UI.toast("Try again in a moment", "warn")
+		return false
+	end
+	for attempt = 1, 5 do
+		saveNow()
+		local ok, res = pcall(function()
+			return fn:InvokeServer("hpassClaim", tier, lane)
+		end)
+		if ok and res == true then
+			fireHpass()
+			return true
+		end
+		if attempt < 5 then
+			task.wait(0.6)
+		end
+	end
+	UI.toast("Try again in a moment", "warn")
+	return false
+end
+
 local function onEvent(kind: any, payload: any)
 	if kind == "state" then
 		Perks.set(payload)
 		processPending(Perks.state().pending)
 		queueHatches()
-		updateExoHud()
+		fireHpass()
+	elseif kind == "hpassGranted" then
+		Sfx.play("shop_buy")
+		UI.toast("Pass reward claimed!", "gold", 2.4)
+		fireHpass()
 	elseif kind == "granted" then
 		local item = Config.SHOP_BY_KEY[payload]
 		if not item then
 			return
 		end
-		if item.pass then
+		if item.kind == "hpass" then
+			Sfx.play("level")
+			UI.confetti(50)
+			Hud.banner("HUNTER PASS", K.goldText, if item.key == "pass_bundle" then "Premium + 10 tiers unlocked!" else "Premium unlocked!", 2.4)
+			fireHpass()
+		elseif item.pass then
 			unlock(item, "UNLOCKED!")
 		elseif item.kind == "starter" then
 			unlock(item, "OPENED!")
@@ -3478,7 +3691,6 @@ function Shop.init()
 			exoticRefresh()
 		end
 		Pets.lastSig = sig
-		updateExoHud()
 	end)
 	Backend.onChange(function()
 		dirty = true

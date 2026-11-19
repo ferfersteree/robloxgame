@@ -43,8 +43,13 @@ export type Flight = {
 	marker: Part?,
 	apex: boolean?,
 	nextThunder: number?,
+	legacy: boolean?, -- PerfLegacy на момент броска: true — старые пути посадки (замер A/B)
+	baseParts: { BasePart }?, -- кэш деталей модели (считаем при броске, не в кадре посадки)
+	emitters: { ParticleEmitter }?,
 }
 
+local IS_STUDIO = RunService:IsStudio()
+local DESTROY_CHUNK = 150 -- деталей за кадр при уборке большой модели копья
 local flights: { Flight } = {}
 local flightSounds: { [any]: Sound } = {} -- свист копья в полёте, снимается при посадке
 local camera = workspace.CurrentCamera
@@ -154,6 +159,7 @@ function SpearFx.launch(o: LaunchOpts): Flight
 		nextBolt = 0.15,
 		trails = {},
 		landPos = nil,
+		legacy = RS:GetAttribute("PerfLegacy") == true,
 	}
 	local m = f.model
 	if m then
@@ -198,6 +204,18 @@ function SpearFx.launch(o: LaunchOpts): Flight
 			end
 		end
 		if m:GetAttribute("V15Spear") and not f.crashed then f.v15 = NativeFlight.Attach(m,o.spear,tierIdx) end
+		if not f.legacy then
+			-- один обход при броске: в кадре посадки GetDescendants по ~1000 деталей не нужен
+			local bp, em = {}, {}
+			for _, e in m:GetDescendants() do
+				if e:IsA("BasePart") then
+					table.insert(bp, e)
+				elseif e:IsA("ParticleEmitter") then
+					table.insert(em, e)
+				end
+			end
+			f.baseParts, f.emitters = bp, em
+		end
 	end
 	-- старт
 	if f.crashed then
@@ -247,8 +265,69 @@ end
 
 
 
+-- Studio: одна строка [Perf] на бросок; печатается, когда закончились и синхронная часть, и отложенные
+local function perfDone(perf: any)
+	if not perf then
+		return
+	end
+	perf.pend -= 1
+	if perf.pend > 0 then
+		return
+	end
+	print(string.format("[Perf] land shrink=%.1f wave=%.1f v15=%.1f impact=%.1f total=%.1f ms parts=%d", perf.shrink, perf.wave, perf.v15, perf.impact, perf.sync + perf.shrink + perf.v15late, perf.parts))
+end
+
+-- Studio: самый длинный кадр за 1,2 с после посадки своего копья (включая старт раскрытия)
+local function watchHitch(legacy: boolean)
+	local worst = 0
+	local t0 = os.clock()
+	local long: { string } = {} -- V74: кадры длиннее 34 мс со временем от посадки: видно, посадка это (+0.0) или старт сцены (+0.25)
+	local conn: RBXScriptConnection? = nil
+	conn = RunService.RenderStepped:Connect(function(dt)
+		if dt > worst then
+			worst = dt
+		end
+		if dt > 0.034 and #long < 8 then
+			table.insert(long, string.format("+%.2fs:%.0f", os.clock() - t0, dt * 1000))
+		end
+		if os.clock() - t0 >= 1.2 then
+			if conn then
+				conn:Disconnect()
+				conn = nil
+			end
+			print(string.format("[Perf] hitch max_dt=%.1f ms mode=%s long=[%s]", worst * 1000, if legacy then "legacy" else "new", table.concat(long, " ")))
+		end
+	end)
+end
+
+-- Большую модель убираем по кускам, а не одним Destroy на ~1000 деталей
+local function destroyChunked(m: Model, list: { BasePart }?)
+	task.spawn(function()
+		if list then
+			for i, part in list do
+				part:Destroy()
+				if i % DESTROY_CHUNK == 0 then
+					RunService.Heartbeat:Wait()
+				end
+			end
+		end
+		m:Destroy()
+	end)
+end
+
 local function land(f: Flight)
 	f.done = true
+	local legacy = f.legacy == true
+	local perf: any = nil
+	local tStart = 0
+	if IS_STUDIO then
+		perf = { pend = 1, shrink = 0, wave = 0, v15 = 0, impact = 0, sync = 0, v15late = 0, parts = 0 }
+		tStart = os.clock()
+		if f.isLocal then
+			watchHitch(legacy)
+		end
+	end
+	debug.profilebegin("SpearLand")
 	local fly = flightSounds[f]
 	if fly then
 		fly:Destroy()
@@ -271,9 +350,15 @@ local function land(f: Flight)
 		for _, tr in f.trails do
 			tr.Enabled = false
 		end
-		for _, e in m:GetDescendants() do
-			if e:IsA("ParticleEmitter") then
+		if f.emitters and not legacy then
+			for _, e in f.emitters do
 				e.Enabled = false
+			end
+		else
+			for _, e in m:GetDescendants() do
+				if e:IsA("ParticleEmitter") then
+					e.Enabled = false
+				end
 			end
 		end
 		if f.crashed then
@@ -288,37 +373,112 @@ local function land(f: Flight)
 		end
 		-- V66: копьё исчезает сразу после удара (раньше торчало в земле до конца сцены улова и закрывало зверя):
 		-- за 0.16 с сжимается к середине и пропадает во вспышке
-		task.delay(0.05, function()
-			if not m.Parent then
-				return
-			end
-			local mid = m:GetPivot().Position
-			local t0 = os.clock()
-			while m.Parent and os.clock() - t0 < 0.16 do
-				local k = (os.clock() - t0) / 0.16
-				pcall(function()
-					m:ScaleTo(math.max(0.05, 1 - k * k))
-				end)
-				RunService.RenderStepped:Wait()
-			end
-			if m.Parent then
-				m:Destroy()
-			end
+		local function flash(mid: Vector3)
 			Fx.burst(mid, { tex = "sparkle", color = s.trail[1], color2 = Color3.new(1, 1, 1), n = 8, speed = NumberRange.new(3, 8), size = 0.5, life = 0.45, accel = Vector3.new(0, 3, 0) })
-		end)
+		end
+		if perf then
+			perf.pend += 1
+		end
+		if not legacy and f.baseParts and #f.baseParts >= 40 then
+			-- большая модель (V15 до ~1100 деталей): ScaleTo каждый кадр слишком дорог. Ждём те же 0,21 с, потом
+			-- одним движением снимаем модель из мира и показываем ту же вспышку; уборка деталей идёт кусками.
+			task.delay(0.21, function()
+				if m.Parent then
+					local t0 = os.clock()
+					local mid = m:GetPivot().Position
+					m.Parent = nil
+					flash(mid)
+					destroyChunked(m, f.baseParts)
+					if perf then
+						perf.shrink += (os.clock() - t0) * 1000
+					end
+				end
+				perfDone(perf)
+			end)
+		else
+			task.delay(0.05, function()
+				if not m.Parent then
+					perfDone(perf)
+					return
+				end
+				local mid = m:GetPivot().Position
+				local t0 = os.clock()
+				while m.Parent and os.clock() - t0 < 0.16 do
+					local k = (os.clock() - t0) / 0.16
+					local c0 = os.clock()
+					debug.profilebegin("SpearLand.shrink")
+					pcall(function()
+						m:ScaleTo(math.max(0.05, 1 - k * k))
+					end)
+					debug.profileend()
+					if perf then
+						perf.shrink += (os.clock() - c0) * 1000
+					end
+					RunService.RenderStepped:Wait()
+				end
+				if m.Parent then
+					m:Destroy()
+				end
+				flash(mid)
+				perfDone(perf)
+			end)
+		end
 	end
 	-- V66: от точки удара по земле расходится волна кубиков (у срыва маленькая)
-	local okWave, errWave = pcall(Fx.groundWave, p - Vector3.new(0, 0.4, 0), if f.crashed then 3.5 else 4.5 + 1.3 * f.tier, if f.crashed then 0.5 else 0.6 + 0.18 * f.tier)
+	local cw = os.clock()
+	debug.profilebegin("SpearLand.wave")
+	local okWave, errWave = pcall(Fx.groundWave, p - Vector3.new(0, 0.4, 0), if f.crashed then 3.5 else 4.5 + 1.3 * f.tier, if f.crashed then 0.5 else 0.6 + 0.18 * f.tier, legacy)
+	debug.profileend()
+	if perf then
+		perf.wave = (os.clock() - cw) * 1000
+		perf.parts = if okWave and type(errWave) == "number" then errWave else 0
+	end
 	if not okWave then
 		warn("[SpearFx] ground wave: " .. tostring(errWave))
 	end
 	if f.v15 then
-		f.v15:Land(p-Vector3.yAxis*.35,f.dir)
+		local v15 = f.v15
+		local dir = f.dir
+		local function land15(): number
+			local t0 = os.clock()
+			debug.profilebegin("SpearLand.v15")
+			v15:Land(p-Vector3.yAxis*.35,dir)
+			debug.profileend()
+			return (os.clock() - t0) * 1000
+		end
+		if legacy then
+			local ms = land15()
+			if perf then
+				perf.v15 = ms
+			end
+		else
+			-- VFX V15 (кольца, лучи, 24 кубика) строим кадром позже волны: не всё в одном кадре
+			if perf then
+				perf.pend += 1
+			end
+			RunService.RenderStepped:Once(function()
+				local okLand, resLand = pcall(land15)
+				if perf then
+					perf.v15 = if okLand then resLand else 0
+					perf.v15late = perf.v15
+				end
+				if not okLand then
+					warn("[SpearFx] v15 land: " .. tostring(resLand))
+				end
+				perfDone(perf)
+			end)
+		end
 		Sfx.at(p,"hit",1.1-f.tier*.06,.7+f.tier*.05)
 	elseif f.crashed then
+		local t0 = os.clock()
 		Fx.impact("dust", p, s.trail[1], s.trail[2], 1)
+		if perf then
+			perf.impact = (os.clock() - t0) * 1000
+		end
 		Sfx.at(p, "hit_ground", nil, 0.7)
 	else
+		local t0 = os.clock()
+		debug.profilebegin("SpearLand.impact")
 		-- V46: «Reduced Effects» (Fx.lowFx) раньше не влияла на посадку копья: на слабом телефоне она строила до ~130 деталей
 		local low = Fx.lowFx == true
 		local k = 1 + 0.35 * (f.tier - 1)
@@ -339,11 +499,20 @@ local function land(f: Flight)
 		if f.isLocal or camDist < 60 then
 			Fx.shake(tier.shake, 0.4 + tier.shake * 0.4)
 		end
+		debug.profileend()
+		if perf then
+			perf.impact = (os.clock() - t0) * 1000
+		end
 	end
 	if f.onLand then
 		task.spawn(f.onLand, p)
 	end
 	SpearFx.Landed:Fire(p, f.tier)
+	debug.profileend()
+	if perf then
+		perf.sync = (os.clock() - tStart) * 1000
+	end
+	perfDone(perf)
 end
 
 RunService.RenderStepped:Connect(function(dt)

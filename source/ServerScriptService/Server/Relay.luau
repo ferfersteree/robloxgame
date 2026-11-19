@@ -2,12 +2,23 @@
 -- Пересылка того, что должны видеть все: позы, эффекты бросков/раскрытий, занятость дорожек зоны для кидания.
 local Players = game:GetService("Players")
 local RS = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 
 local Net = require(RS.Shared.Net)
 local Config = require(RS.Shared.Config)
 local PoseData = require(RS.Shared.PoseData) :: any
 local Cosmetics = require(script.Parent.Cosmetics)
 local Util = require(RS.Shared.Util)
+
+-- V78: владелец попросил вернуть острову прежний вид и убрать полосу препятствий совсем.
+-- false: не менять материалы стартового острова (остаётся пластик с шипами, как было)
+local RESTYLE_MATERIALS = false
+-- true: полоса препятствий убирается с карты целиком; false: строится длинная трасса V74 (buildCourse)
+local REMOVE_COURSE = true
+-- true: детали, которые этот скрипт строит сам (роща на месте музея), в прежнем стиле: пластик с шипами сверху
+local CLASSIC_STYLE = true
+-- V80: «оставь только хижины»: на месте музея ничего не строим (true вернёт рощу из 94 деталей: деревья, скамейки, фонари)
+local KEEP_GROVE = false
 
 local Relay = {}
 
@@ -56,24 +67,30 @@ local function setDumbbells(player: Player, on: boolean)
 		end
 		return
 	end
-	local tpl = RS.Assets:FindFirstChild("Dumbbell")
-	if not tpl or not tpl:IsA("Model") then
-		return
-	end
 	local level = Cosmetics.dumbbellLevel(player)
-	local look = Config.DUMBBELL_LOOK[math.clamp(level, 1, #Config.DUMBBELL_LOOK)]
+	local tpl = RS.Assets:FindFirstChild("Dumbbell")
 	for _, side in { "RightHand", "LeftHand" } do
 		local hand = char:FindFirstChild(side) :: BasePart?
 		if hand then
-			local m = tpl:Clone()
-			m.Name = "HeldDumbbell"
-			for _, p in m:GetDescendants() do
-				if p:IsA("BasePart") and p:GetAttribute("Weight") then
-					p.Color = look.color
-					p.Material = look.material
+			local ok, built = pcall(Util.dumbbell, level)
+			local m: Model? = ok and built or nil
+			if not m and tpl and tpl:IsA("Model") then
+				-- запасной путь: старый шаблон, перекрашенный
+				local look = Config.DUMBBELL_LOOK[math.clamp(level, 1, #Config.DUMBBELL_LOOK)]
+				m = tpl:Clone()
+				for _, p in (m :: Model):GetDescendants() do
+					if p:IsA("BasePart") and p:GetAttribute("Weight") then
+						p.Color = look.color
+						p.Material = look.material
+					end
 				end
 			end
-			m:ScaleTo(look.size * 0.8)
+			if not m then
+				continue
+			end
+			m.Name = "HeldDumbbell"
+			-- новые модели уже нужного размера; у запасного шаблона прежний масштаб по уровню
+			m:ScaleTo(if ok and built then 0.85 else Config.DUMBBELL_LOOK[math.clamp(level, 1, #Config.DUMBBELL_LOOK)].size * 0.8)
 			local root = m.PrimaryPart
 			if root then
 				m:PivotTo(hand.CFrame * CFrame.new(0, -0.1, 0) * CFrame.Angles(0, math.rad(90), 0))
@@ -140,6 +157,14 @@ FxEv.OnServerEvent:Connect(function(player: Player, payload: any)
 				continue
 			end
 			out[key] = v
+		end
+	end
+	-- V82: чужой бросок тоже никогда не уходит дальше предела (за ним вулкан)
+	local to = out.to
+	if typeof(to) == "Vector3" then
+		local capZ = Config.FOREST_ORIGIN_Z - Config.MAX_THROW_DISTANCE
+		if to.Z < capZ then
+			out.to = Vector3.new(to.X, to.Y, capZ)
 		end
 	end
 	for _, p in Players:GetPlayers() do
@@ -283,6 +308,936 @@ for _, zone in ambushFolder:GetChildren() do
 	local okRed, errRed = pcall(redZone, zone)
 	if not okRed then
 		warn("[Relay] red throwing floor: " .. tostring(errRed))
+	end
+end
+
+---------------------------------------------------------------------
+-- Остров при старте сервера: музей убран, полоса препятствий пересобрана, материалы посвежее.
+-- Инструмент сборки меняет только скрипты, карту в файле места не правит, поэтому всё делается кодом.
+-- Порядок: музей и полоса (синхронно, до входа игроков), материалы (отдельным потоком, с паузами).
+---------------------------------------------------------------------
+do
+	local mapRoot = ambushFolder.Parent :: Instance
+	local GROUND = 0.1 -- верх земли острова (Village/Ground)
+	local MAT = Enum.Material
+
+	local function mk(parent: Instance, name: string, size: Vector3, cf: CFrame, color: Color3, mat: Enum.Material, cyl: boolean?): Part
+		local p = Instance.new("Part")
+		p.Name = name
+		if cyl then
+			p.Shape = Enum.PartType.Cylinder
+		end
+		p.Anchored = true
+		p.Size = size
+		p.CFrame = cf
+		p.Color = color
+		if CLASSIC_STYLE and mat ~= Enum.Material.Neon then
+			p.Material = Enum.Material.Plastic
+			p.TopSurface = Enum.SurfaceType.Studs
+		else
+			p.Material = mat
+			p.TopSurface = Enum.SurfaceType.Smooth
+		end
+		p.BottomSurface = Enum.SurfaceType.Smooth
+		p.Parent = parent
+		return p
+	end
+	-- вертикальный цилиндр от y0 до y1 (у цилиндра Part ось X, поэтому поворот на 90 градусов вокруг Z)
+	local function column(parent: Instance, name: string, x: number, z: number, y0: number, y1: number, dia: number, color: Color3, mat: Enum.Material): Part
+		return mk(parent, name, Vector3.new(y1 - y0, dia, dia), CFrame.new(x, (y0 + y1) / 2, z) * CFrame.Angles(0, 0, math.rad(90)), color, mat, true)
+	end
+
+	-------------------------------------------------------------------
+	-- 1. Музей: здание и дорога к нему убираются, на его месте небольшая роща.
+	-- Plot6Access / RearEntrance* на модели не читает ни один скрипт, а участков всего пять, так что пол прохода не нужен.
+	-------------------------------------------------------------------
+	local function buildGrove()
+		local grove = Instance.new("Folder")
+		grove.Name = "MuseumGrove"
+		local rng = Random.new(73)
+		local stone = Color3.fromRGB(150, 146, 138)
+		local bark = Color3.fromRGB(112, 78, 48)
+		local greens = { Color3.fromRGB(86, 150, 70), Color3.fromRGB(98, 166, 78), Color3.fromRGB(70, 132, 64), Color3.fromRGB(118, 174, 84) }
+		-- дорожка из плит вдоль бывшего зала (10 деталей)
+		for i = 0, 9 do
+			mk(grove, "PathStone", Vector3.new(5, 0.2, 9.4), CFrame.new(169, GROUND + 0.1, 30 + i * 11.5), stone, MAT.Cobblestone)
+		end
+		-- деревья из блоков (11 по 4 детали)
+		local placed: { Vector3 } = {}
+		local tries = 0
+		while #placed < 11 and tries < 300 do
+			tries += 1
+			local x, z = rng:NextNumber(134, 204), rng:NextNumber(34, 138)
+			local ok = math.abs(x - 169) > 8
+			for _, q in placed do
+				if (q.X - x) * (q.X - x) + (q.Z - z) * (q.Z - z) < 110 then
+					ok = false
+					break
+				end
+			end
+			if ok then
+				table.insert(placed, Vector3.new(x, 0, z))
+				local th = rng:NextNumber(5, 7)
+				local g = greens[rng:NextInteger(1, #greens)]
+				mk(grove, "TreeTrunk", Vector3.new(1.6, th, 1.6), CFrame.new(x, GROUND + th / 2, z), bark, MAT.Wood)
+				mk(grove, "TreeLeaves", Vector3.new(7, 2.6, 7), CFrame.new(x, GROUND + th + 0.8, z), g, MAT.LeafyGrass)
+				mk(grove, "TreeLeaves", Vector3.new(5, 2.4, 5), CFrame.new(x, GROUND + th + 2.8, z), g, MAT.LeafyGrass)
+				mk(grove, "TreeLeaves", Vector3.new(3, 2, 3), CFrame.new(x, GROUND + th + 4.8, z), g, MAT.LeafyGrass)
+			end
+		end
+		-- кусты (12)
+		for _ = 1, 12 do
+			local x, z = rng:NextNumber(134, 204), rng:NextNumber(32, 140)
+			if math.abs(x - 169) < 5 then
+				x += if x < 169 then -6 else 6
+			end
+			local s = rng:NextNumber(2.4, 3.6)
+			mk(grove, "Bush", Vector3.new(s, 1.6, s), CFrame.new(x, GROUND + 0.8, z), greens[rng:NextInteger(1, #greens)], MAT.LeafyGrass)
+		end
+		-- скамейки у дорожки (3 по 4 детали)
+		for i, z in { 55, 85, 115 } do
+			local side = if i % 2 == 1 then -1 else 1
+			local bx = 169 + side * 5
+			mk(grove, "BenchSeat", Vector3.new(1.4, 0.4, 4.4), CFrame.new(bx, GROUND + 1.5, z), Color3.fromRGB(176, 128, 76), MAT.WoodPlanks)
+			mk(grove, "BenchBack", Vector3.new(0.3, 1.1, 4.4), CFrame.new(bx + side * 0.6, GROUND + 2.2, z), Color3.fromRGB(150, 104, 62), MAT.WoodPlanks)
+			for _, dz in { -1.8, 1.8 } do
+				mk(grove, "BenchLeg", Vector3.new(1.2, 1.3, 0.4), CFrame.new(bx, GROUND + 0.65, z + dz), bark, MAT.Wood)
+			end
+		end
+		-- фонари (4 по 2 детали)
+		for _, z in { 50, 118 } do
+			for _, side in { -1, 1 } do
+				column(grove, "LampPost", 169 + side * 4.2, z, GROUND, GROUND + 6, 0.4, Color3.fromRGB(60, 52, 46), MAT.Metal)
+				mk(grove, "LampLight", Vector3.new(1.1, 1.1, 1.1), CFrame.new(169 + side * 4.2, GROUND + 6.4, z), Color3.fromRGB(255, 214, 130), MAT.Neon)
+			end
+		end
+		-- клумбы (4 по 2 детали)
+		for i = 1, 4 do
+			local x = if i % 2 == 1 then 150 else 188
+			local z = 48 + i * 20
+			mk(grove, "FlowerBed", Vector3.new(4, 0.6, 4), CFrame.new(x, GROUND + 0.3, z), Color3.fromRGB(110, 82, 58), MAT.Wood)
+			mk(grove, "Flowers", Vector3.new(3.2, 0.5, 3.2), CFrame.new(x, GROUND + 0.8, z), if i % 2 == 1 then Color3.fromRGB(232, 96, 130) else Color3.fromRGB(246, 200, 70), MAT.Grass)
+		end
+		grove.Parent = mapRoot
+	end
+
+	local function removeMuseum()
+		if mapRoot:GetAttribute("MuseumRemoved") then
+			return
+		end
+		local hall = mapRoot:FindFirstChild("Showroom")
+		if hall then
+			hall:Destroy()
+		end
+		local roads = mapRoot:FindFirstChild("Roads")
+		if roads then
+			for _, r in roads:GetChildren() do
+				if string.sub(r.Name, 1, 10) == "MuseumRoad" then
+					r:Destroy()
+				end
+			end
+		end
+		mapRoot:SetAttribute("MuseumRemoved", true)
+		if not KEEP_GROVE then
+			return
+		end
+		local okGrove, errGrove = pcall(buildGrove)
+		if not okGrove then
+			warn("[Relay] museum grove: " .. tostring(errGrove))
+		end
+	end
+
+	-------------------------------------------------------------------
+	-- 2. Полоса препятствий. Старт (StartPad/Start/Prompt/StartSign) остаётся, финиш и батуты переезжают,
+	-- ступени, брёвна и монетки строятся заново. Клиент (Activities.course) ищет детали по атрибутам
+	-- CourseCoin / Finish / Bounce, так что они сохранены.
+	-- Площадки в таблице: { вид, x, z, ширина, глубина, верх y [, фаза мигания] }, у круглых (stump, mush) глубина 0.
+	-- Ходьба: WalkSpeed 20, прыжок ~7 в высоту и ~11 в длину. Зазор считается от края до края (по настоящей форме),
+	-- пределы: зазор не больше 8.5 вниз/вровень, 7 при подъёме до 3, 5.5 при подъёме до 5.5; подъём за раз не больше 5.5.
+	-- Подвижные препятствия не возят игрока, их надо пережидать: стены (3), крутящаяся балка (4), мигающие
+	-- площадки (4 и 6), качающиеся брёвна (7). Падение никого не убивает: с земли до площадок отдыха (pad) до 5 в высоту
+	-- запрыгнуть можно, так что вернуться к нужному этапу можно пешком. Батуты (этап 5) стоят на пути как обычные площадки.
+	--
+	--   N   откуда -> куда    зазор  подъём  (куда: x, z, верх y)
+	--   1  start -> stump  gap  4.4  dy +0.6   (-140.5, 30) y 1.1
+	--   2  stump -> stump  gap  5.5  dy +0.5   (-148, 31.5) y 1.6
+	--   3  stump -> stump  gap  6.0  dy +0.5   (-155.5, 29) y 2.1
+	--   4  stump -> stump  gap  6.5  dy +0.5   (-163, 32.5) y 2.6
+	--   5  stump -> stump  gap  6.3  dy +0.5   (-170, 36.5) y 3.1
+	--   6  stump -> pad    gap  5.1  dy +0.4   (-172, 45.5) y 3.5
+	--   7  pad   -> plank  gap  5.5  dy +0.4   (-162.5, 51) y 3.9
+	--   8  plank -> plank  gap  5.5  dy +0.4   (-155, 47) y 4.3
+	--   9  plank -> plank  gap  5.7  dy +0.4   (-148, 52) y 4.7
+	--  10  plank -> plank  gap  5.1  dy +0.3   (-141, 48) y 5
+	--  11  plank -> pad    gap  6.3  dy +0.0   (-139, 58) y 5
+	--  12  pad   -> log    gap  6.3  dy +0.0   (-150.5, 64) y 5
+	--  13  log   -> slab   gap  4.5  dy +0.0   (-163.5, 66) y 5
+	--  14  slab  -> log    gap  4.0  dy +0.0   (-176, 66) y 5
+	--  15  log   -> pad    gap  6.8  dy +0.0   (-176, 77) y 5
+	--  16  pad   -> slab   gap  5.0  dy +0.0   (-163, 80) y 5
+	--  17  slab  -> ghost  gap  5.5  dy +0.0   (-151, 81) y 5
+	--  18  ghost -> ghost  gap  5.6  dy +0.0   (-143, 86.5) y 5
+	--  19  ghost -> ghost  gap  3.8  dy +0.0   (-138.5, 93) y 5
+	--  20  ghost -> pad    gap  4.5  dy +0.0   (-143, 102) y 5
+	--  21  pad   -> mush   gap  4.3  dy -0.6   (-151.5, 104) y 4.4
+	--  22  mush  -> mush   gap  6.1  dy -0.6   (-159, 100) y 3.8
+	--  23  mush  -> tramp  gap  5.1  dy -0.8   (-168, 105) y 3
+	--  24  tramp -> tramp  gap  5.0  dy +0.0   (-168, 116) y 3
+	--  25  tramp -> mush   gap  4.4  dy +1.4   (-159.5, 120) y 4.4
+	--  26  mush  -> mush   gap  5.8  dy +0.6   (-152, 117) y 5
+	--  27  mush  -> pad    gap  5.3  dy +0.0   (-144, 124) y 5
+	--  28  pad   -> ghost  gap  3.0  dy +1.0   (-146.5, 131.5) y 6
+	--  29  ghost -> ghost  gap  4.1  dy +1.0   (-153.5, 135.5) y 7
+	--  30  ghost -> ghost  gap  3.8  dy +1.0   (-160, 131) y 8
+	--  31  ghost -> pad    gap  3.5  dy +1.0   (-169, 133) y 9
+	--  32  pad   -> slab   gap  3.6  dy +0.0   (-160, 141) y 9
+	--  33  slab  -> slab   gap  5.0  dy +0.5   (-151, 145) y 9.5
+	--  34  slab  -> slab   gap  5.0  dy +0.5   (-142, 141) y 10
+	--  35  slab  -> stump  gap  5.0  dy +2.0   (-140, 149) y 12
+	--  36  stump -> stump  gap  6.2  dy +1.8   (-147, 153) y 13.8
+	--  37  stump -> stump  gap  5.8  dy +1.6   (-154.5, 152) y 15.4
+	--  38  stump -> stump  gap  6.3  dy +1.6   (-162, 149) y 17
+	--  39  stump -> finish  gap  5.1  dy +1.0   (-171, 149) y 18
+	--
+	-- Этапы: 1 пеньки (1-6), 2 доски зигзагом (7-11), 3 раздвижные стены (12-15), 4 балка и мигающие (16-20),
+	-- 5 грибы и батуты (21-27), 6 мигающий небесный путь (28-31), 7 качающиеся брёвна (32-34), 8 башня к финишу (35-39).
+	-------------------------------------------------------------------
+	local NODES: { { any } } = {
+		{ "start", -132, 30, 6, 6, 0.5 },
+		{ "stump", -140.5, 30, 2.2, 0, 1.1 },
+		{ "stump", -148, 31.5, 2, 0, 1.6 },
+		{ "stump", -155.5, 29, 1.8, 0, 2.1 },
+		{ "stump", -163, 32.5, 1.8, 0, 2.6 },
+		{ "stump", -170, 36.5, 1.8, 0, 3.1 },
+		{ "pad", -172, 45.5, 6, 6, 3.5 },
+		{ "plank", -162.5, 51, 2.6, 1.4, 3.9 },
+		{ "plank", -155, 47, 2.6, 1.4, 4.3 },
+		{ "plank", -148, 52, 2.6, 1.4, 4.7 },
+		{ "plank", -141, 48, 2.6, 1.4, 5 },
+		{ "pad", -139, 58, 6, 6, 5 },
+		{ "log", -150.5, 64, 5, 2.4, 5 },
+		{ "slab", -163.5, 66, 12, 9, 5 },
+		{ "log", -176, 66, 5, 2.4, 5 },
+		{ "pad", -176, 77, 6, 6, 5 },
+		{ "slab", -163, 80, 10, 10, 5 },
+		{ "ghost", -151, 81, 3, 3, 5, 0 },
+		{ "ghost", -143, 86.5, 3, 3, 5, -1 },
+		{ "ghost", -138.5, 93, 3, 3, 5, -2 },
+		{ "pad", -143, 102, 6, 6, 5 },
+		{ "mush", -151.5, 104, 2.4, 0, 4.4 },
+		{ "mush", -159, 100, 2.4, 0, 3.8 },
+		{ "mush", -159.5, 120, 2.4, 0, 4.4 },
+		{ "mush", -152, 117, 2.2, 0, 5 },
+		{ "pad", -144, 124, 6, 6, 5 },
+		{ "ghost", -146.5, 131.5, 3, 3, 6, -0.5 },
+		{ "ghost", -153.5, 135.5, 3, 3, 7, -1.5 },
+		{ "ghost", -160, 131, 3, 3, 8, -2.5 },
+		{ "pad", -169, 133, 8, 8, 9 },
+		{ "slab", -160, 141, 4, 4, 9 },
+		{ "slab", -151, 145, 4, 4, 9.5 },
+		{ "slab", -142, 141, 4, 4, 10 },
+		{ "stump", -140, 149, 2, 0, 12 },
+		{ "stump", -147, 153, 1.8, 0, 13.8 },
+		{ "stump", -154.5, 152, 1.8, 0, 15.4 },
+		{ "stump", -162, 149, 1.8, 0, 17 },
+		{ "finish", -171, 149, 6, 6, 18 },
+	}
+
+	-- монетки (10): между пеньками, над площадками и высоко над батутами (верх батута 3, монета на 12.5)
+	local COINS = {
+		Vector3.new(-151.8, 8.4, 30.2), Vector3.new(-148, 7.9, 52), Vector3.new(-163.5, 8.2, 66), Vector3.new(-163, 9.5, 80),
+		Vector3.new(-143, 8.2, 86.5), Vector3.new(-168, 12.5, 105), Vector3.new(-168, 12.5, 116), Vector3.new(-153.5, 10.2, 135.5),
+		Vector3.new(-151, 12.7, 145), Vector3.new(-154.5, 18.6, 152),
+	}
+	-- места батутов: первые два на пути, ещё два рядом (яма из четырёх)
+	local BOUNCE = 56
+	local TRAMPS = { Vector2.new(-168, 105), Vector2.new(-168, 116), Vector2.new(-176, 105), Vector2.new(-176, 116) }
+	local OLD_ROUTE = { CStump = true, CStumpTop = true, CLog = true, CRock = true, CPlank = true, CRope = true, CMushroom = true, CStem = true }
+
+	local function buildCourse()
+		local course = mapRoot:FindFirstChild("ObstacleCourse")
+		if not course or course:GetAttribute("CourseV2") then
+			return
+		end
+		local route = Instance.new("Folder")
+		route.Name = "Route"
+		local movers: { (number) -> () } = {}
+
+		local cBark = Color3.fromRGB(112, 78, 48)
+		local cWood = Color3.fromRGB(150, 104, 62)
+		local cPlank = Color3.fromRGB(196, 152, 98)
+		local cStone = Color3.fromRGB(112, 120, 114)
+		local cPad = Color3.fromRGB(172, 126, 78)
+		local cGhost = Color3.fromRGB(96, 206, 232)
+		local finish: Vector3? = nil
+
+		-- мигающая площадка: цикл 4 с, твёрдая 2.8 с, последние 0.7 с мигает, потом исчезает (CanCollide и прозрачность)
+		local function addGhost(p: Part, phase: number)
+			local solid, tr = true, 0
+			table.insert(movers, function(t)
+				local u = (t + phase) % 4
+				local wantSolid = u < 2.8
+				local wantTr = if u < 2.1 then 0 elseif u < 2.8 then (if math.floor(u * 6) % 2 == 0 then 0.5 else 0.1) else 0.85
+				if wantSolid ~= solid then
+					solid = wantSolid
+					p.CanCollide = wantSolid
+				end
+				if wantTr ~= tr then
+					tr = wantTr
+					p.Transparency = wantTr
+				end
+			end)
+		end
+
+		for _, n in NODES do
+			local kind, x, z, w, dd, y = n[1], n[2], n[3], n[4], n[5], n[6]
+			if kind == "stump" then
+				column(route, "Stump", x, z, GROUND, y - 0.15, w * 0.85, cBark, MAT.Wood)
+				column(route, "StumpTop", x, z, y - 0.15, y, w, Color3.fromRGB(206, 164, 108), MAT.Wood)
+			elseif kind == "mush" then
+				column(route, "MushStem", x, z, GROUND, y - 0.5, 0.9, Color3.fromRGB(240, 230, 208), MAT.SmoothPlastic)
+				column(route, "MushCap", x, z, y - 0.5, y, w, Color3.fromRGB(206, 62, 56), MAT.SmoothPlastic)
+			elseif kind == "plank" then
+				mk(route, "Plank", Vector3.new(w, 0.4, dd), CFrame.new(x, y - 0.2, z), cPlank, MAT.WoodPlanks)
+				column(route, "PlankPost", x, z, GROUND, y - 0.4, 0.5, cBark, MAT.Wood)
+			elseif kind == "log" then
+				mk(route, "Log", Vector3.new(w, 0.9, dd), CFrame.new(x, y - 0.45, z), cWood, MAT.Wood)
+				column(route, "LogPost", x, z, GROUND, y - 0.9, 0.9, cBark, MAT.Wood)
+			elseif kind == "slab" then
+				mk(route, "Slab", Vector3.new(w, 1, dd), CFrame.new(x, y - 0.5, z), cStone, MAT.Cobblestone)
+				column(route, "SlabPillar", x, z, GROUND, y - 1, math.min(2, w * 0.5), cStone, MAT.Slate)
+			elseif kind == "pad" then
+				mk(route, "RestPad", Vector3.new(w, 0.6, dd), CFrame.new(x, y - 0.3, z), cPad, MAT.WoodPlanks)
+				mk(route, "RestPadTrim", Vector3.new(w + 0.4, 0.2, dd + 0.4), CFrame.new(x, y - 0.7, z), cBark, MAT.Wood)
+				column(route, "RestPadPillar", x, z, GROUND, y - 0.8, 1.2, cBark, MAT.Wood)
+			elseif kind == "ghost" then
+				local p = mk(route, "Ghost", Vector3.new(w, 0.5, dd), CFrame.new(x, y - 0.25, z), cGhost, MAT.SmoothPlastic)
+				addGhost(p, n[7] or 0)
+			elseif kind == "finish" then
+				finish = Vector3.new(x, y, z)
+				column(route, "FinishPillar", x, z, GROUND, y - 0.5, 1.4, cBark, MAT.Wood)
+			end
+		end
+
+		-- этап 3: три стены ездят поперёк настила (шаг 4.6, цикл 4.4 с); соседние в противофазе, высота 7.5 выше прыжка
+		local function addWall(x: number, phase: number)
+			local base = CFrame.new(x, 5 + 3.75, 63.7)
+			local p = mk(route, "SlidingWall", Vector3.new(1, 7.5, 4.4), base, Color3.fromRGB(176, 72, 58), MAT.Brick)
+			table.insert(movers, function(t)
+				local k = (math.sin((t / 4.4 + phase) * 2 * math.pi) + 1) / 2
+				p.CFrame = base + Vector3.new(0, 0, 4.6 * k)
+			end)
+		end
+		addWall(-159.5, 0)
+		addWall(-163.5, 0.5)
+		addWall(-167.5, 0)
+
+		-- этап 4: балка крутится над настилом (оборот 4 с), прыгнуть надо над ней (верх 6.1 при настиле 5)
+		column(route, "SpinnerHub", -163, 80, 5, 6.2, 1.4, cBark, MAT.Wood)
+		local beam = mk(route, "SpinnerBeam", Vector3.new(9.4, 1.1, 0.9), CFrame.new(-163, 5.55, 80), Color3.fromRGB(196, 84, 60), MAT.Wood)
+		table.insert(movers, function(t)
+			beam.CFrame = CFrame.new(-163, 5.55, 80) * CFrame.Angles(0, (t % 4) * 2 * math.pi / 4, 0)
+		end)
+
+		-- этап 7: над площадками висит бревно на раме и качается +-50 градусов (цикл 3.6 с); низ бревна в 1.8 над настилом
+		local LEN = 7.4
+		local function addPendulum(sx: number, sz: number, top: number, phase: number)
+			local py = top + 9.2
+			for _, dz in { -2.7, 2.7 } do
+				column(route, "GantryPost", sx, sz + dz, GROUND, py + 0.4, 0.6, cBark, MAT.Wood)
+			end
+			mk(route, "GantryBeam", Vector3.new(0.7, 0.7, 6.1), CFrame.new(sx, py + 0.05, sz), cBark, MAT.Wood)
+			local log = mk(route, "SwingLog", Vector3.new(LEN, 1.2, 1.2), CFrame.new(sx, py - LEN / 2, sz) * CFrame.Angles(0, 0, math.rad(90)), Color3.fromRGB(132, 92, 56), MAT.Wood, true)
+			table.insert(movers, function(t)
+				local a = math.rad(50) * math.sin((t % 3.6) * 2 * math.pi / 3.6 + phase)
+				log.CFrame = CFrame.new(sx, py, sz) * CFrame.Angles(0, 0, a) * CFrame.new(0, -LEN / 2, 0) * CFrame.Angles(0, 0, math.rad(90))
+			end)
+		end
+		addPendulum(-160, 141, 9, 0)
+		addPendulum(-151, 145, 9.5, -1.4) -- второе отстаёт на ~0.8 с: игрок, прыгнувший с первой площадки в безопасный момент, попадает во второй безопасный
+
+		-- монетки: шаблон берётся у старой (атрибут CourseCoin и вид сохраняются)
+		local tpl: BasePart? = nil
+		for _, d in course:GetChildren() do
+			if d:IsA("BasePart") and d:GetAttribute("CourseCoin") then
+				tpl = d:Clone()
+				break
+			end
+		end
+		if not tpl then
+			local c = Instance.new("Part")
+			c.Name = "CourseCoin"
+			c.Shape = Enum.PartType.Cylinder
+			c.Size = Vector3.new(0.2, 1, 1)
+			c.Color = Color3.fromRGB(255, 205, 60)
+			c.Material = MAT.SmoothPlastic
+			c.Anchored = true
+			c.CanCollide = false
+			c:SetAttribute("CourseCoin", true)
+			tpl = c
+		end
+		local tplPart = tpl :: BasePart
+		local rot = tplPart.CFrame - tplPart.CFrame.Position
+		for _, pos in COINS do
+			local c = tplPart:Clone()
+			c.CFrame = CFrame.new(pos) * rot
+			c.Parent = route
+		end
+
+		-- батуты: детали Trampoline/TrampStem/TrampDot переезжают на новые места целыми группами
+		local tramps: { BasePart } = {}
+		local others: { BasePart } = {}
+		for _, d in course:GetChildren() do
+			if d:IsA("BasePart") then
+				if d.Name == "Trampoline" then
+					table.insert(tramps, d)
+				elseif d.Name == "TrampStem" or d.Name == "TrampDot" then
+					table.insert(others, d)
+				end
+			end
+		end
+		table.sort(tramps, function(a, b)
+			return a.Position.X < b.Position.X or (a.Position.X == b.Position.X and a.Position.Z < b.Position.Z)
+		end)
+		local shifts: { Vector3 } = {}
+		for i, t in tramps do
+			local tp = TRAMPS[math.min(i, #TRAMPS)]
+			shifts[i] = Vector3.new(tp.X - t.Position.X, 0, tp.Y - t.Position.Z)
+		end
+		local movedParts: { BasePart } = {}
+		local movedBy: { Vector3 } = {}
+		for _, o in others do
+			local best, bi = math.huge, 0
+			for i, t in tramps do
+				local d = Vector3.new(t.Position.X - o.Position.X, 0, t.Position.Z - o.Position.Z).Magnitude
+				if d < best then
+					best, bi = d, i
+				end
+			end
+			if bi > 0 then
+				table.insert(movedParts, o)
+				table.insert(movedBy, shifts[bi])
+			end
+		end
+		for i, t in tramps do
+			table.insert(movedParts, t)
+			table.insert(movedBy, shifts[i])
+		end
+		for i, part in movedParts do
+			part.CFrame += movedBy[i]
+		end
+		-- у старых батутов Bounce 90-150 (до 57 в высоту): с таким подбросом можно перелететь на финиш,
+		-- поэтому подброс выравнивается: 56 даёт ~8 вверх от батута и не доносит до настила небесного пути (верх 9, 10 вбок)
+		for _, t in tramps do
+			t:SetAttribute("Bounce", BOUNCE)
+		end
+
+		-- финиш: площадка, столбы и табличка переезжают целиком на верх башни
+		local pad = course:FindFirstChild("FinishPad") :: BasePart?
+		if pad and finish then
+			local delta = Vector3.new(finish.X, finish.Y - pad.Size.Y / 2, finish.Z) - pad.Position
+			for _, d in course:GetChildren() do
+				if d:IsA("BasePart") and string.sub(d.Name, 1, 6) == "Finish" then
+					d.CFrame += delta
+				end
+			end
+		end
+
+		-- старая трасса и старые монетки убираются, новая включается
+		for _, d in course:GetChildren() do
+			if OLD_ROUTE[d.Name] or d.Name == "CourseCoin" then
+				d:Destroy()
+			end
+		end
+		route.Parent = course
+		course:SetAttribute("CourseV2", true)
+
+		if #movers > 0 then
+			local acc = 0
+			RunService.Heartbeat:Connect(function(dt)
+				acc += dt
+				if acc < 1 / 30 then
+					return
+				end
+				acc = 0
+				local now = workspace:GetServerTimeNow()
+				for i = #movers, 1, -1 do
+					local ok, err = pcall(movers[i], now)
+					if not ok then
+						warn("[Relay] course mover: " .. tostring(err))
+						table.remove(movers, i)
+					end
+				end
+			end)
+		end
+	end
+
+	-------------------------------------------------------------------
+	-- 3. Материалы стартового острова: пластик с шипами заменяется по цвету и месту. Цвета не меняются.
+	-- Серые: тёмные Slate, плоские у земли Cobblestone (дороги Asphalt), крупные Rock, светлые Concrete;
+	-- белые Marble (плоские большие) или SmoothPlastic; зелёные плоские Grass, остальные LeafyGrass; красные Brick;
+	-- коричневые Wood (тонкие и плоские большие WoodPlanks); песочные Sand (плоские у земли) или Sandstone;
+	-- остальное SmoothPlastic. Neon, прозрачное и отражающее остаются как были; модели с Humanoid не трогаются.
+	-------------------------------------------------------------------
+	local ROOTS = { "StartIslandV15", "Plaza", "Village", "Roads", "Plots", "Market", "Herbalist", "Armory", "Forge", "Tracker", "Campfire", "Lookout", "TargetRange", "ObstacleCourse" }
+
+	local function pick(p: BasePart, rootName: string, nameLow: string): Enum.Material
+		local h, s, v = p.Color:ToHSV()
+		local sz = p.Size
+		local mn = math.min(sz.X, sz.Y, sz.Z)
+		local mx = math.max(sz.X, sz.Y, sz.Z)
+		local area = sz.X * sz.Z
+		local flat = p.CFrame.UpVector.Y > 0.95 and sz.Y < math.min(sz.X, sz.Z) * 0.5
+		if s < 0.14 then
+			if v > 0.86 then
+				return if flat and area >= 24 then MAT.Marble else MAT.SmoothPlastic
+			elseif v < 0.22 then
+				return MAT.Slate
+			elseif rootName == "Roads" and flat then
+				return MAT.Asphalt
+			elseif flat and p.Position.Y < 1.6 then
+				return MAT.Cobblestone
+			elseif sz.X * sz.Y * sz.Z > 80 and v < 0.7 then
+				return MAT.Rock
+			end
+			return if v < 0.5 then MAT.Slate else MAT.Concrete
+		end
+		if h >= 0.17 and h <= 0.46 then
+			return if flat and area >= 12 then MAT.Grass else MAT.LeafyGrass
+		end
+		if (h < 0.04 or h >= 0.94) and s >= 0.4 then
+			return MAT.Brick
+		end
+		if h < 0.17 then
+			if s >= 0.4 and h >= 0.04 and h < 0.09 and string.find(nameLow, "roof", 1, true) then
+				return MAT.Brick
+			elseif v >= 0.62 and s <= 0.55 and h >= 0.07 then
+				return if flat and p.Position.Y < 1.6 then MAT.Sand else MAT.Sandstone
+			elseif s > 0.6 and v > 0.7 then
+				return MAT.SmoothPlastic
+			end
+			return if (mn < 1 and mx >= 3) or (flat and area >= 16) then MAT.WoodPlanks else MAT.Wood
+		end
+		return MAT.SmoothPlastic
+	end
+
+	local function restyle()
+		if not RESTYLE_MATERIALS or mapRoot:GetAttribute("MaterialsRestyled") then
+			return
+		end
+		local lists: { { Instance } } = {}
+		local names: { string } = {}
+		local skipParts: { [Instance]: boolean } = {}
+		for _, rn in ROOTS do
+			local root = mapRoot:FindFirstChild(rn)
+			if root then
+				local list: { Instance } = {}
+				if rn == "ObstacleCourse" then
+					-- новая трасса (Route) уже со своими материалами
+					for _, ch in root:GetChildren() do
+						if ch.Name ~= "Route" then
+							table.insert(list, ch)
+							for _, d in ch:GetDescendants() do
+								table.insert(list, d)
+							end
+						end
+					end
+				else
+					list = root:GetDescendants()
+				end
+				for _, d in list do
+					if d:IsA("Humanoid") and d.Parent then
+						for _, q in d.Parent:GetDescendants() do
+							skipParts[q] = true
+						end
+					end
+				end
+				table.insert(lists, list)
+				table.insert(names, rn)
+			end
+		end
+		local SMOOTH = Enum.SurfaceType.Smooth
+		local n = 0
+		for li, list in lists do
+			local rootName = names[li]
+			for _, d in list do
+				local cn = d.ClassName
+				if cn == "Part" or cn == "WedgePart" or cn == "CornerWedgePart" then
+					local p = d :: Part
+					if p.Material == MAT.Plastic then
+						if p.Transparency < 0.1 and p.Reflectance == 0 and not skipParts[p] then
+							p.Material = pick(p, rootName, string.lower(p.Name))
+							if p.MaterialVariant ~= "" then
+								p.MaterialVariant = ""
+							end
+						end
+						-- шипы убираются у любого пластика (в том числе у стекла и деталей NPC)
+						if p.TopSurface ~= SMOOTH then
+							p.TopSurface = SMOOTH
+						end
+						if p.BottomSurface ~= SMOOTH then
+							p.BottomSurface = SMOOTH
+						end
+						if p.LeftSurface ~= SMOOTH then
+							p.LeftSurface = SMOOTH
+						end
+						if p.RightSurface ~= SMOOTH then
+							p.RightSurface = SMOOTH
+						end
+						if p.FrontSurface ~= SMOOTH then
+							p.FrontSurface = SMOOTH
+						end
+						if p.BackSurface ~= SMOOTH then
+							p.BackSurface = SMOOTH
+						end
+					end
+					n += 1
+					if n % 3000 == 0 then
+						task.wait()
+					end
+				end
+			end
+		end
+		mapRoot:SetAttribute("MaterialsRestyled", true)
+	end
+
+	local okMuseum, errMuseum = pcall(removeMuseum)
+	if not okMuseum then
+		warn("[Relay] remove museum: " .. tostring(errMuseum))
+	end
+	if REMOVE_COURSE then
+		-- V78: полосы препятствий на острове больше нет (клиентская активность без модели просто не появляется)
+		local okGone, errGone = pcall(function()
+			local course = mapRoot:FindFirstChild("ObstacleCourse")
+			if course then
+				course:Destroy()
+			end
+		end)
+		if not okGone then
+			warn("[Relay] remove obstacle course: " .. tostring(errGone))
+		end
+	else
+		local okCourse, errCourse = pcall(buildCourse)
+		if not okCourse then
+			warn("[Relay] obstacle course: " .. tostring(errCourse))
+		end
+	end
+	task.spawn(function()
+		local okStyle, errStyle = pcall(restyle)
+		if not okStyle then
+			warn("[Relay] island materials: " .. tostring(errStyle))
+		end
+	end)
+end
+
+---------------------------------------------------------------------
+-- V82: обрезка острова + облачная стена + вулкан в конце карты. Всё кодом при старте сервера (файл места не меняется).
+-- Охват острова = всё нужное (участки, лавки, площадь, дороги, полигон, смотровая, костёр, площадка для кидания) + запас.
+-- Север (к охотничьему миру) без запаса: там стена Village/ForestWall. Охотничий мир (Forest, HtmlWorld) не трогаем.
+---------------------------------------------------------------------
+local ISLAND_MARGIN = 25
+local VOLCANO_BEYOND = 1500 -- на сколько дальше предела броска стоит вулкан (центр)
+do
+	local mapRoot = ambushFolder.Parent :: Instance
+	local abs, min, max = math.abs, math.min, math.max
+
+	local function halfXZ(p: BasePart): (number, number)
+		local cf, sz = p.CFrame, p.Size
+		local r, u, l = cf.RightVector, cf.UpVector, cf.LookVector
+		return (abs(r.X) * sz.X + abs(u.X) * sz.Y + abs(l.X) * sz.Z) / 2, (abs(r.Z) * sz.X + abs(u.Z) * sz.Y + abs(l.Z) * sz.Z) / 2
+	end
+
+	local function solid(parent: Instance, name: string, size: Vector3, cf: CFrame, color: Color3, mat: Enum.Material, transp: number, collide: boolean): Part
+		local p = Instance.new("Part")
+		p.Name = name
+		p.Anchored = true
+		p.CanCollide = collide
+		p.CanQuery = false
+		p.CanTouch = false
+		p.CastShadow = false
+		p.Material = mat
+		p.Color = color
+		p.Transparency = transp
+		p.Size = size
+		p.CFrame = cf
+		p.TopSurface = Enum.SurfaceType.Smooth
+		p.BottomSurface = Enum.SurfaceType.Smooth
+		p.Parent = parent
+		return p
+	end
+
+	-------------------------------------------------------------------
+	-- 1. Остров: охват, обрезка, облака, стены
+	-------------------------------------------------------------------
+	local function cropIsland()
+		if mapRoot:GetAttribute("IslandCropped") then
+			return
+		end
+		mapRoot:SetAttribute("IslandCropped", true)
+		local x0, x1, z0, z1 = math.huge, -math.huge, math.huge, -math.huge
+		local function take(inst: Instance)
+			local list = inst:GetDescendants()
+			table.insert(list, inst)
+			for _, p in list do
+				if p:IsA("BasePart") and p.Size.Magnitude < 400 then
+					local hx, hz = halfXZ(p)
+					x0, x1 = min(x0, p.Position.X - hx), max(x1, p.Position.X + hx)
+					z0, z1 = min(z0, p.Position.Z - hz), max(z1, p.Position.Z + hz)
+				end
+			end
+		end
+		for _, name in { "Plots", "Roads", "TargetRange", "Lookout", "Campfire", "Plaza", "Armory", "Forge", "Herbalist", "Market", "Tracker", "Ambushes" } do
+			local f = mapRoot:FindFirstChild(name)
+			if f then
+				take(f)
+			end
+		end
+		if x0 == math.huge then
+			x0, x1, z0, z1 = -127, 130, -7, 146 -- запасной охват (по файлу V81)
+		end
+		x0, x1, z1 = x0 - ISLAND_MARGIN, x1 + ISLAND_MARGIN, z1 + ISLAND_MARGIN
+		x0, x1, z0, z1 = math.floor(x0), math.ceil(x1), math.floor(z0), math.ceil(z1)
+		mapRoot:SetAttribute("IslandRect", string.format("%d,%d,%d,%d", x0, x1, z0, z1))
+
+		-- большие плиты земли и утёса: уменьшаются до охвата (обычные Part без поворота)
+		local function shrink(p: Instance?)
+			if not p or p.ClassName ~= "Part" then
+				return
+			end
+			local part = p :: Part
+			if part.Shape ~= Enum.PartType.Block or abs(part.CFrame.RightVector.X) < 0.999 or abs(part.CFrame.UpVector.Y) < 0.999 then
+				return
+			end
+			local pos, sz = part.Position, part.Size
+			local ax0, ax1 = max(pos.X - sz.X / 2, x0), min(pos.X + sz.X / 2, x1)
+			local az0, az1 = max(pos.Z - sz.Z / 2, z0), min(pos.Z + sz.Z / 2, z1)
+			if ax1 <= ax0 or az1 <= az0 then
+				return
+			end
+			part.Size = Vector3.new(ax1 - ax0, sz.Y, az1 - az0)
+			part.CFrame = CFrame.new((ax0 + ax1) / 2, pos.Y, (az0 + az1) / 2) * part.CFrame.Rotation
+		end
+		local village = mapRoot:FindFirstChild("Village")
+		local art = mapRoot:FindFirstChild("StartIslandV15")
+		shrink(village and village:FindFirstChild("Ground"))
+		local chunk1 = art and art:FindFirstChild("IslandArtChunk_1")
+		shrink(chunk1 and chunk1:FindFirstChild("CliffCore"))
+
+		-- яйца и светлячки (задание «найди 5 яиц») за краем переезжают внутрь
+		local coll = mapRoot:FindFirstChild("Collectibles")
+		if coll then
+			for _, p in coll:GetDescendants() do
+				if p:IsA("BasePart") then
+					local pos = p.Position
+					local nx, nz = math.clamp(pos.X, x0 + 6, x1 - 6), math.clamp(pos.Z, z0 + 6, z1 - 6)
+					if nx ~= pos.X or nz ~= pos.Z then
+						p.CFrame = p.CFrame - pos + Vector3.new(nx, pos.Y, nz)
+					end
+				end
+			end
+		end
+
+		local border = Instance.new("Folder")
+		border.Name = "IslandBorder"
+		local walls = Instance.new("Folder")
+		walls.Name = "Walls"
+		walls.Parent = border
+		local clouds = Instance.new("Folder")
+		clouds.Name = "Clouds"
+		clouds.Parent = border
+		local function wall(name: string, size: Vector3, center: Vector3)
+			solid(walls, name, size, CFrame.new(center), Color3.new(1, 1, 1), Enum.Material.SmoothPlastic, 1, true)
+		end
+		local zc, zl = (z0 + z1) / 2, (z1 - z0) + 14
+		wall("West", Vector3.new(4, 80, zl), Vector3.new(x0 - 2, 30, zc))
+		wall("East", Vector3.new(4, 80, zl), Vector3.new(x1 + 2, 30, zc))
+		wall("South", Vector3.new((x1 - x0) + 12, 80, 4), Vector3.new((x0 + x1) / 2, 30, z1 + 2))
+		-- север: пролёт перед охотничьим миром (|x| < 122) закрывает ForestWall, по краям свои секции
+		wall("NorthWest", Vector3.new(-122 - x0 + 6, 80, 4), Vector3.new((x0 - 6 - 122) / 2, 30, z0 - 2))
+		wall("NorthEast", Vector3.new(x1 - 122 + 6, 80, 4), Vector3.new((122 + x1 + 6) / 2, 30, z0 - 2))
+
+		-- облака: пухлые гроздья из блоков по краю (низ уходит под край, чтобы скрыть срез)
+		local rng = Random.new(82)
+		local tints = { Color3.fromRGB(255, 255, 255), Color3.fromRGB(240, 247, 255), Color3.fromRGB(226, 239, 252) }
+		local function cluster(ex: number, ez: number, ox: number, oz: number)
+			-- ox, oz: единичный вектор наружу; вдоль края: перпендикуляр
+			local ax, az = -oz, ox
+			local push = 3 + rng:NextNumber(0, 3)
+			local cx, cz = ex + ox * push, ez + oz * push
+			local tint = tints[rng:NextInteger(1, #tints)]
+			local function blk(along: number, out: number, y: number, la: number, lo: number, h: number, tr: number)
+				local px, pz = cx + ax * along + ox * out, cz + az * along + oz * out
+				local sx = if ox ~= 0 then lo else la
+				local sz = if ox ~= 0 then la else lo
+				solid(clouds, "Cloud", Vector3.new(sx, h, sz), CFrame.new(px, y, pz), tint, Enum.Material.SmoothPlastic, tr, false)
+			end
+			blk(0, 0, -4, rng:NextNumber(18, 24), rng:NextNumber(14, 18), 9, 0)
+			blk(rng:NextNumber(-3, 3), 0.5, 3.5, rng:NextNumber(14, 18), rng:NextNumber(11, 14), 7, 0.04)
+			blk(rng:NextNumber(-4, 4), 1.5, 9, rng:NextNumber(8, 12), rng:NextNumber(8, 10), 5, 0.12)
+			blk(-rng:NextNumber(9, 11), 1, 0, rng:NextNumber(10, 12), 10, 7, 0.22)
+			blk(rng:NextNumber(9, 11), 1, 0, rng:NextNumber(10, 12), 10, 7, 0.22)
+		end
+		local function edge(ax0: number, az0: number, ax1: number, az1: number, ox: number, oz: number)
+			local len = math.sqrt((ax1 - ax0) ^ 2 + (az1 - az0) ^ 2)
+			local n = max(1, math.floor(len / 15))
+			for i = 0, n do
+				local t = i / n
+				cluster(ax0 + (ax1 - ax0) * t, az0 + (az1 - az0) * t, ox, oz)
+			end
+		end
+		edge(x0, z1, x0, z0, -1, 0)
+		edge(x1, z1, x1, z0, 1, 0)
+		edge(x0, z1, x1, z1, 0, 1)
+		edge(x0, z0, -130, z0, 0, -1)
+		edge(130, z0, x1, z0, 0, -1)
+		border.Parent = mapRoot
+
+		-- лишнее за охватом убирается потоком, с паузами. Охотничий мир не трогаем.
+		task.spawn(function()
+			local function outside(p: BasePart): boolean
+				local hx, hz = halfXZ(p)
+				local pos = p.Position
+				return pos.X + hx < x0 or pos.X - hx > x1 or pos.Z + hz < z0 or pos.Z - hz > z1
+			end
+			local n, gone = 0, 0
+			local function sweep(root: Instance?)
+				if not root then
+					return
+				end
+				for _, d in root:GetDescendants() do
+					if d:IsA("BasePart") and not string.find(d.Name, "Wall$") and d.Name ~= "Ground" and d.Name ~= "CliffCore" and outside(d) then
+						d:Destroy()
+						gone += 1
+					end
+					n += 1
+					if n % 2500 == 0 then
+						task.wait()
+					end
+				end
+			end
+			local lod = art and art:FindFirstChild("NativeTreesLOD")
+			if lod then
+				-- деревья целиком, по центру модели
+				for _, tree in lod:GetChildren() do
+					if tree:IsA("Model") then
+						local c = tree:GetBoundingBox().Position
+						if c.X < x0 or c.X > x1 or c.Z < z0 or c.Z > z1 then
+							tree:Destroy()
+							gone += 1
+						end
+					end
+				end
+			end
+			if art then
+				for _, ch in art:GetChildren() do
+					if ch.Name ~= "NativeTreesLOD" then
+						sweep(ch)
+					end
+				end
+			end
+			sweep(village)
+			mapRoot:SetAttribute("IslandCropGone", gone)
+		end)
+	end
+
+	-------------------------------------------------------------------
+	-- 2. Вулкан за пределом броска (одним куском, без столкновений и запросов; копьё до него не долетает)
+	-------------------------------------------------------------------
+	local function buildVolcano()
+		if workspace:FindFirstChild("VolcanoEnd") then
+			return
+		end
+		local f = Instance.new("Folder")
+		f.Name = "VolcanoEnd"
+		local cz = Config.FOREST_ORIGIN_Z - Config.MAX_THROW_DISTANCE - VOLCANO_BEYOND
+		local base, height, wBase, wTop = -9, 459, 600, 140
+		local rng = Random.new(8282)
+		local rocks = { Color3.fromRGB(46, 38, 40), Color3.fromRGB(62, 50, 46), Color3.fromRGB(36, 31, 36), Color3.fromRGB(74, 58, 52) }
+		local MAT = Enum.Material
+		local function half(t: number): number
+			return (wTop + (wBase - wTop) * (1 - t) ^ 1.25) / 2
+		end
+		-- конус: 22 яруса, каждый из квадрата и такого же повёрнутого на 45 градусов (получается восьмиугольник)
+		local tiers = 22
+		local th = height / tiers
+		for k = 0, tiers - 1 do
+			local w = half((k + 0.5) / tiers) * 2
+			local y = base + th * (k + 0.5)
+			local c = rocks[rng:NextInteger(1, #rocks)]
+			solid(f, "Tier", Vector3.new(w, th * 1.03, w), CFrame.new(0, y, cz), c, MAT.Slate, 0, false)
+			solid(f, "Tier", Vector3.new(w * 0.94, th * 1.03, w * 0.94), CFrame.new(0, y, cz) * CFrame.Angles(0, math.rad(45), 0), c, MAT.Slate, 0, false)
+		end
+		local top = base + height
+		-- кратер: ободок из четырёх плит и лавовое озеро
+		local rimY = top + 6
+		solid(f, "Rim", Vector3.new(wTop, 16, 20), CFrame.new(0, rimY, cz - 60), rocks[1], MAT.Slate, 0, false)
+		solid(f, "Rim", Vector3.new(wTop, 16, 20), CFrame.new(0, rimY, cz + 60), rocks[2], MAT.Slate, 0, false)
+		solid(f, "Rim", Vector3.new(20, 16, 100), CFrame.new(-60, rimY, cz), rocks[3], MAT.Slate, 0, false)
+		solid(f, "Rim", Vector3.new(20, 16, 100), CFrame.new(60, rimY, cz), rocks[4], MAT.Slate, 0, false)
+		local lake = solid(f, "Lava", Vector3.new(104, 6, 104), CFrame.new(0, top - 2, cz), Color3.fromRGB(255, 120, 30), MAT.Neon, 0, false)
+		local light = Instance.new("PointLight")
+		light.Color = Color3.fromRGB(255, 130, 40)
+		light.Range = 60
+		light.Brightness = 5
+		light.Shadows = false
+		light.Parent = lake
+		-- мягкое свечение над кратером
+		local glow = solid(f, "Glow", Vector3.new(300, 300, 300), CFrame.new(0, top + 40, cz), Color3.fromRGB(255, 120, 40), MAT.Neon, 0.9, false)
+		glow.Shape = Enum.PartType.Ball
+		-- валуны на склонах
+		for _ = 1, 90 do
+			local t = rng:NextNumber(0.04, 0.92)
+			local ang = rng:NextNumber(0, math.pi * 2)
+			local r = half(t) * rng:NextNumber(0.8, 1.0)
+			local s = rng:NextNumber(18, 48)
+			solid(
+				f,
+				"Boulder",
+				Vector3.new(s, s * rng:NextNumber(0.6, 1), s * rng:NextNumber(0.8, 1.2)),
+				CFrame.new(math.sin(ang) * r, base + height * t, cz + math.cos(ang) * r) * CFrame.Angles(rng:NextNumber(0, 1), rng:NextNumber(0, 6), rng:NextNumber(0, 1)),
+				rocks[rng:NextInteger(1, #rocks)],
+				MAT.Slate,
+				0,
+				false
+			)
+		end
+		-- лавовые потоки по стороне, обращённой к броску (+Z): 6 потоков по 12 ступеней
+		for _ = 1, 6 do
+			local ang = math.rad(rng:NextNumber(-65, 65))
+			for j = 0, 11 do
+				local t = 0.97 - j * 0.06
+				local r = half(t) + 3
+				local pos = Vector3.new(math.sin(ang) * r, base + height * t, cz + math.cos(ang) * r)
+				local outward = Vector3.new(math.sin(ang), 0, math.cos(ang))
+				local w = 11 + j * 1.4 + rng:NextNumber(0, 3)
+				solid(f, "LavaStream", Vector3.new(w, th * 3.2, 9), CFrame.lookAt(pos, pos + outward), Color3.fromRGB(255, 100 + j * 6, 24), if j < 4 then MAT.Neon else MAT.CrackedLava, 0, false)
+			end
+		end
+		-- столб дыма: большие серые полупрозрачные блоки
+		for i = 0, 8 do
+			local s = 80 + i * 22
+			solid(
+				f,
+				"Smoke",
+				Vector3.new(s, s * 0.9, s),
+				CFrame.new(i * 18 + rng:NextNumber(-8, 8), top + 90 + i * 85, cz + i * 10) * CFrame.Angles(rng:NextNumber(0, 1), rng:NextNumber(0, 6), rng:NextNumber(0, 1)),
+				Color3.fromRGB(96 + i * 5, 94 + i * 5, 98 + i * 5),
+				MAT.SmoothPlastic,
+				0.5 + i * 0.03,
+				false
+			)
+		end
+		f:SetAttribute("CenterZ", cz)
+		f.Parent = workspace
+	end
+
+	local okCrop, errCrop = pcall(cropIsland)
+	if not okCrop then
+		warn("[Relay] island crop: " .. tostring(errCrop))
+	end
+	local okVol, errVol = pcall(buildVolcano)
+	if not okVol then
+		warn("[Relay] volcano: " .. tostring(errVol))
 	end
 end
 

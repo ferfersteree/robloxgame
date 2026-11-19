@@ -46,7 +46,7 @@ end
 
 -- Верхняя плашка активности: заголовок, значение, «Выйти»
 local function activityBar(title: string, color: Color3, onExit: () -> ()): (Frame, TextLabel)
-	local bar = UI.panel({ Color = color, Size = UDim2.fromOffset(460, 70), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 86), Radius = 18, ZIndex = 30, Parent = UI.root })
+	local bar = UI.panel({ Color = color, Size = UDim2.fromOffset(460, 70), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 100), Radius = 18, ZIndex = 30, Parent = UI.root }) -- V70: ниже новой верхней панели
 	UI.label({ Text = title, TextSize = 24, Size = UDim2.new(1, -150, 0, 28), Position = UDim2.fromOffset(16, 4), XAlign = Enum.TextXAlignment.Left, ZIndex = 32, Parent = bar })
 	-- V42: Scaled: длинная строка («⏱ 0:05 · 🪙 0/4 · target: 1:30») сжимается и не уходит под кнопку Exit
 	local val = UI.label({ Text = "", TextSize = 30, Scaled = true, MaxSize = 30, Size = UDim2.new(1, -150, 0, 34), Position = UDim2.fromOffset(16, 30), XAlign = Enum.TextXAlignment.Left, ZIndex = 32, Parent = bar })
@@ -506,10 +506,33 @@ end
 local courseCoins: { BasePart } = {}
 local finishPad: BasePart? = nil
 local startPad: BasePart? = nil
+-- Полоса пересобирается сервером при старте (новая трасса, монетки и финиш на новых местах), поэтому детали
+-- ищутся заново в ObstacleCourse; DescendantAdded подхватывает то, что подгрузилось позже
+local COURSE_PAR = 150 -- целевое время длинной полосы (то же число в Config.ACTIVITY.course.parTime)
+local COURSE_LIMIT = 360 -- потолок времени заезда, с
+local function scanCourse()
+	local course = map:FindFirstChild("ObstacleCourse")
+	if not course then
+		return
+	end
+	table.clear(courseCoins)
+	for _, d in course:GetDescendants() do
+		if d:IsA("BasePart") then
+			if d:GetAttribute("CourseCoin") then
+				table.insert(courseCoins, d)
+			elseif d:GetAttribute("Finish") then
+				finishPad = d
+			elseif d.Name == "StartPad" then
+				startPad = d
+			end
+		end
+	end
+end
 function Activities.course()
 	if Activities.busy then
 		return
 	end
+	scanCourse()
 	local root = hrp()
 	if not root or not startPad or not finishPad then
 		return
@@ -529,13 +552,13 @@ function Activities.course()
 	Sfx.play("level", 1.4, 0.4)
 	Hud.banner("3… 2… 1… GO!", Theme.C.green, "Collect coins and reach the flag", 1.4)
 	local finished = false
-	local par = Config.ACTIVITY.course.parTime
+	local par = COURSE_PAR
 	while not quit and not finished do
 		local t = os.clock() - t0
 		val.Text = string.format("⏱ %s   ·   🪙 %d/%d   ·   target: %s", Num.time(t), got, #courseCoins, Num.time(par))
 		val.TextColor3 = t <= par and Theme.C.text or Theme.C.orange
 		local r = hrp()
-		if not r or t > 180 then
+		if not r or t > COURSE_LIMIT then
 			break
 		end
 		for _, c in courseCoins do
@@ -561,7 +584,7 @@ function Activities.course()
 	if finished then
 		local tm = os.clock() - t0
 		local ok, r = Backend.call("Activity", "course", { coins = got, time = tm })
-		Hud.banner("🏁 FINISHED! " .. Num.time(tm), Theme.C.green, tm < par and "Beat the target time! +100 coins" or ("Coins: " .. got), 2.6)
+		Hud.banner("🏁 FINISHED! " .. Num.time(tm), Theme.C.green, tm < par and "Beat the target time!" or ("Coins: " .. got), 2.6)
 		UI.confetti(70)
 		Sfx.play("win", 1, 0.6)
 		if ok then
@@ -761,15 +784,23 @@ function Activities.init()
 			local cid = d:GetAttribute("Collectible")
 			if type(cid) == "string" then
 				collectibles[cid] = { part = d, base = d.CFrame }
-			elseif d:GetAttribute("CourseCoin") then
-				table.insert(courseCoins, d)
+			end
+		end
+	end
+	scanCourse()
+	map.DescendantAdded:Connect(function(d)
+		if d:IsA("BasePart") and d:IsDescendantOf(map:FindFirstChild("ObstacleCourse") or map) then
+			if d:GetAttribute("CourseCoin") then
+				if not table.find(courseCoins, d) then
+					table.insert(courseCoins, d)
+				end
 			elseif d:GetAttribute("Finish") then
 				finishPad = d
 			elseif d.Name == "StartPad" then
 				startPad = d
 			end
 		end
-	end
+	end)
 	local cf = map:FindFirstChild("Campfire")
 	if cf then
 		campfire(cf)
@@ -779,6 +810,9 @@ function Activities.init()
 	RunService.RenderStepped:Connect(function()
 		local t = os.clock()
 		for _, c in courseCoins do
+			if not c.Parent then
+				continue
+			end
 			local b = c:GetAttribute("B0") :: CFrame?
 			if not b then
 				c:SetAttribute("B0", c.CFrame)

@@ -297,8 +297,9 @@ RunService.RenderStepped:Connect(function(dt)
 	end
 end)
 
--- Клон шаблона из ReplicatedStorage.Animals, оживлённый и поставленный в cf
-function AnimalRig.spawn(spId: string, cf: CFrame, parent: Instance?, mut: string?, scale: number?): Rig?
+-- Модель зверя без Rig и без родителя: сборка, мутация, поворот и масштаб. Тяжёлая часть spawn (сотни деталей),
+-- её можно вызвать заранее, пока копьё летит, и потом отдать в spawn последним аргументом.
+function AnimalRig.build(spId: string, cf: CFrame, mut: string?, scale: number?): Model?
 	local RS = game:GetService("ReplicatedStorage")
 	local tpl = RS:FindFirstChild("Animals") and RS.Animals:FindFirstChild(spId)
 	local m=FaunaFactoryV16.Create(spId)
@@ -313,6 +314,16 @@ function AnimalRig.spawn(spId: string, cf: CFrame, parent: Instance?, mut: strin
 	m:PivotTo(cf)
 	if scale and scale ~= 1 then
 		m:ScaleTo(scale)
+	end
+	return m
+end
+
+-- Клон шаблона из ReplicatedStorage.Animals, оживлённый и поставленный в cf
+-- prebuilt: готовая модель из AnimalRig.build с теми же cf/mut/scale (тогда сборка пропускается)
+function AnimalRig.spawn(spId: string, cf: CFrame, parent: Instance?, mut: string?, scale: number?, prebuilt: Model?): Rig?
+	local m = prebuilt or AnimalRig.build(spId, cf, mut, scale)
+	if not m then
+		return nil
 	end
 	local rig = AnimalRig.new(m, parent)
 	-- Baked poses are cached from the shared template; runtime copies need geometry only.

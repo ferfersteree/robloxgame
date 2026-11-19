@@ -31,6 +31,8 @@ local FaunaFactoryV15 = require(RS:WaitForChild("V16Fauna"):WaitForChild("Factor
 local activeCoverCleanup: (() -> ())? = nil
 local activeSkipCleanup: (() -> ())? = nil -- кнопка «Skip» и её клавиши: убираются и при ошибке в сцене
 
+local IS_STUDIO = RunService:IsStudio()
+
 local Reveal = {}
 Reveal.active = false
 Reveal.count = 0
@@ -49,8 +51,15 @@ local function rarityOf(spId: string): (any, any)
 end
 
 -- The filled centre belongs to two rigid halves; .5-stud cubes never scale.
-local function makeBush(plan: any, zoneId: number)
-	local model = assert(CoverFactoryV15.CreateCover(zoneId, plan.Frame, Fx.folder, { Scale = plan.CoverScale }))
+local function makeBush(plan: any, zoneId: number, prebuilt: Model?)
+	local model: Model
+	if prebuilt then
+		-- куст собран заранее (Reveal.prepare) на том же plan.Frame: остаётся поставить в мир
+		model = prebuilt
+		model.Parent = Fx.folder
+	else
+		model = assert(CoverFactoryV15.CreateCover(zoneId, plan.Frame, Fx.folder, { Scale = plan.CoverScale }))
+	end
 	model.Name = "RevealCoverV15"
 	model:SetAttribute("Stage", "anticipation")
 	local motion = CoverMotionV15.new(model, {ZoneId=zoneId, Spread=plan.Spread})
@@ -189,7 +198,7 @@ end
 -- V65: зверь всегда в кадре. Карточка результата занимает низ экрана, поэтому камера ставит зверя в свободную
 -- верхнюю часть и подбирает расстояние по его размеру. Размер берётся из данных вида (рост, длина, ширина), а не из
 -- живой рамки модели: зверь в этот момент ещё доигрывает свой выход и может прыгать или крутиться.
-local CARD_TOP = 24 + 250 + 34 -- от низа экрана до верха карточки вместе с шапкой и штампами, в единицах холста
+local CARD_TOP = 40 + 250 + 34 -- от низа экрана до верха карточки вместе с шапкой и штампами, в единицах холста
 local GROUND_NAMES = { Ground = true, FarGround = true, Field = true, Floor = true, Path = true, Terrain = true }
 
 -- высота земли под точкой (кроны, кусты и крыши пропускаются), nil если земли не нашлось
@@ -314,7 +323,7 @@ local function resultPanel(res: any, sp: any, rar: any, fast: boolean, sz: numbe
 	local item = res.item
 	local escaped = res.escaped == true
 	local col = escaped and Theme.C.red or rar.color
-	local panel = UI.panel({ Color = Theme.C.panel, Size = UDim2.fromOffset(600, 250), AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -24), Radius = 24, LineThick = 4, ZIndex = 20, Parent = UI.reveal })
+	local panel = UI.panel({ Color = Theme.C.panel, Size = UDim2.fromOffset(600, 250), AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -40), Radius = 24, LineThick = 4, ZIndex = 20, Parent = UI.reveal })
 	local sc = Instance.new("UIScale")
 	sc.Scale = 0.3
 	sc.Parent = panel
@@ -420,9 +429,127 @@ end
 
 export type RevealOpts = { from: Vector3?, fake: boolean?, noCam: boolean?, pedestal: boolean? }
 
+-- Производные размеры и план сцены: общий код для prepare и play, чтобы заготовка не расходилась с показом
+local function derive(res: any, pos: Vector3, from: Vector3): any
+	local sp, rar = rarityOf(res.sp)
+	local sz = if res.item then Fauna150.SizeFromWeight(res.sp, res.item.w) else 1
+	local worldScale = Fauna150.WorldScale(res.sp, sz)
+	local h = sp and Fauna150.Attr(sp.id, "Height") or 2
+	h = (h or 2) * worldScale
+	local zoneId = res.zone or (sp and sp.zone) or 1
+	local coverSpec = assert(CoverFactoryV15.Get(string.format("spawn_cover_%02d",math.clamp(zoneId,1,25))))
+	local visualAnimal = CoverStageV15.ScaleAnimal(FaunaFactoryV15.Get(res.sp), worldScale)
+	if visualAnimal then h=visualAnimal.h end
+	local coverScale = CoverStageV15.CoverScale(coverSpec, visualAnimal)
+	local plan = CoverStageV15.Plan(pos,from,coverSpec,visualAnimal,coverScale)
+	return { sp = sp, rar = rar, sz = sz, worldScale = worldScale, h = h, zoneId = zoneId, visualAnimal = visualAnimal, coverScale = coverScale, plan = plan }
+end
+
+local function animalFrame(plan: any): CFrame
+	return CFrame.lookAt(plan.Start,plan.Start+plan.Direction)
+end
+
+-- Заготовка раскрытия, пока копьё ещё летит: куст, модель зверя и список для Occlusion собираются заранее.
+-- pending: текущая заготовка; claimed = true, когда play её забрал или она сброшена (поздно дособранное уничтожается).
+local pending: any = nil
+
+local function releasePrep(pr: any)
+	pr.claimed = true
+	if pr.cover then
+		pr.cover:Destroy()
+		pr.cover = nil
+	end
+	if pr.animal then
+		pr.animal:Destroy()
+		pr.animal = nil
+	end
+	if pr.occ then
+		Occlusion.discard(pr.occ)
+		pr.occ = nil
+	end
+end
+
+function Reveal.discard()
+	local pr = pending
+	pending = nil
+	if pr then
+		releasePrep(pr)
+	end
+end
+
+-- Вызывается сразу после запуска копья с тем же res и точкой посадки pos (SpearFx flight.to) и opts.from, что дальше
+-- получит Reveal.play. Без совпадения res/pos/from заготовка выбрасывается.
+function Reveal.prepare(res: any, pos: Vector3, o: RevealOpts?)
+	Reveal.discard()
+	local from = o and o.from
+	if type(res) ~= "table" or res.failed == true or type(res.sp) ~= "string" or not from then
+		return
+	end
+	local pr: any = { res = res, pos = pos, from = from, claimed = false }
+	pending = pr
+	task.spawn(function()
+		local ok, err = pcall(function()
+			local d = derive(res, pos, from)
+			pr.occ = Occlusion.prepare(d.plan.Focus, math.max(d.h, d.plan.Height))
+			task.wait()
+			if pr.claimed then
+				return
+			end
+			-- Yield: фабрика сама отдаёт кадр каждые 192 клетки
+			local cover = CoverFactoryV15.CreateCover(d.zoneId, d.plan.Frame, nil, { Scale = d.plan.CoverScale, Yield = true })
+			if pr.claimed then
+				if cover then
+					cover:Destroy()
+				end
+				return
+			end
+			pr.cover = cover
+			task.wait()
+			if pr.claimed then
+				return
+			end
+			local animal = AnimalRig.build(res.sp, animalFrame(d.plan), res.item and res.item.mut or nil, d.worldScale)
+			if pr.claimed then
+				if animal then
+					animal:Destroy()
+				end
+				return
+			end
+			pr.animal = animal
+		end)
+		if not ok then
+			warn("[Reveal] prepare: " .. tostring(err))
+		end
+	end)
+	-- страховка: заготовка, до которой не дошёл play, не висит вечно
+	task.delay(25, function()
+		if pending == pr then
+			Reveal.discard()
+		end
+	end)
+end
+
+-- Забрать заготовку для этого показа; несовпавшую уничтожает
+local function claimPrep(res: any, pos: Vector3, o: RevealOpts?): any
+	local pr = pending
+	if not pr then
+		return nil
+	end
+	pending = nil
+	local from = o and o.from
+	if pr.res == res and from and (pr.pos - pos).Magnitude < 0.05 and (pr.from - from).Magnitude < 0.05 then
+		pr.claimed = true
+		return pr
+	end
+	releasePrep(pr)
+	return nil
+end
+
 -- Главное: res — ответ Throw (или Demo fake), pos — точка на земле. Блокирует до конца.
-function Reveal.play(res: any, pos: Vector3, o: RevealOpts?)
+local function playScene(res: any, pos: Vector3, o: RevealOpts?, prep: any?)
 	local opts: RevealOpts = o or {}
+	local tPlay0 = os.clock()
+	local buildMs = 0
 	-- A tension bust still produces a normal hunt with reduced luck.
 	if res.failed == true then
 		Reveal.playCrash(res, pos, opts)
@@ -455,25 +582,46 @@ function Reveal.play(res: any, pos: Vector3, o: RevealOpts?)
 	local prevMode = Hud.mode
 	Hud.setMode("cinematic")
 	-- V61: размер особи по весу (крупные тяжелее) и настоящий размер вида рядом с игроком
-	local sz = if res.item then Fauna150.SizeFromWeight(res.sp, res.item.w) else 1
-	local worldScale = Fauna150.WorldScale(res.sp, sz)
-	local h = sp and Fauna150.Attr(sp.id, "Height") or 2
-	h = (h or 2) * worldScale
 	local from = opts.from or camera.CFrame.Position
-	local zoneId = res.zone or (sp and sp.zone) or 1
-	local coverSpec = assert(CoverFactoryV15.Get(string.format("spawn_cover_%02d",math.clamp(zoneId,1,25))))
-	local visualAnimal = CoverStageV15.ScaleAnimal(FaunaFactoryV15.Get(res.sp), worldScale)
-	if visualAnimal then h=visualAnimal.h end
-	local coverScale = CoverStageV15.CoverScale(coverSpec, visualAnimal)
-	local plan = CoverStageV15.Plan(pos,from,coverSpec,visualAnimal,coverScale)
+	local d = derive(res, pos, from)
+	local sz, worldScale, h, zoneId, visualAnimal, coverScale, plan = d.sz, d.worldScale, d.h, d.zoneId, d.visualAnimal, d.coverScale, d.plan
 	local spec = CoverStageV15.Spec(res.sp)
 	local effectPos = plan.Center
-	Occlusion.begin(plan.Focus, math.max(h,plan.Height))
+	local bush, shake, openCover, cleanupCover, coverColor, coverColor2
+	local function buildBush()
+		local tb = os.clock()
+		debug.profilebegin("Reveal.bush")
+		bush, shake, openCover, cleanupCover, coverColor, coverColor2 = makeBush(plan, zoneId, if prep then prep.cover else nil)
+		debug.profileend()
+		buildMs = (os.clock() - tb) * 1000
+	end
+	-- готовый куст ставим в мир до Occlusion.begin: иначе begin слушает DescendantAdded и ловит каждую клетку куста
+	local usedCover = prep ~= nil and prep.cover ~= nil
+	if usedCover then
+		buildBush()
+		prep.cover = nil
+		activeCoverCleanup = cleanupCover -- куст уже в мире: при ошибке дальше его уберёт обёртка Reveal.play
+	end
+	local usedOcc = prep ~= nil and prep.occ ~= nil
+	local pre = if prep then prep.occ else nil
+	if prep then
+		prep.occ = nil
+	end
+	if usedCover then
+		-- V75: постановка куста в мир и расчистка вида идут в разных кадрах (вместе они давали кадр на 10-15 мс длиннее)
+		RunService.Heartbeat:Wait()
+	end
+	debug.profilebegin("Reveal.occlusion")
+	Occlusion.begin(plan.Focus, math.max(h,plan.Height), pre)
+	debug.profileend()
+	local prepMs = (os.clock() - tPlay0) * 1000 - buildMs
 	if not opts.noCam then
 		task.spawn(moveCam, camShot(plan.Focus,plan.Height,from), fast and 0.3 or 0.7)
 	end
 	local bushSize = math.clamp(h * 0.55, 1.6, 5 * coverScale)
-	local bush,shake,openCover,cleanupCover,coverColor,coverColor2 = makeBush(plan,zoneId)
+	if not usedCover then
+		buildBush()
+	end
 	local shakeConn: RBXScriptConnection? = nil
 	local emergingRig: any = nil
 	local emergenceDone = false
@@ -586,7 +734,19 @@ function Reveal.play(res: any, pos: Vector3, o: RevealOpts?)
 	while os.clock()-openStarted<lead and bush.Parent do RunService.RenderStepped:Wait() end
 	local look = Vector3.new(from.X,pos.Y,from.Z)
 	if (look-pos).Magnitude<.1 then look=pos+Vector3.zAxis end
-	local rig = AnimalRig.spawn(res.sp,CFrame.lookAt(plan.Start,plan.Start+plan.Direction),Fx.folder,res.item and res.item.mut or nil,worldScale)
+	local usedAnimal = prep ~= nil and prep.animal ~= nil
+	local prebuiltAnimal = if prep then prep.animal else nil
+	if prep then
+		prep.animal = nil
+	end
+	local tRig = os.clock()
+	debug.profilebegin("Reveal.rig")
+	local rig = AnimalRig.spawn(res.sp,animalFrame(plan),Fx.folder,res.item and res.item.mut or nil,worldScale,prebuiltAnimal)
+	debug.profileend()
+	if IS_STUDIO then
+		local rigMs = (os.clock() - tRig) * 1000
+		print(string.format("[Perf] reveal prep=%.1f build=%.1f rig=%.1f total=%.1f ms used=%s", prepMs, buildMs, rigMs, prepMs + buildMs + rigMs, if prep then string.format("cover:%s,rig:%s,occ:%s", tostring(usedCover), tostring(usedAnimal), tostring(usedOcc)) else "none"))
+	end
 	emergingRig=rig
 	if rig then
 		local hooks = {
@@ -728,9 +888,12 @@ function Reveal.play(res: any, pos: Vector3, o: RevealOpts?)
 end
 
 -- Always restore local visibility if a reveal is interrupted by a script error.
-local playScene = Reveal.play
 function Reveal.play(res: any, pos: Vector3, opts: RevealOpts?)
-	local ok, problem = xpcall(playScene, debug.traceback, res, pos, opts)
+	local prep = claimPrep(res, pos, opts)
+	local ok, problem = xpcall(playScene, debug.traceback, res, pos, opts, prep)
+	if prep then
+		releasePrep(prep) -- что сцена не забрала (ошибка до использования), уничтожаем
+	end
 	if activeCoverCleanup then local cleanup=activeCoverCleanup;activeCoverCleanup=nil;cleanup() end
 	if activeSkipCleanup then local cleanup=activeSkipCleanup;activeSkipCleanup=nil;cleanup() end
 	Occlusion.finish()

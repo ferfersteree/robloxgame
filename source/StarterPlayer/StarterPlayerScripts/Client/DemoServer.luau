@@ -6,6 +6,7 @@ local RS = game:GetService("ReplicatedStorage")
 local Config = require(RS.Shared.Config)
 local Roll = require(RS.Shared.Roll)
 local Perks = require(script.Parent.Perks)
+local RunService = game:GetService("RunService")
 
 local Demo = {}
 
@@ -39,6 +40,7 @@ local function defaults()
 		bagLvl = 1,
 		bagCap = Config.BAG[1].cap,
 		dumbbell = Config.START.dumbbell,
+		trainPts = 0, -- V82: очки шкалы тренировки
 		spear = Config.START.spear,
 		spears = { [Config.START.spear] = 0 },
 		items = {},
@@ -52,6 +54,7 @@ local function defaults()
 		tutorial = 1,
 		settings = { music = true, sfx = true, skip = false, lowFx = false },
 		market = { sold = {} },
+		hpass = { season = -1, xp = 0, day = -1, week = -1, prog = {}, done = {}, claimed = {} },
 	}
 end
 d = defaults()
@@ -119,8 +122,95 @@ local function addXp(n: number)
 	return ups
 end
 
+---------------------------------------------------------------------
+-- V71: Hunter Pass. Прогресс заданий пропуска лежит в d.hpass; сезон/день/неделя считаются по Config.pass*.
+---------------------------------------------------------------------
+local function hpassMax(): number
+	return Config.PASS.TIERS * Config.PASS.XP_PER_TIER
+end
+
+-- Смена сезона обнуляет всё; смена дня чистит дневные задания, смена недели недельные
+local function hpassRoll()
+	local h = d.hpass
+	local n = Config.passSeason()
+	if h.season ~= n then
+		h.season = n
+		h.xp = 0
+		h.claimed = {}
+		h.prog = {}
+		h.done = {}
+		h.day = -1
+		h.week = -1
+	end
+	local day, week = Config.passDay(), Config.passWeek()
+	if h.day ~= day then
+		for _, set in Config.PASS.DAILY do
+			for _, m in set do
+				h.prog[m.id] = nil
+				h.done[m.id] = nil
+			end
+		end
+		h.day = day
+	end
+	if h.week ~= week then
+		for _, m in Config.PASS.WEEKLY do
+			h.prog[m.id] = nil
+			h.done[m.id] = nil
+		end
+		h.week = week
+	end
+end
+
+-- Опыт пропуска (не выше потолка сезона)
+local function hpassAddXp(n: number, text: string)
+	local h = d.hpass
+	local before = Config.passTier(h.xp)
+	local old = h.xp
+	h.xp = math.clamp(h.xp + n, 0, hpassMax())
+	local after = Config.passTier(h.xp)
+	emitFn("hpass", { text = text, xp = h.xp - old, tier = after, tierUp = after > before })
+end
+
+local function hpassProgress(kind: string, arg: any, amount: number)
+	if type(amount) ~= "number" or amount ~= amount or amount <= 0 then
+		return
+	end
+	hpassRoll()
+	local h = d.hpass
+	local function visit(m: any)
+		if m.kind ~= kind or h.done[m.id] then
+			return
+		end
+		local ok = true
+		if kind == "tier" or kind == "rarity" then
+			ok = type(arg) == "number" and arg >= m.arg
+		elseif kind == "zone" then
+			ok = arg == m.arg
+		elseif kind == "collect" then
+			ok = type(arg) == "string" and arg:sub(1, #m.arg) == m.arg
+		end
+		if not ok then
+			return
+		end
+		-- range считается накопительно за пропуск (у квестов там максимум)
+		local p = math.min((h.prog[m.id] or 0) + amount, m.goal)
+		h.prog[m.id] = p
+		if p >= m.goal then
+			h.done[m.id] = true
+			hpassAddXp(m.xp, m.text)
+		end
+	end
+	for _, m in Config.passDaily() do
+		visit(m)
+	end
+	for _, m in Config.PASS.WEEKLY do
+		visit(m)
+	end
+end
+
 -- Прогресс заданий
 local function progress(kind: string, arg: any, amount: number)
+	hpassProgress(kind, arg, amount)
 	for id, st in d.quests do
 		local q = Config.QUEST_BY_ID[id]
 		if q and not st.done and q.kind == kind then
@@ -186,7 +276,8 @@ H.Throw = function(args: any)
 	local crashed = args.crashed == true or chargedM >= tn.crashAt
 	-- A delayed frame must not add luck past the moment the grip slipped.
 	if crashed then chargedM = math.min(chargedM, tn.crashAt) end
-	local m = chargedM * (crashed and Config.TENSION.crashLuck or 1)
+	-- V68: множитель после срыва не ниже ×1
+	local m = math.max(1, chargedM * (crashed and Config.TENSION.crashLuck or 1))
 	local st = Config.spearStats(d.spear, d.spears[d.spear])
 	-- Slipping lowers luck, while the spear still travels the charged trajectory.
 	local frac = Config.distFrac(chargedM)
@@ -197,6 +288,8 @@ H.Throw = function(args: any)
 	d.stats.throws += 1
 	local luckBeforeCrash = chargedM * Config.distLuck(dist) * Config.powerLuck(d.power) * st.luck * boostMult("luck") * demoLuck
 	local luck = luckBeforeCrash * (crashed and Config.TENSION.crashLuck or 1)
+	-- V68: удача после срыва не ниже, чем у броска ×1
+	luck = math.max(luck, luckBeforeCrash / math.max(chargedM, 1))
 	local res: any = { m = m, chargedM = chargedM, tier = tier, crashed = crashed, dist = dist, zone = zone, luck = luck, luckBeforeCrash = luckBeforeCrash, xp = 0 }
 	if crashed then
 		d.stats.crashes += 1
@@ -313,16 +406,46 @@ H.WrapFinish = function(id: any)
 	return true, it.price * Config.WRAP_MULT
 end
 
+-- V82: бафф ×2 на 1 с от подсказки на экране; не чаще раза в ~4 с, клиенту на слово не верим
+local buffUntil = 0
+local buffOwed = false -- V83: бафф ещё не удвоил ни одного подъёма
+local lastBuff = -math.huge
+H.TrainBuff = function()
+	local now = os.clock()
+	if now - lastBuff < 4 then
+		return false
+	end
+	lastBuff = now
+	buffUntil = now + 1
+	buffOwed = true
+	return true
+end
+
+-- Подъём: очки в шкалу; полная шкала даёт Силу = bar * 1.1 (остаток переносится)
 H.Rep = function()
 	local now = os.clock()
 	if now - lastRep < Config.REP_COOLDOWN * 0.8 then
 		return false
 	end
 	lastRep = now
-	local gain = Config.DUMBBELL[d.dumbbell].gain * Perks.repMult()
-	d.power += gain
+	local info = Config.DUMBBELL[d.dumbbell] or Config.DUMBBELL[1]
+	local bar = info.bar
+	-- V83: авто-подъём идёт раз в 1.1 с, а бафф длится 1 с: если в окно не попал ни один подъём,
+	-- удваиваем первый подъём после него (не позже 0.7 с), чтобы удачная подсказка не пропадала зря
+	local buffed = now < buffUntil or (buffOwed and now < buffUntil + 0.7)
+	buffOwed = false
+	local added = info.gain * Perks.repMult() * (buffed and 2 or 1)
+	local pts = (tonumber(d.trainPts) or 0) + added
+	local fills = math.floor(pts / bar)
+	local power = 0
+	if fills > 0 then
+		pts -= fills * bar
+		power = fills * bar * Config.TRAIN_FILL_BONUS
+		d.power += power
+	end
+	d.trainPts = pts
 	progress("train", nil, 1)
-	return true, gain
+	return true, { pts = added, fills = fills, power = power, bar = bar, cur = pts }
 end
 
 H.UpgradeDumbbell = function()
@@ -587,8 +710,154 @@ H.ShopGrant = function(g: any)
 		applyPerks()
 		addCoins(st.coins)
 		return true, st.coins
+	elseif g.kind == "hpassxp" then
+		-- бандл Premium + 10 уровней: опыт только в том сезоне, где куплен; выдачу подтверждаем в любом случае
+		hpassRoll()
+		local xp = tonumber(g.xp)
+		if xp and xp == xp and xp > 0 and tonumber(g.season) == Config.passSeason() then
+			hpassAddXp(math.min(xp, hpassMax()), "Pass bundle")
+		end
+		return true, 0
 	end
 	return false
+end
+
+-- V71: пропуск. Монеты: k от цены самого дорогого имеющегося копья (не меньше первого покупного)
+local function hpassPrice(): number
+	local P = 0
+	for _, s in Config.SPEARS do
+		if s.price > 0 then
+			P = s.price
+			break
+		end
+	end
+	for id in d.spears do
+		local s = Config.SPEAR_BY_ID[id]
+		if s and s.price > P then
+			P = s.price
+		end
+	end
+	return P
+end
+
+H.HpassSync = function()
+	hpassRoll()
+	return true, d.hpass
+end
+
+H.HpassClaim = function(tier: any, lane: any)
+	hpassRoll()
+	local h = d.hpass
+	local t = tonumber(tier)
+	if not t or t ~= t or t ~= math.floor(t) or t < 1 or t > Config.PASS.TIERS then
+		return false, "No such tier"
+	end
+	if t > Config.passTier(h.xp) then
+		return false, "This tier is not unlocked yet"
+	end
+	if lane ~= "f" and lane ~= "p" then
+		return false, "No such row"
+	end
+	if lane == "p" and not Perks.hpassPremium() then
+		return false, "Premium row is locked"
+	end
+	local key = lane .. t
+	if h.claimed[key] then
+		return false, "Already claimed"
+	end
+	local r = Config.PASS.REWARDS[t]
+	local list = r and (lane == "f" and r.free or r.premium)
+	if not list or Config.passSide(list) ~= "client" then
+		return false, "This reward is claimed from the server"
+	end
+	local coins, power = 0, 0
+	local potions: { any } = {}
+	for _, it in list do
+		if it.type == "coins" then
+			coins += math.ceil(it.k * hpassPrice())
+		elseif it.type == "power" then
+			power += it.n
+		elseif it.type == "potion" and Config.BOOSTS[it.boost] and type(it.dur) == "number" then
+			table.insert(potions, it)
+		end
+	end
+	h.claimed[key] = true
+	for _, it in potions do -- V74: зелье пропуска продлевает буст, как купленное у Травницы
+		addBoost(it.boost, it.dur)
+	end
+	if coins > 0 then
+		addCoins(coins)
+	end
+	if power > 0 then
+		d.power += power
+	end
+	return true, { coins = coins, power = power, potions = #potions }
+end
+
+-- Только Studio: прибавить опыт пропуска для проверки
+H.HpassDebugXp = function(n: any)
+	if not RunService:IsStudio() then
+		return false
+	end
+	local v = tonumber(n) or 300
+	if v ~= v then
+		return false
+	end
+	hpassRoll()
+	hpassAddXp(math.clamp(math.floor(v), 0, hpassMax()), "Pass XP (Studio)")
+	return true, d.hpass.xp
+end
+
+-- V71: d.hpass из сохранения чистим по полям (вложенные таблицы приходят от клиента)
+local function cleanHpass(raw: any): any
+	local h = defaults().hpass
+	if type(raw) ~= "table" then
+		return h
+	end
+	for _, k in { "season", "xp", "day", "week" } do
+		local v = tonumber(raw[k])
+		if v and v == v and v > -1e9 and v < 1e9 then
+			h[k] = math.floor(v)
+		end
+	end
+	h.xp = math.clamp(h.xp, 0, hpassMax())
+	local known = {}
+	for _, set in Config.PASS.DAILY do
+		for _, m in set do
+			known[m.id] = m
+		end
+	end
+	for _, m in Config.PASS.WEEKLY do
+		known[m.id] = m
+	end
+	if type(raw.prog) == "table" then
+		for id, v in raw.prog do
+			local m = type(id) == "string" and known[id] or nil
+			local n = tonumber(v)
+			if m and n and n == n then
+				h.prog[id] = math.clamp(n, 0, m.goal)
+			end
+		end
+	end
+	if type(raw.done) == "table" then
+		for id, v in raw.done do
+			if type(id) == "string" and known[id] and v == true then
+				h.done[id] = true
+			end
+		end
+	end
+	if type(raw.claimed) == "table" then
+		for key, v in raw.claimed do
+			if type(key) == "string" and v == true then
+				local lane, num = key:match("^([fp])(%d+)$")
+				local t = tonumber(num)
+				if lane and t and t >= 1 and t <= Config.PASS.TIERS then
+					h.claimed[key] = true
+				end
+			end
+		end
+	end
+	return h
 end
 
 -- Загрузка сохранённого прогресса: берём только известные поля нужного типа
@@ -639,7 +908,17 @@ function Demo.load(saved: any): boolean
 			base.quests[id] = nil
 		end
 	end
-	base.dumbbell = math.clamp(math.floor(base.dumbbell), 1, #Config.DUMBBELL)
+	base.hpass = cleanHpass(base.hpass)
+	local db = tonumber(base.dumbbell)
+	if db == nil or db ~= db or db == math.huge then
+		db = 1 -- V83: NaN или мусор в сохранении не должны ронять загрузку
+	end
+	base.dumbbell = math.clamp(math.floor(db), 1, #Config.DUMBBELL)
+	local tp = tonumber(base.trainPts)
+	if tp == nil or tp ~= tp or tp < 0 or tp == math.huge then
+		tp = 0
+	end
+	base.trainPts = math.min(tp, Config.DUMBBELL[base.dumbbell].bar * 0.999)
 	base.level = math.max(1, math.floor(base.level))
 	base.coins = math.max(0, base.coins)
 	base.power = math.max(Config.START.power, base.power)
@@ -647,6 +926,7 @@ function Demo.load(saved: any): boolean
 	nextId = maxId + 1
 	tension = nil
 	applyPerks()
+	hpassRoll() -- старый сезон не должен светиться в бейдже до первого обработчика пропуска
 	return true
 end
 

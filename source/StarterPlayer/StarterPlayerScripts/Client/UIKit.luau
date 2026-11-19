@@ -854,6 +854,236 @@ function UI.button(p: ButtonProps, onClick: (() -> ())?): Frame
 	return h
 end
 
+---------------------------------------------------------------------
+-- V71: картинки интерфейса (рамки, кнопки, иконки, фоны по концептам)
+---------------------------------------------------------------------
+-- V71: картинки интерфейса. Нарисованы Астрой по концептам (ui-art/source), нарезаны и собраны в 5 листов (ui-art/atlas),
+-- загружены в Roblox. ART[имя] = { лист, x, y, ширина, высота } в пикселях листа 1024x1024.
+local ART_PAGES = {
+	"rbxassetid://112688474389659",
+	"rbxassetid://117687606442061",
+	"rbxassetid://82021756938807",
+	"rbxassetid://138724800947424",
+	"rbxassetid://132249786424867",
+	"rbxassetid://92644721234469", -- V74: лист 6: рамки лавок, карточки питомцев, иконки лавок, зелья, яйцо Astral
+	"rbxassetid://82270850809307", -- V84: лист 7: окно диалога с NPC (рама, рамка портрета, плашка реплики, табличка имени, значок «дальше»)
+}
+local ART_FULL = {
+	pass_header = { "rbxassetid://103338025764986", 1024, 256 },
+	shop_banner = { "rbxassetid://123718365046762", 1024, 341 },
+	shop_header_wide = { "rbxassetid://104155622489129", 1024, 72 }, -- широкая шапка магазина: полосы ровные, надпись Shop с листьями из рисунка Астры
+}
+local ART: { [string]: { number } } = {
+	badge = { 1, 958, 3, 54, 54 }, bar_cyan = { 1, 250, 988, 238, 21 }, bar_green = { 1, 491, 988, 238, 21 }, bar_purple = { 1, 732, 988, 236, 21 },
+	bar_track = { 1, 3, 988, 244, 23 }, broker = { 4, 3, 3, 200, 170 }, btn_big = { 4, 346, 645, 601, 109 }, btn_blue = { 5, 561, 88, 275, 74 },
+	btn_buy = { 4, 3, 645, 340, 119 }, btn_green = { 5, 497, 3, 276, 74 }, btn_grey = { 4, 151, 956, 239, 64 }, btn_orange = { 5, 3, 88, 276, 74 },
+	btn_purple = { 4, 393, 956, 237, 64 }, btn_red = { 5, 282, 88, 276, 74 }, btn_x = { 2, 893, 632, 122, 120 }, btn_yellow = { 4, 633, 956, 237, 64 },
+	charm = { 2, 470, 3, 198, 200 }, chip_blue = { 4, 3, 862, 277, 91 }, chip_dark = { 4, 565, 862, 206, 81 }, chip_gold = { 4, 354, 767, 280, 91 },
+	chip_red = { 4, 637, 767, 278, 91 }, chip_violet = { 4, 283, 862, 279, 90 }, chip_xp = { 4, 774, 862, 216, 76 }, coins_chest = { 4, 206, 3, 200, 168 },
+	coins_crate = { 3, 603, 408, 200, 189 }, coins_satchel = { 4, 815, 3, 200, 167 }, coins_vault = { 3, 3, 408, 200, 191 }, egg_amber = { 2, 559, 429, 180, 200 },
+	egg_forest = { 2, 3, 632, 178, 200 }, egg_tide = { 2, 391, 226, 190, 200 }, founder = { 3, 806, 408, 200, 187 }, ic_bag = { 2, 191, 429, 181, 200 },
+	ic_bag2 = { 2, 584, 226, 186, 200 }, ic_coin = { 1, 827, 730, 192, 200 }, ic_deer = { 2, 742, 429, 179, 200 }, ic_gear = { 3, 3, 206, 200, 199 },
+	ic_pass = { 4, 409, 3, 200, 168 }, ic_potion = { 2, 869, 3, 146, 200 }, ic_power = { 2, 3, 226, 191, 200 }, ic_quests = { 2, 773, 226, 186, 200 },
+	ic_shop = { 3, 815, 206, 200, 192 }, ic_spear = { 2, 3, 429, 185, 200 }, ic_star = { 3, 409, 206, 200, 196 }, insight = { 4, 612, 3, 200, 168 },
+	leaves = { 4, 3, 956, 145, 65 }, p_aura = { 2, 3, 835, 200, 186 }, p_calendar = { 2, 671, 3, 195, 200 }, p_check = { 4, 3, 176, 198, 166 },
+	p_clock = { 2, 717, 632, 173, 200 }, p_coins = { 4, 813, 176, 200, 145 }, p_dice = { 4, 204, 176, 200, 160 }, p_dumbbell = { 4, 157, 499, 200, 136 },
+	p_egg_amber = { 2, 540, 632, 174, 200 }, p_egg_forest = { 2, 184, 632, 175, 200 }, p_egg_storm = { 2, 362, 632, 175, 200 }, p_fair = { 3, 206, 408, 200, 191 },
+	p_free = { 3, 409, 408, 191, 191 }, p_lock = { 3, 3, 3, 172, 200 }, p_paw = { 3, 736, 793, 200, 177 }, p_potion = { 2, 375, 429, 181, 200 },
+	p_power = { 3, 206, 793, 200, 180 }, p_premium = { 4, 360, 499, 200, 132 }, p_rope = { 4, 610, 176, 200, 154 }, p_tag = { 4, 563, 499, 200, 120 },
+	p_target = { 3, 206, 206, 200, 199 }, p_x = { 3, 889, 602, 120, 119 }, panel_menu = { 1, 3, 3, 261, 724 }, panel_quests = { 1, 267, 3, 413, 321 },
+	pennant = { 4, 766, 499, 145, 91 }, potion_clover = { 3, 663, 3, 157, 200 }, potion_hands = { 3, 823, 3, 157, 200 }, potion_people = { 3, 178, 3, 159, 200 },
+	potion_sun = { 3, 502, 3, 158, 200 }, potion_target = { 3, 340, 3, 159, 200 }, row_cream = { 5, 3, 3, 491, 82 }, shield = { 1, 683, 3, 272, 234 },
+	shop_header = { 4, 3, 345, 1000, 151 }, slot = { 4, 3, 499, 151, 143 }, slot_sel = { 2, 859, 835, 152, 155 }, smith = { 3, 3, 793, 200, 187 },
+	starter = { 2, 197, 226, 191, 200 }, tile_blue = { 2, 206, 835, 324, 181 }, tile_free = { 2, 240, 3, 227, 219 }, tile_green = { 3, 3, 602, 440, 188 },
+	tile_orange = { 3, 409, 793, 324, 179 }, tile_premium = { 2, 3, 3, 234, 220 }, tile_purple = { 2, 533, 835, 323, 180 }, tile_red = { 3, 446, 602, 440, 188 },
+	timer = { 4, 3, 767, 348, 92 }, vip = { 4, 407, 176, 200, 160 }, wood_panel = { 1, 3, 730, 821, 255 }, wrap = { 3, 612, 206, 200, 194 },
+	xp_fill = { 5, 3, 165, 596, 48 }, xp_track = { 5, 3, 216, 596, 48 },
+	-- V74, лист 6
+	arrow_l = { 6, 868, 595, 108, 83 }, arrow_r = { 6, 497, 708, 108, 83 }, card_1 = { 6, 544, 3, 168, 201 }, card_2 = { 6, 715, 3, 166, 201 },
+	card_3 = { 6, 3, 208, 166, 201 }, card_4 = { 6, 172, 208, 166, 201 }, card_5 = { 6, 184, 3, 177, 202 }, card_6 = { 6, 3, 3, 178, 202 },
+	card_7 = { 6, 364, 3, 177, 202 }, cell_dark = { 6, 608, 708, 327, 79 }, egg_astral = { 6, 341, 208, 198, 200 }, gem_1 = { 6, 529, 595, 110, 105 },
+	gem_2 = { 6, 416, 595, 110, 107 }, gem_3 = { 6, 116, 595, 76, 110 }, gem_4 = { 6, 195, 595, 75, 110 }, gem_5 = { 6, 3, 595, 110, 110 },
+	gem_6 = { 6, 642, 595, 110, 99 }, gem_7 = { 6, 755, 595, 110, 98 }, ic_bagup = { 6, 720, 412, 140, 132 }, ic_net = { 6, 884, 3, 136, 140 },
+	ic_paw = { 6, 863, 412, 140, 119 }, ic_sell = { 6, 273, 595, 140, 107 }, p_shards = { 6, 349, 412, 138, 140 }, pill_dark = { 6, 800, 808, 186, 66 },
+	potion_arm = { 6, 901, 208, 113, 140 }, potion_bow = { 6, 605, 412, 112, 140 }, potion_coin = { 6, 490, 412, 112, 140 }, row_slate = { 6, 3, 808, 444, 79 },
+	sign_wood = { 6, 3, 708, 491, 97 }, st_armory = { 6, 3, 412, 160, 180 }, st_forge = { 6, 542, 208, 178, 180 }, st_herbalist = { 6, 723, 208, 175, 180 },
+	st_market = { 6, 166, 412, 180, 177 }, tab_off = { 6, 450, 808, 174, 77 }, tab_on = { 6, 627, 808, 170, 77 },
+	-- V84, лист 7
+	dlg_panel = { 7, 3, 3, 1000, 275 }, dlg_speech = { 7, 3, 284, 590, 226 }, dlg_portrait = { 7, 609, 284, 256, 256 }, dlg_name = { 7, 3, 546, 308, 90 },
+	dlg_next = { 7, 327, 546, 64, 64 },
+}
+UI.ART = ART
+
+-- картинки грузятся заранее: при первом открытии окна рамки и иконки уже на месте
+task.spawn(function()
+	local list: { any } = {}
+	for _, id in ART_PAGES do
+		table.insert(list, id)
+	end
+	for _, f in ART_FULL do
+		table.insert(list, f[1])
+	end
+	pcall(function()
+		game:GetService("ContentProvider"):PreloadAsync(list)
+	end)
+end)
+
+-- размер картинки в пикселях (для пропорций)
+function UI.artSize(key: string): Vector2
+	local full = ART_FULL[key]
+	if full then
+		return Vector2.new(full[2], full[3])
+	end
+	local a = ART[key]
+	return if a then Vector2.new(a[4], a[5]) else Vector2.new(1, 1)
+end
+
+-- назначить картинку уже созданному ImageLabel / ImageButton. slice: число или { слева, сверху, справа, снизу }
+-- (сколько пикселей картинки не растягивается по краям: рамка сохраняет углы при любом размере)
+function UI.artApply(img: any, key: string, slice: any?, sliceScale: number?)
+	local full = ART_FULL[key]
+	local w, h
+	if full then
+		img.Image = full[1]
+		img.ImageRectOffset = Vector2.zero
+		img.ImageRectSize = Vector2.zero
+		w, h = full[2], full[3]
+	else
+		local a = ART[key]
+		if not a then
+			warn("[UI.art] unknown art key " .. tostring(key))
+			return
+		end
+		img.Image = ART_PAGES[a[1]]
+		img.ImageRectOffset = Vector2.new(a[2], a[3])
+		img.ImageRectSize = Vector2.new(a[4], a[5])
+		w, h = a[4], a[5]
+	end
+	if slice then
+		local l, t, r, b
+		if type(slice) == "number" then
+			l, t, r, b = slice, slice, slice, slice
+		else
+			l, t, r, b = slice[1], slice[2], slice[3], slice[4]
+		end
+		-- V72: если растягивается только середина по горизонтали (сверху и снизу 0) и задан SliceScale, Roblox показывает
+		-- лишь верхнюю часть картинки (видно на снимках V71: кнопки и полосы без нижнего края). Делим картинку по
+		-- высоте пополам на «верх» и «низ» с серединой в 1 пиксель: при SliceScale = высота элемента / высота картинки
+		-- обе половины вместе занимают всю высоту, а боковые края масштабируются так же.
+		-- (замер V75: при SliceScale ровно 1 картинка обрезается так же, поэтому делим всегда)
+		if t == 0 and b == 0 then
+			t = math.floor((h - 1) / 2)
+			b = h - 1 - t
+		end
+		img.ScaleType = Enum.ScaleType.Slice
+		img.SliceCenter = Rect.new(l, t, w - r, h - b)
+		img.SliceScale = sliceScale or 1
+	else
+		img.ScaleType = Enum.ScaleType.Stretch
+	end
+end
+
+local function artProps(img: any, key: string, p: { [string]: any })
+	img.BackgroundTransparency = 1
+	img.BorderSizePixel = 0
+	img.Name = p.Name or key
+	img.Size = p.Size or UDim2.fromOffset(UI.artSize(key).X, UI.artSize(key).Y)
+	if p.Position then
+		img.Position = p.Position
+	end
+	if p.AnchorPoint then
+		img.AnchorPoint = p.AnchorPoint
+	end
+	if p.ZIndex then
+		img.ZIndex = p.ZIndex
+	end
+	if p.LayoutOrder then
+		img.LayoutOrder = p.LayoutOrder
+	end
+	if p.Rotation then
+		img.Rotation = p.Rotation
+	end
+	if p.Color then
+		img.ImageColor3 = p.Color
+	end
+	if p.Transparency then
+		img.ImageTransparency = p.Transparency
+	end
+	UI.artApply(img, key, p.Slice, p.SliceScale)
+	if p.Fit then
+		img.ScaleType = Enum.ScaleType.Fit -- иконка целиком, пропорции сохраняются
+	elseif p.Crop then
+		img.ScaleType = Enum.ScaleType.Crop -- фон: заполняет рамку, лишнее обрезается
+	end
+end
+
+-- Картинка. p: Size, Position, AnchorPoint, ZIndex, LayoutOrder, Name, Parent, Rotation, Color, Transparency,
+-- Slice (см. artApply), SliceScale, Fit = true (иконки), Crop = true (фоны)
+function UI.art(key: string, p: { [string]: any }?): ImageLabel
+	local props = p or {}
+	local img = Instance.new("ImageLabel")
+	artProps(img, key, props)
+	if props.Parent then
+		img.Parent = props.Parent
+	end
+	return img
+end
+
+-- Кнопка-картинка: наведение и нажатие с масштабом и звуком. p как у UI.art, плюс Text, TextSize, TextColor, Sound.
+-- Подпись лежит в дочернем TextLabel "Label" (UI.setText работает).
+function UI.artButton(key: string, p: { [string]: any }?, onClick: (() -> ())?): ImageButton
+	local props = p or {}
+	local b = Instance.new("ImageButton")
+	b.AutoButtonColor = false
+	artProps(b, key, props)
+	local sc = Instance.new("UIScale")
+	sc.Parent = b
+	if props.Text then
+		local l = UI.label({ Name = "Label", Text = props.Text, TextSize = props.TextSize or 24, Color = props.TextColor, Size = UDim2.fromScale(1, 1), ZIndex = (props.ZIndex or 1) + 1, Stroke = props.Stroke })
+		l.Parent = b
+	end
+	b:SetAttribute("Enabled", true)
+	b.MouseEnter:Connect(function()
+		if b:GetAttribute("Enabled") then
+			UI.tween(sc, 0.15, { Scale = 1.06 }, Enum.EasingStyle.Back)
+			Sfx.ui("hover")
+		end
+	end)
+	b.MouseLeave:Connect(function()
+		UI.tween(sc, 0.15, { Scale = 1 })
+	end)
+	b.MouseButton1Down:Connect(function()
+		if b:GetAttribute("Enabled") then
+			UI.tween(sc, 0.08, { Scale = 0.92 })
+		end
+	end)
+	b.Activated:Connect(function()
+		if not b:GetAttribute("Enabled") then
+			Sfx.play("error")
+			return
+		end
+		if props.Sound == "open" then
+			Sfx.ui("open")
+		elseif props.Sound then
+			Sfx.play(props.Sound)
+		else
+			Sfx.ui("press")
+		end
+		sc.Scale = 0.9
+		UI.tween(sc, 0.3, { Scale = 1 }, Enum.EasingStyle.Back)
+		if onClick then
+			task.spawn(onClick)
+		end
+	end)
+	b:GetAttributeChangedSignal("Enabled"):Connect(function()
+		b.ImageColor3 = if b:GetAttribute("Enabled") then (props.Color or Color3.new(1, 1, 1)) else Color3.fromRGB(130, 130, 136)
+	end)
+	if props.Parent then
+		b.Parent = props.Parent
+	end
+	return b
+end
+
 function UI.setText(btn: Frame, text: string)
 	local l = btn:FindFirstChild("Label", true) :: TextLabel?
 	if l then
@@ -1051,6 +1281,11 @@ function UI.windowOpen(id: string?): boolean
 	return current ~= nil
 end
 
+-- V74: иконка на вывеске окна по его id (картинки листа 6 и иконки HUD)
+local WINDOW_ICON: { [string]: string } = {
+	bag = "ic_bag2", market = "st_market", potions = "st_herbalist", spears = "st_armory", forge = "st_forge",
+	index = "ic_deer", quests = "ic_quests", settings = "ic_gear", demo = "ic_gear",
+}
 function UI.window(id: string, title: string, size: Vector2, color: Color3?, onClose: (() -> ())?): (Frame, Frame)
 	UI.closeWindow(true)
 	local overlay = Instance.new("TextButton")
@@ -1068,17 +1303,35 @@ function UI.window(id: string, title: string, size: Vector2, color: Color3?, onC
 	end
 	local win = UI.panel({ Color = Theme.C.panel, Size = UDim2.fromOffset(size.X, size.Y), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.53), Radius = 22, LineThick = 4, ZIndex = 2 })
 	win.Name = "Window"
+	-- V71: рамка окна из картинки (бирюзовая рама с верёвочными углами, как панели на главном экране).
+	-- Свою заливку и обводку панель теряет; окна со своим оформлением (магазин, пропуск) убирают WinArt сами.
+	win.BackgroundTransparency = 1
+	for _, c in win:GetChildren() do
+		if c:IsA("UIStroke") or c:IsA("UIGradient") then
+			c:Destroy()
+		end
+	end
+	UI.art("panel_quests", { Name = "WinArt", Size = UDim2.new(1, 12, 1, 12), Position = UDim2.fromOffset(-6, -6), Slice = 58, SliceScale = 0.75, ZIndex = 2, Parent = win })
 	local sc = Instance.new("UIScale")
 	sc.Scale = 0.55
 	sc.Parent = win
 	win.Parent = overlay
 	UI.tween(sc, 0.32, { Scale = 1 }, Enum.EasingStyle.Back)
-	local hc = color or Theme.C.blue
-	local header = UI.panel({ Color = hc, Size = UDim2.new(1, -28, 0, 58), Position = UDim2.fromOffset(14, -20), Radius = 16, LineThick = 4, ZIndex = 4, Parent = win })
-	header.Name = "Header"
-	UI.label({ Text = title, TextSize = 36, Size = UDim2.new(1, -80, 1, 0), Position = UDim2.fromOffset(16, 0), XAlign = Enum.TextXAlignment.Left, ZIndex = 6, Parent = header })
-	UI.shine(header, 0.8)
-	local close = UI.button({ Text = "✕", TextSize = 30, Color = Theme.C.red, Size = UDim2.fromOffset(54, 54), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(1, -8, 0, -14), Round = true, ZIndex = 8, Sound = "close", Burst = false }, function()
+	-- V74: шапка окна по концепту лавки: деревянная вывеска по центру сверху, слева на ней иконка окна, название без эмодзи
+	local _ = color
+	local iconKey = WINDOW_ICON[id]
+	local clean = title
+	if iconKey then
+		-- убрать ведущий эмодзи и пробел («💰 Market» → «Market»)
+		clean = (string.gsub(title, "^[^%w]+", ""))
+	end
+	local hw = math.clamp(120 + #clean * 22 + (if iconKey then 70 else 0), 280, math.max(280, size.X - 150))
+	local header = UI.art("sign_wood", { Name = "Header", Size = UDim2.fromOffset(hw, 70), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, -34), Slice = { 60, 0, 60, 0 }, SliceScale = 70 / 97, ZIndex = 4, Parent = win })
+	if iconKey then
+		UI.art(iconKey, { Name = "Icon", Size = UDim2.fromOffset(74, 74), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 26, 0.5, -4), Fit = true, ZIndex = 6, Parent = header })
+	end
+	UI.label({ Name = "Title", Text = clean, TextSize = 38, Size = UDim2.new(1, if iconKey then -130 else -60, 1, 0), Position = UDim2.fromOffset(if iconKey then 104 else 30, -2), XAlign = if iconKey then Enum.TextXAlignment.Left else Enum.TextXAlignment.Center, ZIndex = 6, Stroke = 4, Parent = header })
+	local close = UI.artButton("btn_x", { Name = "Button", Size = UDim2.fromOffset(56, 55), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(1, -10, 0, -12), ZIndex = 8, Sound = "close" }, function()
 		UI.closeWindow()
 	end)
 	close.Parent = win

@@ -385,7 +385,7 @@ local GROUND_NAMES = { Ground = true, FarGround = true, Field = true, Floor = tr
 local WAVE_SPEED = 24 -- стадов в секунду
 local WAVE_BUMP = 0.42 -- сколько длится подъём и опускание одного куба, секунд
 
-function Fx.groundWave(center: Vector3, radius: number, height: number)
+local function groundWaveLegacy(center: Vector3, radius: number, height: number): number
 	local low = Fx.lowFx == true
 	local R = math.clamp(radius * (if low then 0.7 else 1), 2, 16)
 	local cell = math.max(1.3, R / (if low then 4.5 else 6.5))
@@ -454,7 +454,7 @@ function Fx.groundWave(center: Vector3, radius: number, height: number)
 		end
 	end
 	if #cubes == 0 then
-		return
+		return 0
 	end
 	-- осколки земли из точки удара, как при ломании блока
 	Fx.burst(center + Vector3.new(0, 0.4, 0), { tex = "square", color = chipColor, color2 = (chipColor :: Color3):Lerp(Color3.new(0, 0, 0), 0.25), n = if low then 6 else 16, speed = NumberRange.new(8, 16), size = 0.55, size2 = 0.4, life = 0.8, rot = true, accel = Vector3.new(0, -45, 0), light = 0, spread = 70 })
@@ -497,6 +497,199 @@ function Fx.groundWave(center: Vector3, radius: number, height: number)
 	end)
 	Debris:AddItem(parts[1], last + 2) -- страховка: если цикл не дошёл до конца, первый куб всё равно уйдёт
 	task.delay(last + 1, finish)
+	return #cubes
+end
+
+-- Пул кубиков волны: детали живут без родителя между бросками (в мир не попадают), родитель ставится при выдаче.
+local cubePool: { BasePart } = {}
+local DEFAULT_TOP = Instance.new("Part").TopSurface
+local WAVE_CAP = 80 -- наибольшее число кубиков за волну (при Fx.lowFx вдвое меньше)
+
+local function takeCube(): BasePart
+	local p = table.remove(cubePool)
+	if p then
+		return p
+	end
+	p = Instance.new("Part")
+	p.Name = "WaveCube"
+	p.Anchored = true
+	p.CanCollide = false
+	p.CanQuery = false
+	p.CanTouch = false
+	p.CastShadow = false
+	return p
+end
+
+-- Новая волна: те же кубики и тайминг, но без Instance.new на каждый бросок, с лучами по 2-3 кадрам (от центра наружу),
+-- с ограничением числа кубиков (крупнее клетка вместо обрезанного края) и с BulkMoveTo только для кубиков в подъёме.
+-- Возвращает число запланированных клеток.
+local function groundWaveNew(center: Vector3, radius: number, height: number): number
+	local low = Fx.lowFx == true
+	local R = math.clamp(radius * (if low then 0.7 else 1), 2, 16)
+	local cap = if low then WAVE_CAP // 2 else WAVE_CAP
+	local cell = math.max(1.3, R / (if low then 4.5 else 6.5), R * math.sqrt(math.pi / cap))
+	local n = math.floor(R / cell)
+	-- клетки по возрастанию расстояния от центра
+	local cells: { { off: Vector3, d: number } } = {}
+	for ix = -n, n do
+		for iz = -n, n do
+			local off = Vector3.new(ix * cell, 0, iz * cell)
+			local d = off.Magnitude
+			if d <= R + 0.01 then
+				table.insert(cells, { off = off, d = d })
+			end
+		end
+	end
+	table.sort(cells, function(a, b)
+		return a.d < b.d
+	end)
+	while #cells > cap do
+		table.remove(cells)
+	end
+	if #cells == 0 then
+		return 0
+	end
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	local ignore: { Instance } = { folder }
+	local lp = game:GetService("Players").LocalPlayer
+	if lp and lp.Character then
+		table.insert(ignore, lp.Character)
+	end
+	params.FilterDescendantsInstances = ignore
+	local terrain = workspace.Terrain
+	local rng = Random.new()
+	local t0 = os.clock()
+	local last = R / WAVE_SPEED + WAVE_BUMP
+	local total = #cells
+	local perFrame = math.ceil(total / 3)
+	local nextCell = 1
+	local made: { { part: BasePart, rest: CFrame, t0: number, amp: number, tilt: Vector3, state: number } } = {}
+	local moveParts: { BasePart } = {}
+	local moveCfs: { CFrame } = {}
+	local chipDone = false
+	local conn: RBXScriptConnection? = nil
+	local finished = false
+
+	local function finish()
+		if finished then
+			return
+		end
+		finished = true
+		if conn then
+			conn:Disconnect()
+			conn = nil
+		end
+		for _, c in made do
+			c.part.Parent = nil
+			table.insert(cubePool, c.part)
+		end
+		table.clear(made)
+	end
+
+	local function spawnBatch(count: number)
+		local upto = math.min(total, nextCell + count - 1)
+		while nextCell <= upto do
+			local cl = cells[nextCell]
+			nextCell += 1
+			local hit = workspace:Raycast(center + cl.off + Vector3.new(0, 6, 0), Vector3.new(0, -14, 0), params)
+			local inst = hit and hit.Instance
+			if hit and inst and (inst == terrain or GROUND_NAMES[inst.Name]) and math.abs(hit.Position.Y - center.Y) < 4 then
+				local color: Color3
+				local mat = hit.Material
+				if inst == terrain then
+					local okColor, c = pcall(function()
+						return terrain:GetMaterialColor(mat)
+					end)
+					color = if okColor and typeof(c) == "Color3" then c else Color3.fromRGB(110, 160, 80)
+				else
+					color = (inst :: BasePart).Color
+				end
+				if not chipDone then
+					chipDone = true
+					-- осколки земли из точки удара, как при ломании блока
+					Fx.burst(center + Vector3.new(0, 0.4, 0), { tex = "square", color = color, color2 = color:Lerp(Color3.new(0, 0, 0), 0.25), n = if low then 6 else 16, speed = NumberRange.new(8, 16), size = 0.55, size2 = 0.4, life = 0.8, rot = true, accel = Vector3.new(0, -45, 0), light = 0, spread = 70 })
+				end
+				local p = takeCube()
+				p.Size = Vector3.new(cell, cell, cell)
+				p.Color = color:Lerp(Color3.new(0, 0, 0), rng:NextNumber(0, 0.12))
+				pcall(function()
+					p.Material = mat
+				end)
+				p.TopSurface = if inst ~= terrain then (inst :: BasePart).TopSurface else DEFAULT_TOP
+				local rest = CFrame.new(hit.Position.X, hit.Position.Y - cell / 2 - 0.05, hit.Position.Z)
+				p.CFrame = rest
+				p.Parent = folder
+				local fall = 1 - (cl.d / R) * 0.65
+				table.insert(made, {
+					part = p,
+					rest = rest,
+					t0 = cl.d / WAVE_SPEED,
+					amp = height * fall * rng:NextNumber(0.8, 1.15),
+					tilt = Vector3.new(rng:NextNumber(-0.25, 0.25), rng:NextNumber(-0.2, 0.2), rng:NextNumber(-0.25, 0.25)),
+					state = 0, -- 0 ждёт, 1 в подъёме, 2 готов
+				})
+			end
+		end
+	end
+
+	-- центр сразу, остальное на следующих кадрах
+	local okFirst, errFirst = pcall(spawnBatch, perFrame)
+	if not okFirst then
+		finish() -- уже выданные кубики вернуть в пул
+		error(errFirst, 0)
+	end
+	conn = RunService.Heartbeat:Connect(function()
+		local t = os.clock() - t0
+		if nextCell <= total then
+			if not pcall(spawnBatch, perFrame) then
+				nextCell = total + 1 -- ошибка в кадре: остальные клетки не строим, волна доиграет то, что есть
+			end
+		end
+		if t > last + 0.05 and nextCell > total then
+			finish()
+			return
+		end
+		table.clear(moveParts)
+		table.clear(moveCfs)
+		for _, c in made do
+			if c.state ~= 2 then
+				local u = (t - c.t0) / WAVE_BUMP
+				if u <= 0 then
+					continue
+				elseif u >= 1 then
+					c.state = 2
+					table.insert(moveParts, c.part)
+					table.insert(moveCfs, c.rest)
+				else
+					c.state = 1
+					local s = math.sin(math.pi * u)
+					table.insert(moveParts, c.part)
+					table.insert(moveCfs, c.rest * CFrame.new(0, c.amp * s, 0) * CFrame.Angles(c.tilt.X * s, c.tilt.Y * s, c.tilt.Z * s))
+				end
+			end
+		end
+		if #moveParts > 0 then
+			local okMove = pcall(function()
+				workspace:BulkMoveTo(moveParts, moveCfs, Enum.BulkMoveMode.FireCFrameChanged)
+			end)
+			if not okMove then
+				for i, p in moveParts do
+					p.CFrame = moveCfs[i]
+				end
+			end
+		end
+	end)
+	task.delay(last + 1, finish)
+	return total
+end
+
+-- legacy: true — старая волна (ради замера A/B); возвращает число клеток/кубиков
+function Fx.groundWave(center: Vector3, radius: number, height: number, legacy: boolean?): number
+	if legacy == true then
+		return groundWaveLegacy(center, radius, height)
+	end
+	return groundWaveNew(center, radius, height)
 end
 
 ---------------------------------------------------------------------

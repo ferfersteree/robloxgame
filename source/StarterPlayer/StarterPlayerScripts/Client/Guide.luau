@@ -24,7 +24,7 @@ local step = 0
 local promptCache: { [string]: BasePart } = {}
 
 -- Плашка шага (сверху по центру)
-local card = UI.panel({ Color = C.cyan, Size = UDim2.fromOffset(600, 58), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 86), Radius = 16, ZIndex = 20, Parent = UI.root })
+local card = UI.panel({ Color = C.cyan, Size = UDim2.fromOffset(600, 58), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 100), Radius = 16, ZIndex = 20, Parent = UI.root }) -- V70: ниже новой верхней панели
 card.Visible = false
 local cardText = UI.label({ Text = "", TextSize = 22, Size = UDim2.new(1, -24, 1, 0), Position = UDim2.fromOffset(12, 0), ZIndex = 22, Rich = true, Wrap = true, Parent = card })
 
@@ -200,7 +200,8 @@ function Guide.init()
 			t += task.wait(0.05)
 			local show = step >= 1 and step <= N
 			local mode = Activities.busy and "busy" or Hud.mode
-			card.Visible = (show and (mode == "normal" or mode == "hunt")) or (step > N and card.Visible and mode == "normal")
+			-- V67: на точке броска на экране только шкала заряда, карточку обучения не показываем
+			card.Visible = (show and mode == "normal") or (step > N and card.Visible and mode == "normal")
 			local c = player.Character
 			local root = c and c:FindFirstChild("HumanoidRootPart") :: BasePart?
 			local tgt = (show and root and mode == "normal") and targetFor(Config.TUTORIAL[step].target, root.Position) or nil

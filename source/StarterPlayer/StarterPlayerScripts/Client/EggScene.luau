@@ -411,7 +411,7 @@ local function start(ctx: any, info: any)
 	end
 	ctx._cleanup = cleanup
 	local finish: () -> () = function() end
-	local cont = UI.button({ Text = "CONTINUE", TextSize = 24, Color = Color3.fromRGB(84, 214, 52), Size = UDim2.fromOffset(220, 50), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromOffset(cx, vh - 76), ZIndex = 40, Sound = "press" }, function()
+	local cont = UI.artButton("btn_green", { Text = "CONTINUE", TextSize = 24, TextColor = Color3.new(1, 1, 1), Size = UDim2.fromOffset(220, 50), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromOffset(cx, vh - 76), Slice = { 30, 0, 30, 0 }, SliceScale = 50 / UI.artSize("btn_green").Y, ZIndex = 40, Sound = "press" }, function()
 		finish()
 	end)
 	cont.Visible = false

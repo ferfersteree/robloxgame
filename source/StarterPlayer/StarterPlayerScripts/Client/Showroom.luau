@@ -208,7 +208,8 @@ end
 
 -- «Раскрыть»: витринная гача без сумки
 function Showroom.reveal(prompt: ProximityPrompt)
-	if busy or Reveal.active then
+	-- зала больше нет (сервер убрал музей при старте): тихо ничего не делаем
+	if not hall or busy or Reveal.active then
 		return
 	end
 	local part = prompt:FindFirstAncestorWhichIsA("BasePart")
@@ -251,6 +252,9 @@ end
 
 -- «Осмотреть»: окно копья
 function Showroom.inspect(prompt: ProximityPrompt)
+	if not hall then
+		return
+	end
 	local id = (prompt.Parent :: Instance):GetAttribute("SpearId")
 	local s = Config.SPEAR_BY_ID[id]
 	if not s then
@@ -303,6 +307,10 @@ end
 
 -- Тестовый бросок: выбор ступени
 function Showroom.chooser(spearId: string?)
+	if not hall then
+		UI.toast("The museum is closed", "warn")
+		return
+	end
 	local _, body = UI.window("demothrow", "🎯 Test Throw", Vector2.new(760, 330), C.red)
 	UI.label({ Text = "Choose a multiplier to preview the throw, flight and catch reveal", TextSize = 22, Color = C.dim, Size = UDim2.new(1, 0, 0, 30), Parent = body })
 	local g = Instance.new("Frame")

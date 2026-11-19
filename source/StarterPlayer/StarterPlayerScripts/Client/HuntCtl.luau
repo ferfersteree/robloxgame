@@ -225,6 +225,16 @@ local function throwCam(): CFrame
 end
 
 local orbitT = 0
+-- V82: камера за копьём. Положение = точка копья + смещение назад, без отставания; смещение плавно растёт от FOLLOW_NEAR
+-- до предела ступени (FOLLOW_FAR_1..FOLLOW_FAR_6), отстаёт только направление взгляда.
+local FOLLOW_NEAR, FOLLOW_FAR_1, FOLLOW_FAR_6 = 8, 14, 26
+local followT = 0
+local followFirst = true
+local followStale = false -- кадр копья считается после камеры: берём положение на один кадр вперёд
+local followFromOff = Vector3.zero
+local followLook = Vector3.new(0, 0, -1)
+local followLastPos: Vector3? = nil
+local followLastDt = 0
 RunService:BindToRenderStep("HuntCam", Enum.RenderPriority.Camera.Value + 1, function(dt)
 	if HuntCtl.state == "idle" or Reveal.active or camMode == "free" then
 		return
@@ -239,16 +249,47 @@ RunService:BindToRenderStep("HuntCam", Enum.RenderPriority.Camera.Value + 1, fun
 	local target: CFrame
 	if camMode == "follow" and followFlight then
 		local fl = followFlight
-		local tier = Config.TIERS[fl.tier] or Config.TIERS[1]
+		local tierIdx = math.clamp(fl.tier or 1, 1, #Config.TIERS)
+		local tier = Config.TIERS[tierIdx]
 		orbitT += dt
+		followT += dt
+		if followFirst then
+			-- первый кадр полёта: если копьё ещё не сдвинулось (его шаг идёт после камеры), берём упреждение на кадр
+			followFirst = false
+			followStale = (fl.t or 0) <= 0
+			followFromOff = camera.CFrame.Position - fl.pos
+			followLook = camera.CFrame.LookVector
+			followLastPos = nil
+		end
+		local pos: Vector3 = fl.pos
+		local lastPos = followLastPos
+		if followStale and lastPos and followLastDt > 1e-4 then
+			pos += (pos - lastPos) / followLastDt * dt
+		end
+		followLastPos, followLastDt = fl.pos, dt
 		local dir = fl.dir
 		local flat = Vector3.new(dir.X, 0, dir.Z)
 		flat = flat.Magnitude > 1e-3 and flat.Unit or Vector3.new(0, 0, -1)
-		local ang = tier.orbit * math.sin(orbitT * 1.1) * 1.3
+		-- расстояние: у старта FOLLOW_NEAR, дальше растёт до предела ступени (чем сильнее бросок, тем дальше)
+		local far = FOLLOW_FAR_1 + (FOLLOW_FAR_6 - FOLLOW_FAR_1) * (tierIdx - 1) / math.max(1, #Config.TIERS - 1)
+		local g = math.clamp((fl.u or 0) / 0.45, 0, 1)
+		g = g * g * (3 - 2 * g)
+		local ang = tier.orbit * math.sin(orbitT * 1.1) * 0.9
 		local back = (CFrame.Angles(0, ang, 0) * -flat)
-		local eye = fl.pos + back * (11 + fl.tier) + Vector3.new(0, 4 + fl.tier * 0.5, 0)
-		target = CFrame.lookAt(eye, fl.pos + flat * 6)
-		a = 1 - math.exp(-dt * 9)
+		local want = back * (FOLLOW_NEAR + (far - FOLLOW_NEAR) * g) + Vector3.new(0, 3.2 + tierIdx * 0.4, 0)
+		-- вход из прежнего вида: только смещение приходит за 0.35 с, дальше камера точно держится за копьём
+		local enter = math.clamp(followT / 0.35, 0, 1)
+		enter = enter * enter * (3 - 2 * enter)
+		local eye = pos + followFromOff:Lerp(want, enter)
+		local wantLook = pos + flat * 6 - eye
+		if wantLook.Magnitude > 1e-3 then
+			local mixed = followLook:Lerp(wantLook.Unit, 1 - math.exp(-dt * 10))
+			if mixed.Magnitude > 1e-3 then
+				followLook = mixed.Unit
+			end
+		end
+		target = CFrame.lookAt(eye, eye + followLook)
+		a = 1
 	elseif camMode == "throw" then
 		target = throwCam()
 		a = 1 - math.exp(-dt * 10)
@@ -569,7 +610,9 @@ local function updateChargeFx(dt: number, tier: any, tremble: number)
 	end
 end
 
--- новая ступень заряда: волна, вспышка ауры, имя ступени над героем, нота выше
+-- новая ступень заряда (переход отметки ×N на шкале): вспышка ауры, линии скорости на всю силу, сильный толчок
+-- камеры и рывок угла обзора, столб света, звёзды и кольцо вокруг героя, на высоких ступенях молния.
+-- V67: имя ступени крупно показывает шкала (Hud), здесь только мир и камера
 local function tierUpFx(ti: number, tier: any, at: Vector3)
 	local a = aura
 	if a then
@@ -577,10 +620,18 @@ local function tierUpFx(ti: number, tier: any, at: Vector3)
 	end
 	local l = lines
 	if l then
+		linesNow = 1
 		pcall(l.set, linesNow, WHITE:Lerp(tier.color, 0.45))
 	end
-	Fx.text(at + Vector3.new(0, 4.4, 0), tier.name, tier.color, 30 + ti * 2, 0.9)
-	pcall(Sfx.rise, ti, 0.4)
+	Fx.shake(0.22 + 0.09 * ti, 0.45)
+	camera.FieldOfView = math.min(camera.FieldOfView + 5 + ti, 100)
+	local feet = feetPos() or (at - Vector3.new(0, 3, 0))
+	Fx.pillar(feet, tier.color, 26 + ti * 6, 0.7, 1.6 + ti * 0.4)
+	Fx.ring(feet + Vector3.new(0, 0.2, 0), WHITE, 5 + ti * 1.5, 0.35)
+	Fx.burst(feet + Vector3.new(0, 2.5, 0), { tex = "star", color = tier.color, color2 = WHITE, n = 10 + ti * 4, speed = NumberRange.new(10, 22), size = 0.6 + ti * 0.08, life = 0.6, rot = true, accel = Vector3.new(0, -10, 0) })
+	if ti >= 4 and Fx.lowFx ~= true then
+		Fx.lightning(feet + Vector3.new(math.random(-6, 6), 40, math.random(-6, 6)), feet + Vector3.new(0, 0.2, 0), tier.color, 8, 0.4)
+	end
 end
 
 -- срыв: накопленное гаснет без выброса
@@ -780,7 +831,8 @@ function HuntCtl.release(crashed: boolean)
 	end
 	m = math.min(m, Config.TENSION.cap)
 	setState("throwing")
-	local effectiveM = m * (crashed and Config.TENSION.crashLuck or 1)
+	-- V68: после срыва шкала не опускается ниже ×1
+	local effectiveM = math.max(1, m * (crashed and Config.TENSION.crashLuck or 1))
 	local tierIdx = Config.tierIndex(effectiveM)
 	local tier = Config.TIERS[tierIdx]
 	local clip = tier.clip
@@ -841,8 +893,14 @@ function HuntCtl.release(crashed: boolean)
 	local c = player.Character
 	local s = stand :: BasePart
 	local from = Animator.handPosition(c) or (s.Position + Vector3.new(0, 5, 0))
-	local throwDist = math.max(4, res.dist)
+	-- V82: дальше MAX_THROW_DISTANCE копьё не летит никогда (за краем зоны 25 стоит вулкан, до него не долететь)
+	local maxDist = Config.MAX_THROW_DISTANCE or Config.THROW.maxRange
+	local throwDist = math.clamp(res.dist, 4, maxDist)
 	local to = SpearFx.targetFor(s.Position, Vector3.new(0, 0, -1), throwDist, 0.1)
+	local capZ = s.Position.Z - maxDist
+	if to.Z < capZ then
+		to = Vector3.new(to.X, to.Y, capZ)
+	end
 	Fx.burst(from, { tex = "sparkle", color = tier.color, color2 = tier.color2, n = 4 + tierIdx * 2, speed = NumberRange.new(3, 9), size = 0.35 + tierIdx * 0.06, life = 0.55, accel = Vector3.new(0, 2, 0) })
 	local d = Backend.data
 	local spearId = d and d.spear or "stick"
@@ -858,15 +916,26 @@ function HuntCtl.release(crashed: boolean)
 	if not okFx then
 		warn("[HuntCtl] launch fx: " .. tostring(errFx))
 	end
+	-- Перф: пока копьё летит, готовим раскрытие (куст, зверь, список для Occlusion), чтобы после посадки не строить всё разом.
+	-- flight.legacy читается при броске из атрибута PerfLegacy у ReplicatedStorage: true — старый путь без заготовки.
+	if not flight.legacy then
+		local okPrep, errPrep = pcall(Reveal.prepare, res, flight.to, { from = s.Position + Vector3.new(0, 4, 4) })
+		if not okPrep then
+			warn("[HuntCtl] reveal prepare: " .. tostring(errPrep))
+		end
+	end
 	followFlight = flight
 	camMode = "follow"
 	orbitT = 0
+	followT = 0
+	followFirst = true
 	fovTarget = 70 + tier.slowmo * 10
 	local lastZone = 1
 	while not landed do
 		if session ~= my then
 			-- герой погиб или вышел, пока копьё летело: улов уже в сумке, раскрытие не показываем
 			followFlight = nil
+			Reveal.discard()
 			return
 		end
 		local dz = math.max(0, s.Position.Z - flight.pos.Z)

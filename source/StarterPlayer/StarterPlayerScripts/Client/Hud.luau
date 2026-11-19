@@ -1,5 +1,5 @@
 -- StarterPlayerScripts/Client/Hud.luau
--- Экран: верхняя панель (монеты, сила, сумка, уровень+опыт), меню слева, бусты и задания справа,
+-- Экран: верхняя панель (четыре карточки: монеты, сила, сумка, уровень+опыт), рамка-меню слева, бусты и задания справа,
 -- внизу — шкала натяжения и кнопка броска (телефон), баннеры зон. Режимы: normal | hunt | busy | cinematic.
 local RS = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -11,6 +11,7 @@ local UI = require(script.Parent.UIKit)
 local Theme = require(script.Parent.Theme)
 local Sfx = require(script.Parent.Sfx)
 local Backend = require(script.Parent.Backend)
+local Perks = require(script.Parent.Perks)
 
 local Hud = {}
 Hud.mode = "normal"
@@ -24,34 +25,90 @@ local C = Theme.C
 local root = UI.root
 
 ---------------------------------------------------------------------
--- Верхняя панель
+-- Верхняя панель: четыре крупные карточки (монеты, сила, сумка, уровень)
 ---------------------------------------------------------------------
+local compactMenu = UI.mobile or RS:GetAttribute("ForceMobileUI") == true
+
 local topBar = Instance.new("Frame")
 topBar.Name = "TopBar"
 topBar.BackgroundTransparency = 1
 topBar.AnchorPoint = Vector2.new(0.5, 0)
-topBar.Position = UDim2.new(0.5, 0, 0, 8)
-topBar.Size = UDim2.fromOffset(820, 64)
-UI.list(Enum.FillDirection.Horizontal, 14, Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Center).Parent = topBar
+topBar.Position = UDim2.new(0.5, 0, 0, 2) -- карточки кончаются на y=83: ниже стоят карточки Guide/Activities (y=86)
+topBar.Size = UDim2.fromOffset(1024, 81) -- четыре карточки 250×81 и три зазора по 8
+UI.list(Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Center).Parent = topBar
+if compactMenu then
+	-- телефон: сжимаем до ширины старой полосы, чтобы не лезть на кнопки меню и правую панель
+	local ts = Instance.new("UIScale")
+	ts.Name = "PhoneScale"
+	ts.Scale = 0.8
+	ts.Parent = topBar
+end
 topBar.Parent = root
 
-type Pill = { frame: Frame, value: TextLabel, icon: TextLabel, shown: number }
-local function pill(icon: string, color: Color3, width: number, order: number): Pill
-	local f = UI.panel({ Color = color, Size = UDim2.fromOffset(width, 48), Radius = 24, LineThick = 3, LayoutOrder = order, Parent = topBar })
-	local ic = UI.label({ Text = icon, TextSize = 38, Size = UDim2.fromOffset(56, 56), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0, 6, 0.5, 0), ZIndex = 4, Stroke = 2, Parent = f })
-	local v = UI.label({ Text = "0", TextSize = 28, Size = UDim2.new(1, -44, 1, 0), Position = UDim2.fromOffset(36, 0), ZIndex = 4, Parent = f })
-	return { frame = f, value = v, icon = ic, shown = 0 }
-end
-local coins = pill("💰", Color3.fromRGB(255, 186, 40), 190, 1)
-local power = pill("💪", Color3.fromRGB(255, 96, 80), 150, 2)
-local bag = pill("🎒", Color3.fromRGB(80, 170, 255), 150, 3)
+type Pill = { frame: ImageLabel, value: TextLabel, icon: ImageLabel, shown: number, caption: TextLabel? }
+local badges: { GuiObject } = {}
 
--- уровень: звезда + полоса опыта
-local lvlFrame = UI.panel({ Color = Color3.fromRGB(110, 90, 230), Size = UDim2.fromOffset(220, 48), Radius = 24, LineThick = 3, LayoutOrder = 4, Parent = topBar })
-local star = UI.label({ Text = "⭐", TextSize = 50, Size = UDim2.fromOffset(60, 60), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0, 8, 0.5, 0), ZIndex = 4, Stroke = 2, Parent = lvlFrame })
-local lvlNum = UI.label({ Text = "1", TextSize = 22, Size = UDim2.fromOffset(60, 60), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0, 8, 0.5, 2), ZIndex = 5, Parent = lvlFrame })
-local xpBar = UI.bar({ Color = C.xp, Size = UDim2.new(1, -68, 0, 22), Position = UDim2.fromOffset(54, 13), ZIndex = 4, TextSize = 14, Parent = lvlFrame })
-local _ = star
+-- полоса из арта: дорожка bar_track и заливка, обрезанная по доле (картинка не сжимается)
+-- p: W, H (в единицах), Position, AnchorPoint, ZIndex, Parent, Fill (ключ арта), FillColor, TextSize
+local function artBar(p: { [string]: any }): any
+	local w, h = p.W, p.H
+	local z = p.ZIndex or 2
+	local track = UI.art("bar_track", { Name = "Bar", Size = UDim2.fromOffset(w, h), Position = p.Position, AnchorPoint = p.AnchorPoint, ZIndex = z, Slice = { 12, 0, 12, 0 }, SliceScale = h / 23, Parent = p.Parent })
+	local ix, iy = math.max(2, math.floor(h * 0.13)), math.max(2, math.floor(h * 0.1))
+	local iw, ih = w - 2 * ix, h - 2 * iy
+	local clip = Instance.new("Frame")
+	clip.Name = "Clip"
+	clip.BackgroundTransparency = 1
+	clip.BorderSizePixel = 0
+	clip.ClipsDescendants = true
+	clip.Position = UDim2.fromOffset(ix, iy)
+	clip.Size = UDim2.fromOffset(0, ih)
+	clip.ZIndex = z + 1
+	clip.Visible = false
+	clip.Parent = track
+	local fill = UI.art(p.Fill or "bar_green", { Name = "Fill", Size = UDim2.fromOffset(iw, ih), ZIndex = z + 1, Slice = if (p.Fill :: any) == "btn_yellow" then { 14, 0, 14, 0 } else { 10, 0, 10, 0 }, SliceScale = ih / (if (p.Fill :: any) == "btn_yellow" then 64 else 21), Color = p.FillColor, Parent = clip })
+	local lbl = UI.label({ Text = "", TextSize = p.TextSize or 16, Size = UDim2.fromScale(1, 1), ZIndex = z + 2, Stroke = 2, Parent = track })
+	local bar = { frame = track, fill = fill, clip = clip, label = lbl }
+	bar.set = function(k: number, text: string?, anim: boolean?)
+		k = math.clamp(k, 0, 1)
+		local target = UDim2.fromOffset(math.floor(iw * k), ih)
+		if anim then
+			UI.tween(clip, 0.35, { Size = target }, Enum.EasingStyle.Quad)
+		else
+			clip.Size = target
+		end
+		clip.Visible = k > 0.001
+		if text then
+			lbl.Text = text
+		end
+	end
+	return bar
+end
+
+-- карточка: рамка-спрайт и значок слева (внутри рамки)
+local TX, TW = 84, 152 -- область текста карточки: начало и ширина
+local function chipBase(order: number, chipKey: string, iconKey: string): (ImageLabel, ImageLabel)
+	local f = UI.art(chipKey, { Name = chipKey, Size = UDim2.fromOffset(250, 81), LayoutOrder = order, Parent = topBar })
+	local ic = UI.art(iconKey, { Name = "Icon", Fit = true, Size = UDim2.fromOffset(58, 58), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0, 45, 0.5, 0), ZIndex = 3, Parent = f })
+	table.insert(badges, ic)
+	return f, ic
+end
+
+-- карточка «подпись + крупное значение»
+local function pill(iconKey: string, caption: string, chipKey: string, order: number): Pill
+	local f, ic = chipBase(order, chipKey, iconKey)
+	local cap = UI.label({ Text = caption, TextSize = 20, Size = UDim2.fromOffset(TW, 22), Position = UDim2.fromOffset(TX, 8), ZIndex = 4, Stroke = 2, Parent = f })
+	local v = UI.label({ Text = "0", TextSize = 34, Size = UDim2.fromOffset(TW, 36), Position = UDim2.fromOffset(TX, 29), Scaled = true, MaxSize = 34, ZIndex = 4, Parent = f })
+	return { frame = f, value = v, icon = ic, shown = 0, caption = cap }
+end
+local coins = pill("ic_coin", "Coins", "chip_gold", 1)
+local power = pill("ic_power", "Strength", "chip_red", 2)
+local bag = pill("ic_bag", "Bag", "chip_blue", 3)
+
+-- уровень: звезда, «Level N» и полоса опыта
+local lvlFrame, star = chipBase(4, "chip_violet", "ic_star")
+local lvlNum = UI.label({ Text = "Level 1", TextSize = 22, Size = UDim2.fromOffset(TW, 24), Position = UDim2.fromOffset(TX, 7), ZIndex = 4, Stroke = 2, Parent = lvlFrame })
+local xpBar = artBar({ W = TW, H = 22, Position = UDim2.fromOffset(TX, 40), ZIndex = 4, Fill = "bar_cyan", TextSize = 15, Parent = lvlFrame })
 
 -- Верхняя панель: анимации (вход, «дыхание» иконок, всплывающие +N, шкала рюкзака, уровень)
 local pills = { coins, power, bag }
@@ -60,32 +117,6 @@ local starBusy = false
 local lastLevel: number? = nil
 local primed: { [any]: boolean } = {}
 
--- тонкая шкала заполнения рюкзака под числом
-local bagFillBack = Instance.new("Frame")
-bagFillBack.Name = "FillBack"
-bagFillBack.BorderSizePixel = 0
-bagFillBack.BackgroundColor3 = Color3.fromRGB(10, 40, 80)
-bagFillBack.BackgroundTransparency = 0.35
-bagFillBack.Position = UDim2.new(0, 58, 1, -9)
-bagFillBack.Size = UDim2.new(1, -72, 0, 4)
-bagFillBack.ZIndex = 4
-UI.corner(3).Parent = bagFillBack
-local bagFillBar = Instance.new("Frame")
-bagFillBar.Name = "Fill"
-bagFillBar.BorderSizePixel = 0
-bagFillBar.BackgroundColor3 = Color3.fromRGB(170, 225, 255)
-bagFillBar.Size = UDim2.fromScale(0, 1)
-bagFillBar.ZIndex = 5
-UI.corner(3).Parent = bagFillBar
-bagFillBar.Parent = bagFillBack
-bagFillBack.Parent = bag.frame
-bag.value.Position = UDim2.fromOffset(50, -4)
-
-local function setBagFill(n: number, cap: number)
-	local k = if cap > 0 then math.clamp(n / cap, 0, 1) else 0
-	local col = if k >= 1 then C.red elseif k > 0.75 then C.orange else Color3.fromRGB(170, 225, 255)
-	UI.tween(bagFillBar, 0.35, { Size = UDim2.fromScale(k, 1), BackgroundColor3 = col }, Enum.EasingStyle.Quint)
-end
 
 -- всплывающая цифра над панелью
 local function floatText(frame: GuiObject, text: string, color: Color3)
@@ -103,66 +134,7 @@ local function floatText(frame: GuiObject, text: string, color: Color3)
 	end)
 end
 
--- Оформление: иконки живут в круглых бейджах ВНУТРИ панели, глянец, искорки
-local function decoratePill(frame: Frame, color: Color3, glyphs: { TextLabel }, glyphSize: number): Frame
-	local top, bottom, line = Theme.shades(color)
-	local badge = Instance.new("Frame")
-	badge.Name = "Badge"
-	badge.AnchorPoint = Vector2.new(0.5, 0.5)
-	badge.Position = UDim2.new(0, 25, 0.5, 0)
-	badge.Size = UDim2.fromOffset(36, 36)
-	badge.BackgroundColor3 = Color3.new(1, 1, 1)
-	badge.BorderSizePixel = 0
-	badge.ZIndex = 3
-	UI.corner(18).Parent = badge
-	UI.stroke(line, 2, 0, true).Parent = badge
-	UI.gradient(bottom:Lerp(top, 0.25), bottom:Lerp(Color3.new(0, 0, 0), 0.25), 90).Parent = badge
-	badge.Parent = frame
-	for _, g in glyphs do
-		g.Parent = badge
-		g.AnchorPoint = Vector2.new(0.5, 0.5)
-		g.Position = UDim2.fromScale(0.5, 0.5)
-		g.Size = UDim2.fromOffset(36, 36)
-		g.TextSize = glyphSize
-		g.ZIndex = 5
-	end
-	local gloss = Instance.new("Frame")
-	gloss.Name = "Gloss"
-	gloss.BackgroundColor3 = Color3.new(1, 1, 1)
-	gloss.BackgroundTransparency = 0.8
-	gloss.BorderSizePixel = 0
-	gloss.Position = UDim2.new(0, 52, 0, 4)
-	gloss.Size = UDim2.new(1, -64, 0, 7)
-	gloss.ZIndex = 3
-	UI.corner(4).Parent = gloss
-	gloss.Parent = frame
-	return badge
-end
-
-local badges: { Frame } = {}
-do
-	local specs = {
-		{ coins, Color3.fromRGB(255, 186, 40) },
-		{ power, Color3.fromRGB(255, 96, 80) },
-		{ bag, Color3.fromRGB(80, 170, 255) },
-	}
-	for _, s in specs do
-		local p: Pill = s[1]
-		table.insert(badges, decoratePill(p.frame, s[2], { p.icon }, 24))
-		p.value.Position = UDim2.fromOffset(50, 0)
-		p.value.Size = UDim2.new(1, -58, 1, 0)
-	end
-	local lb = decoratePill(lvlFrame, Color3.fromRGB(110, 90, 230), { star }, 30)
-	table.insert(badges, lb)
-	lvlNum.Parent = lb
-	lvlNum.AnchorPoint = Vector2.new(0.5, 0.5)
-	lvlNum.Position = UDim2.fromScale(0.5, 0.54)
-	lvlNum.Size = UDim2.fromOffset(36, 36)
-	lvlNum.TextSize = 15
-	lvlNum.ZIndex = 6
-end
-
--- редкие «искорки» на бейджах
+-- редкие «искорки» на значках
 task.spawn(function()
 	while true do
 		task.wait(2.2 + math.random() * 2.6)
@@ -177,7 +149,7 @@ task.spawn(function()
 			sp.Size = UDim2.fromOffset(0, 0)
 			sp.ZIndex = 8
 			sp.Parent = b
-			UI.tween(sp, 0.3, { Size = UDim2.fromOffset(16, 16), Rotation = 45 }, Enum.EasingStyle.Back)
+			UI.tween(sp, 0.3, { Size = UDim2.fromOffset(18, 18), Rotation = 45 }, Enum.EasingStyle.Back)
 			task.delay(0.35, function()
 				UI.tween(sp, 0.35, { Size = UDim2.fromOffset(0, 0), Rotation = 120 })
 			end)
@@ -270,7 +242,7 @@ local function setPill(p: Pill, value: number, text: string?)
 end
 
 local function setLevel(level: number)
-	lvlNum.Text = tostring(level)
+	lvlNum.Text = "Level " .. tostring(level)
 	if lastLevel and level > lastLevel then
 		starBusy = true
 		star.Rotation = 0
@@ -299,20 +271,52 @@ end
 -- 96 единиц (46 пикселей на таком экране): «Shop» (всегда на виду) и «📋», которая открывает остальное сеткой 3×2 и закрывает её после
 -- выбора. Проверка на ПК: атрибут ReplicatedStorage.ForceMobileUI = true включает тот же вид.
 ---------------------------------------------------------------------
-local compactMenu = UI.mobile or RS:GetAttribute("ForceMobileUI") == true
-local left = UI.panel({
-	Name = "LeftMenu", Color = C.panel, Transparency = 0.12,
-	Size = UDim2.fromOffset(compactMenu and 324 or 190, 10), AnchorPoint = compactMenu and Vector2.new(0, 0) or Vector2.new(0, 0.5),
-	Position = compactMenu and UDim2.new(0, 10, 0, 116) or UDim2.new(0, 12, 0.5, 0), Radius = 22, LineThick = 2, Parent = root,
-})
-left.AutomaticSize = Enum.AutomaticSize.Y
-UI.pad(10, 10).Parent = left
+local menuButtons: { [string]: any } = {}
+-- id, значок (ключ арта), подпись, кнопка (ключ арта), оттенок кнопки
+local MENU: { { any } } = {
+	{ "shop", "ic_shop", "Shop", "btn_red", nil },
+	{ "bag", "ic_bag2", "Bag", "btn_blue", nil },
+	{ "spears", "ic_spear", "Spears", "btn_orange", nil },
+	{ "index", "ic_deer", "Animals", "btn_green", nil },
+	{ "quests", "ic_quests", "Quests", "btn_purple", nil },
+	{ "pass", "ic_pass", "Pass", "btn_yellow", nil },
+	{ "potions", "ic_potion", "Potions", "btn_purple", Color3.fromRGB(255, 170, 225) },
+	{ "settings", "ic_gear", "Settings", "btn_grey", nil },
+}
+-- Панель читов видна только разработчику в Студии, в живой игре её нет
+if Config.BACKEND == "Demo" and RunService:IsStudio() then
+	table.insert(MENU, { "demo", "ic_gear", "DEMO", "btn_grey", Color3.fromRGB(255, 110, 110) })
+end
+
+-- ПК: рамка panel_menu (9-slice 48 px: углы с верёвкой не тянутся), внутри столбец кнопок 208×56
+local BTN_W, BTN_H, BTN_GAP = 208, 56, 8
+local left: GuiObject -- контейнер с раскладкой (кнопки)
+local leftBox: GuiObject -- то, что показываем и прячем
+if compactMenu then
+	left = UI.art("panel_menu", { Name = "LeftMenu", Size = UDim2.fromOffset(340, 10), Position = UDim2.new(0, 10, 0, 116), Slice = 48, SliceScale = 0.6, Parent = root })
+	left.AutomaticSize = Enum.AutomaticSize.Y
+	UI.pad(18, 30).Parent = left
+	leftBox = left
+else
+	local n = #MENU
+	leftBox = UI.art("panel_menu", {
+		Name = "LeftMenu", Size = UDim2.fromOffset(256, n * BTN_H + (n - 1) * BTN_GAP + 64),
+		Position = UDim2.new(0, 12, 0, 108), Slice = 48, SliceScale = 0.7, Parent = root,
+	})
+	local inner = Instance.new("Frame")
+	inner.Name = "Buttons"
+	inner.BackgroundTransparency = 1
+	inner.Size = UDim2.fromScale(1, 1)
+	UI.pad(24, 32).Parent = inner
+	inner.Parent = leftBox
+	left = inner
+end
 local menuOpen = false -- только для компактного меню
-local menuToggle: Frame? = nil
-local readyQuests, bagIsFull = 0, false
+local menuToggle: any = nil
+local readyQuests, bagIsFull, readyPass = 0, false, 0
 local function updateMenuBadge()
 	if menuToggle then
-		local n = readyQuests + (bagIsFull and 1 or 0)
+		local n = readyQuests + readyPass + (bagIsFull and 1 or 0)
 		UI.badge(menuToggle, if n > 0 then n else nil)
 	end
 end
@@ -326,96 +330,174 @@ if compactMenu then
 	grid.Parent = left
 	left.Visible = false
 else
-	UI.list(Enum.FillDirection.Vertical, 9, Enum.HorizontalAlignment.Center).Parent = left
-	UI.label({ Text = "🌲 CAMP", TextSize = 18, Color = C.dim, Size = UDim2.fromOffset(168, 28), LayoutOrder = 0, Parent = left })
+	UI.list(Enum.FillDirection.Vertical, BTN_GAP, Enum.HorizontalAlignment.Center).Parent = left
 end
 
-local menuButtons: { [string]: Frame } = {}
-local MENU = {
-	{ "shop", "🎁", "Shop", Color3.fromRGB(232, 64, 62) },
-	{ "bag", "🎒", "Bag", Color3.fromRGB(78, 174, 239) },
-	{ "spears", "🔱", "Spears", Color3.fromRGB(242, 145, 66) },
-	{ "index", "🐾", "Animals", Color3.fromRGB(103, 195, 112) },
-	{ "quests", "📜", "Quests", Color3.fromRGB(62, 190, 181) },
-	{ "potions", "🧪", "Potions", Color3.fromRGB(190, 112, 210) },
-	{ "settings", "⚙️", "Settings", Color3.fromRGB(117, 139, 145) },
-}
--- Панель читов видна только разработчику в Студии, в живой игре её нет
-if Config.BACKEND == "Demo" and RunService:IsStudio() then
-	table.insert(MENU, { "demo", "🛠️", "DEMO", Color3.fromRGB(225, 85, 115) })
-end
 local function setMenuOpen(on: boolean)
 	menuOpen = on
-	left.Visible = on and Hud.mode == "normal"
+	leftBox.Visible = on and Hud.mode == "normal"
 end
+
+-- плитка телефона: slot, значок сверху, подпись снизу
+local function tileButton(iconKey: string, text: string, p: { [string]: any }, onClick: () -> ()): ImageButton
+	p.Text = text
+	p.TextSize = 16
+	local b = UI.artButton("slot", p, onClick)
+	local lbl = b:FindFirstChild("Label") :: TextLabel?
+	if lbl then
+		lbl.Size = UDim2.new(1, 0, 0, 22)
+		lbl.Position = UDim2.new(0, 0, 1, -26)
+	end
+	UI.art(iconKey, { Name = "Icon", Fit = true, Size = UDim2.fromOffset(56, 56), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 8), ZIndex = 3, Parent = b })
+	return b
+end
+
 for i, m in MENU do
 	local alone = compactMenu and m[1] == "shop" -- «Shop» на телефоне стоит отдельно, всегда на виду
-	local b = UI.button({
-		Text = compactMenu and "" or string.upper(m[3]), Icon = m[2], IconSize = compactMenu and 52 or 29, TextSize = 18,
-		Color = m[4], Size = compactMenu and UDim2.fromOffset(96, 96) or UDim2.fromOffset(168, 56), LayoutOrder = i,
-		Position = if alone then UDim2.new(0, 10, 0, 10) else nil,
-		Shine = i == 1,
-	}, function()
+	local function onClick()
 		if compactMenu then
 			setMenuOpen(false)
 		end
 		Hud.MenuClicked:Fire(m[1])
-	end)
+	end
+	local b: ImageButton
+	if compactMenu then
+		b = tileButton(m[2], m[3], { Size = UDim2.fromOffset(96, 96), LayoutOrder = i, Position = if alone then UDim2.new(0, 10, 0, 10) else nil }, onClick)
+	else
+		b = UI.artButton(m[4], { Size = UDim2.fromOffset(BTN_W, BTN_H), LayoutOrder = i, Text = m[3], TextSize = 26, Color = m[5] }, onClick)
+		-- значок слева, подпись после него (как на концепте)
+		local lbl = b:FindFirstChild("Label") :: TextLabel?
+		if lbl then
+			lbl.Position = UDim2.fromOffset(64, 0)
+			lbl.Size = UDim2.new(1, -70, 1, 0)
+			lbl.TextXAlignment = Enum.TextXAlignment.Left
+		end
+		UI.art(m[2], { Name = "Icon", Fit = true, Size = UDim2.fromOffset(48, 48), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 10, 0.5, 0), ZIndex = 3, Parent = b })
+	end
 	b.Parent = if alone then root else left
 	menuButtons[m[1]] = b
 end
 if compactMenu then
-	local toggle = UI.button({
-		Text = "", Icon = "📋", IconSize = 52, TextSize = 18, Color = Color3.fromRGB(96, 108, 170),
-		Size = UDim2.fromOffset(96, 96), Position = UDim2.new(0, 114, 0, 10), Name = "MenuToggle",
-	}, function()
+	local toggle = tileButton("ic_quests", "Menu", { Size = UDim2.fromOffset(96, 96), Position = UDim2.new(0, 114, 0, 10), Name = "MenuToggle" }, function()
 		setMenuOpen(not menuOpen)
 	end)
 	toggle.Parent = root
 	menuToggle = toggle
 end
 
-function Hud.menuButton(name: string): Frame?
+function Hud.menuButton(name: string): any
 	return menuButtons[name]
+end
+
+-- Hunter Pass: число наград, которые можно забрать. Никогда не падает, если d.hpass нет
+local function passReadyCount(d: any): number
+	local ok, n = pcall(function(): number
+		local hp = d and d.hpass
+		local cfg: any = Config
+		local perks: any = Perks
+		if type(hp) ~= "table" or type(cfg.PASS) ~= "table" or type(cfg.passTier) ~= "function" or type(cfg.passSeason) ~= "function" then
+			return 0
+		end
+		if hp.season ~= cfg.passSeason() then
+			return 0 -- сезон сменился: прогресс обнулится при следующем обращении к серверу
+		end
+		local tier = cfg.passTier(tonumber(hp.xp) or 0)
+		local premium = type(perks.hpassPremium) == "function" and perks.hpassPremium() == true
+		local claimedFn = perks.hpassServerClaimed
+		local cnt = 0
+		for t = 1, tier do
+			local r = cfg.PASS.REWARDS and cfg.PASS.REWARDS[t]
+			if r then
+				for _, lane in { "f", "p" } do
+					local items = if lane == "f" then r.free else r.premium
+					local key = lane .. t
+					local claimed = (type(hp.claimed) == "table" and hp.claimed[key] == true) or (type(claimedFn) == "function" and claimedFn(key) == true)
+					if items and not claimed and (lane == "f" or premium) then
+						cnt += 1
+					end
+				end
+			end
+		end
+		return cnt
+	end)
+	return if ok and type(n) == "number" then n else 0
+end
+
+local function updatePassBadge(d: any)
+	readyPass = passReadyCount(d)
+	local pb = menuButtons.pass
+	if pb then
+		UI.badge(pb, readyPass)
+	end
+	updateMenuBadge()
 end
 
 ---------------------------------------------------------------------
 -- Справа: бусты и задания
 ---------------------------------------------------------------------
+local QW = compactMenu and 260 or 330 -- ширина правой колонки (V72: шире, как на концепте)
+local QIN = QW - 52 -- ширина содержимого панели заданий
+local QROW, QGAP = 54, compactMenu and 6 or 8 -- высота строки задания и зазор
 local right = Instance.new("Frame")
 right.Name = "RightPanel"
 right.BackgroundTransparency = 1
-right.AnchorPoint = Vector2.new(1, 0.5)
-right.Position = UDim2.new(1, -12, 0.42, 0)
-right.Size = UDim2.fromOffset(250, 420)
+-- ПК: под верхней панелью; телефон: как раньше (по центру правого края)
+right.AnchorPoint = if compactMenu then Vector2.new(1, 0.5) else Vector2.new(1, 0)
+right.Position = if compactMenu then UDim2.new(1, -12, 0.42, 0) else UDim2.new(1, -12, 0, 108)
+right.Size = UDim2.fromOffset(QW, 420)
 UI.list(Enum.FillDirection.Vertical, 8, Enum.HorizontalAlignment.Right).Parent = right
 right.Parent = root
 
 local boostBox = Instance.new("Frame")
 boostBox.BackgroundTransparency = 1
-boostBox.Size = UDim2.fromOffset(250, 10)
+boostBox.Size = UDim2.fromOffset(QW, 10)
 boostBox.AutomaticSize = Enum.AutomaticSize.Y
 boostBox.LayoutOrder = 1
 UI.list(Enum.FillDirection.Vertical, 6, Enum.HorizontalAlignment.Right).Parent = boostBox
 boostBox.Parent = right
 
-local questBox = UI.panel({ Color = Color3.fromRGB(40, 48, 84), Size = UDim2.fromOffset(250, 10), Radius = 14, LineThick = 3, LayoutOrder = 2, Parent = right })
-questBox.AutomaticSize = Enum.AutomaticSize.Y
-UI.pad(10, 8).Parent = questBox
-UI.list(Enum.FillDirection.Vertical, 6, Enum.HorizontalAlignment.Left).Parent = questBox
-UI.label({ Text = "📜 QUESTS", TextSize = 20, Size = UDim2.new(1, 0, 0, 24), XAlign = Enum.TextXAlignment.Left, ZIndex = 4, LayoutOrder = 0, Parent = questBox })
+-- панель заданий: panel_quests (9-slice 48 px), внутри столбец; высота считается в refreshQuests
+local questBox = UI.art("panel_quests", { Name = "QuestTracker", Size = UDim2.fromOffset(QW, 100), Slice = 56, SliceScale = 0.7, LayoutOrder = 2, Parent = right })
+local questList = Instance.new("Frame")
+questList.Name = "List"
+questList.BackgroundTransparency = 1
+questList.Size = UDim2.fromScale(1, 1)
+do
+	local pd = Instance.new("UIPadding")
+	pd.PaddingLeft = UDim.new(0, 26)
+	pd.PaddingRight = UDim.new(0, 26)
+	pd.PaddingTop = UDim.new(0, 24)
+	pd.PaddingBottom = UDim.new(0, 20)
+	pd.Parent = questList
+end
+UI.list(Enum.FillDirection.Vertical, QGAP, Enum.HorizontalAlignment.Left).Parent = questList
+questList.Parent = questBox
+do
+	local head = Instance.new("Frame")
+	head.Name = "Header"
+	head.BackgroundTransparency = 1
+	head.Size = UDim2.new(1, 0, 0, 36)
+	head.LayoutOrder = 0
+	head.ZIndex = 4
+	UI.list(Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center).Parent = head
+	UI.art("ic_quests", { Name = "Icon", Fit = true, Size = UDim2.fromOffset(36, 36), ZIndex = 4, LayoutOrder = 1, Parent = head })
+	UI.label({ Text = "Quests", TextSize = 30, Size = UDim2.new(1, -46, 1, 0), XAlign = Enum.TextXAlignment.Left, ZIndex = 4, LayoutOrder = 2, Parent = head })
+	head.Parent = questList
+end
 local questRows: { Frame } = {}
+local QFILL = { "bar_green", "bar_cyan", "bar_purple" }
 
-local boostRows: { [string]: { frame: Frame, label: TextLabel } } = {}
+local boostRows: { [string]: { frame: GuiObject, label: TextLabel } } = {}
 local function refreshBoosts()
 	for id, b in Config.BOOSTS do
 		local left_ = Backend.boostLeft(id)
 		local row = boostRows[id]
 		if left_ > 0 then
 			if not row then
-				local f = UI.panel({ Color = b.color, Size = UDim2.fromOffset(200, 40), Radius = 20, LineThick = 3, Parent = boostBox })
-				UI.label({ Text = b.icon, TextSize = 28, Size = UDim2.fromOffset(40, 40), Position = UDim2.fromOffset(2, 0), ZIndex = 4, Stroke = 2, Parent = f })
-				local l = UI.label({ Text = "", TextSize = 18, Size = UDim2.new(1, -46, 1, 0), Position = UDim2.fromOffset(40, 0), XAlign = Enum.TextXAlignment.Left, ZIndex = 4, Parent = f })
+				-- тёмная плашка из bar_track (3-slice по краям), цвет буста — в подписи
+				local f = UI.art("bar_track", { Name = "Boost", Size = UDim2.fromOffset(QW - 40, 42), Slice = { 12, 0, 12, 0 }, SliceScale = 42 / 23, Parent = boostBox })
+				UI.label({ Text = b.icon, TextSize = 26, Size = UDim2.fromOffset(40, 42), Position = UDim2.fromOffset(6, 0), ZIndex = 4, Stroke = 2, Parent = f })
+				local l = UI.label({ Text = "", TextSize = 18, Color = b.color:Lerp(Color3.new(1, 1, 1), 0.45), Size = UDim2.new(1, -56, 1, 0), Position = UDim2.fromOffset(48, 0), XAlign = Enum.TextXAlignment.Left, ZIndex = 4, Parent = f })
 				row = { frame = f, label = l }
 				boostRows[id] = row
 				UI.punch(f, 0.3)
@@ -449,20 +531,33 @@ local function refreshQuests(d: any)
 	end)
 	local ready = 0
 	for i, e in list do
+		local done = e.st.done
 		local f = Instance.new("Frame")
+		f.Name = "Row"
 		f.BackgroundTransparency = 1
-		f.Size = UDim2.new(1, 0, 0, 44)
+		f.Size = UDim2.new(1, 0, 0, QROW)
 		f.LayoutOrder = i
 		f.ZIndex = 4
-		UI.label({ Text = e.q.text, TextSize = 15, Size = UDim2.new(1, 0, 0, 18), XAlign = Enum.TextXAlignment.Left, ZIndex = 4, Stroke = 2, Scaled = true, MaxSize = 15, Parent = f })
-		local bar = UI.bar({ Color = e.st.done and C.gold or C.green, Size = UDim2.new(1, 0, 0, 18), Position = UDim2.fromOffset(0, 22), ZIndex = 4, TextSize = 13, Parent = f })
-		bar.set(e.st.p / e.q.goal, e.st.done and "DONE! Claim your reward" or (Num.short(e.st.p) .. " / " .. Num.short(e.q.goal)))
-		if e.st.done then
+		-- V72: название задания в две строки, не мельче 13 (длинные раньше ужимались до нечитаемых)
+		local ql = UI.label({ Text = e.q.text, TextSize = 18, Size = UDim2.new(1, if done then -112 else -70, 0, 34), XAlign = Enum.TextXAlignment.Left, ZIndex = 4, Stroke = 2, Scaled = true, MaxSize = 18, Parent = f })
+		local qc = ql:FindFirstChildOfClass("UITextSizeConstraint")
+		if qc then
+			qc.MinTextSize = 13
+		end
+		UI.label({
+			Text = if done then "DONE! Claim" else (Num.short(e.st.p) .. "/" .. Num.short(e.q.goal)), TextSize = 17,
+			Color = if done then C.gold else C.text, Size = UDim2.fromOffset(if done then 108 else 66, 34), AnchorPoint = Vector2.new(1, 0),
+			Position = UDim2.new(1, 0, 0, 0), XAlign = Enum.TextXAlignment.Right, ZIndex = 4, Stroke = 2, Parent = f,
+		})
+		local bar = artBar({ W = QIN, H = 16, Position = UDim2.fromOffset(0, 36), ZIndex = 4, Fill = if done then "btn_yellow" else QFILL[(i - 1) % #QFILL + 1], TextSize = 10, Parent = f })
+		bar.set(if done then 1 else e.st.p / e.q.goal)
+		if done then
 			ready += 1
 		end
-		f.Parent = questBox
+		f.Parent = questList
 		table.insert(questRows, f)
 	end
+	questBox.Size = UDim2.fromOffset(QW, 44 + 52 + #list * (QROW + QGAP)) -- V71: +16, нижняя рама не заходит на последнюю полоску
 	questBox.Visible = #list > 0
 	local qb = menuButtons.quests
 	if qb then
@@ -513,10 +608,12 @@ fillGrad.Parent = barFill
 barFill.Parent = barBg
 -- отметки ступеней (лог-шкала)
 local LN = math.log(Config.TENSION.cap)
+local ticks: { [number]: Frame } = {} -- V67: отметка каждой ступени (для вспышки при переходе)
 for i, t in Config.TIERS do
 	if i > 1 then
 		local x = math.log(t.m) / LN
 		local tick = Instance.new("Frame")
+		ticks[i] = tick
 		tick.BorderSizePixel = 0
 		tick.BackgroundColor3 = t.color
 		tick.Size = UDim2.fromOffset(4, 38)
@@ -604,13 +701,83 @@ end)
 exitBtn.Parent = hunt
 local chanceLabel = UI.label({ Text = "", TextSize = 18, Color = C.dim, Size = UDim2.fromOffset(300, 80), AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 20, 1, -90), XAlign = Enum.TextXAlignment.Left, YAlign = Enum.TextYAlignment.Bottom, Stroke = 2, Rich = true, Parent = hunt })
 
+-- V67: переход отметки ×N на шкале. Отметка вспыхивает и раздувается, от неё расходится кольцо и летят искры,
+-- над шкалой крупно выскакивает «×N ИМЯ!», экран вспыхивает цветом ступени, шкала вздрагивает.
+-- (Толчок камеры, столб света и молнии вокруг героя добавляет HuntCtl.)
+local METER_POS = UDim2.new(0.5, 0, 1, -24)
+local crossToken = 0
+local function crossFx(ti: number, t: any)
+	crossToken += 1
+	local token = crossToken
+	local tick = ticks[ti]
+	if tick then
+		local sc = tick:FindFirstChildOfClass("UIScale")
+		if not sc then
+			sc = Instance.new("UIScale")
+			sc.Parent = tick
+		end
+		local tickScale = sc :: UIScale
+		tickScale.Scale = 2.8
+		UI.tween(tickScale, 0.4, { Scale = 1 }, Enum.EasingStyle.Back)
+		UI.burst(UI.screenPos(tick), t.color, 16 + ti * 4, 420)
+		-- кольцо от отметки
+		local ring = Instance.new("Frame")
+		ring.BackgroundTransparency = 1
+		ring.AnchorPoint = Vector2.new(0.5, 0.5)
+		ring.Position = UDim2.new(tick.Position.X.Scale, 0, 0.5, 0)
+		ring.Size = UDim2.fromOffset(24, 24)
+		ring.ZIndex = 6
+		UI.corner(1, true).Parent = ring
+		local rs = UI.stroke(t.color, 6, 0, true)
+		rs.Parent = ring
+		ring.Parent = barBg
+		UI.tween(ring, 0.45, { Size = UDim2.fromOffset(170 + ti * 20, 170 + ti * 20) })
+		UI.tween(rs, 0.45, { Transparency = 1 })
+		task.delay(0.5, function()
+			ring:Destroy()
+		end)
+	end
+	-- «×N ИМЯ!» над шкалой
+	local pop = UI.label({ Text = "×" .. t.m .. "  " .. t.name .. "!", TextSize = 58, Color = t.color, Size = UDim2.fromOffset(760, 66), AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 0, -36), ZIndex = 30, Stroke = 4, Parent = meter })
+	local ps = Instance.new("UIScale")
+	ps.Scale = 2.4
+	ps.Parent = pop
+	UI.tween(ps, 0.28, { Scale = 1 }, Enum.EasingStyle.Back)
+	task.delay(0.6, function()
+		UI.tween(pop, 0.35, { TextTransparency = 1, Position = UDim2.new(0.5, 0, 0, -80) })
+		local st = pop:FindFirstChildOfClass("UIStroke")
+		if st then
+			UI.tween(st, 0.35, { Transparency = 1 })
+		end
+		task.delay(0.4, function()
+			pop:Destroy()
+		end)
+	end)
+	UI.flash(t.color, 0.35, 0.16 + 0.05 * ti)
+	Sfx.play(if ti >= 4 then "boom" else "pop", 1 + ti * 0.04, 0.55)
+	-- шкала вздрагивает
+	task.spawn(function()
+		local t0 = os.clock()
+		while os.clock() - t0 < 0.35 and token == crossToken do
+			local k = 1 - (os.clock() - t0) / 0.35
+			local n = os.clock() * 50
+			meter.Position = UDim2.new(0.5, math.noise(n, 3.1) * 16 * k, 1, -24 + math.noise(4.2, n) * 10 * k)
+			RunService.RenderStepped:Wait()
+		end
+		if token == crossToken then
+			meter.Position = METER_POS
+		end
+	end)
+end
+
 local lastTier = 0
 function Hud.tension(m: number, tremble: number, state: string?)
 	local ti = Config.tierIndex(m)
 	local t = Theme.tier(ti)
 	multLabel.Text = Num.mult(m)
 	multLabel.TextColor3 = t.color
-	local x = math.log(math.max(m, 1)) / LN
+	m = math.max(m, 1) -- V68: шкала не опускается ниже ×1
+	local x = math.log(m) / LN
 	barFill.Size = UDim2.fromScale(math.clamp(x, 0.02, 1), 1)
 	fillGrad.Color = ColorSequence.new(t.color2, t.color)
 	if state then
@@ -626,6 +793,7 @@ function Hud.tension(m: number, tremble: number, state: string?)
 			UI.punch(barBg, 0.15)
 			Sfx.rise(ti + 2, 0.4)
 			UI.burst(UI.screenPos(multLabel), t.color, 10 + ti * 3, 300)
+			pcall(crossFx, ti, t)
 		end
 		lastTier = ti
 	end
@@ -669,7 +837,8 @@ end
 
 function Hud.meterVisible(on: boolean)
 	meter.Visible = on
-	throwBtn.Visible = on
+	-- V67: на экране броска только шкала: заряд держит ЛКМ, Пробел или палец в любом месте экрана
+	throwBtn.Visible = false
 end
 
 ---------------------------------------------------------------------
@@ -874,9 +1043,95 @@ function Hud.flyCoins(from: Vector2, amount: number)
 end
 
 ---------------------------------------------------------------------
+-- Хотбар внизу по центру: слот 1 = копьё игрока (Tool с атрибутом Spear, как в Cosmetics.refreshTool).
+-- Штатную панель инструментов Roblox прячем; клик или клавиша 1 берёт копьё в руку и убирает его.
+---------------------------------------------------------------------
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local StarterGui = game:GetService("StarterGui")
+local lp = Players.LocalPlayer
+
+task.spawn(function()
+	for _ = 1, 10 do
+		local ok = pcall(function()
+			StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, false)
+		end)
+		if ok then
+			break
+		end
+		task.wait(0.5)
+	end
+end)
+
+-- копьё: (инструмент, в руке ли)
+local function findSpear(): (Tool?, boolean)
+	local char = lp.Character
+	if char then
+		for _, c in char:GetChildren() do
+			if c:IsA("Tool") and c:GetAttribute("Spear") then
+				return c, true
+			end
+		end
+	end
+	local bp = lp:FindFirstChildOfClass("Backpack")
+	if bp then
+		for _, c in bp:GetChildren() do
+			if c:IsA("Tool") and c:GetAttribute("Spear") then
+				return c, false
+			end
+		end
+	end
+	return nil, false
+end
+
+local function toggleSpear()
+	local char = lp.Character
+	local hum = if char then char:FindFirstChildOfClass("Humanoid") else nil
+	if not hum or hum.Health <= 0 then
+		return
+	end
+	local tool, equipped = findSpear()
+	if not tool then
+		return
+	end
+	if equipped then
+		hum:UnequipTools()
+	else
+		hum:EquipTool(tool)
+	end
+end
+
+local hotbar = UI.artButton("slot", { Name = "Hotbar1", Size = UDim2.fromOffset(88, 85), AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -16), Parent = root }, toggleSpear)
+UI.art("ic_spear", { Name = "Icon", Fit = true, Size = UDim2.fromOffset(58, 58), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 2), ZIndex = 3, Parent = hotbar })
+UI.label({ Name = "Key", Text = "1", TextSize = 20, Size = UDim2.fromOffset(24, 22), Position = UDim2.fromOffset(9, 4), XAlign = Enum.TextXAlignment.Left, ZIndex = 4, Stroke = 2, Parent = hotbar })
+task.spawn(function()
+	local selected = false
+	while true do
+		local _, eq = findSpear()
+		if eq ~= selected then
+			selected = eq
+			UI.artApply(hotbar, if eq then "slot_sel" else "slot")
+			hotbar.Size = if eq then UDim2.fromOffset(98, 96) else UDim2.fromOffset(88, 85)
+		end
+		task.wait(0.2)
+	end
+end)
+UserInputService.InputBegan:Connect(function(input, processed)
+	if processed or input.KeyCode ~= Enum.KeyCode.One then
+		return
+	end
+	if Hud.mode ~= "normal" then -- V72: в тренировке и упаковке слот тоже скрыт и клавиша не работает
+		return
+	end
+	toggleSpear()
+end)
+
+---------------------------------------------------------------------
 -- Режимы и обновление данных
 ---------------------------------------------------------------------
+local hintToken = 0
 function Hud.setMode(mode: string)
+	local prev = Hud.mode
 	Hud.mode = mode
 	Sfx.setMood(mode)
 	local normal = mode == "normal"
@@ -884,17 +1139,21 @@ function Hud.setMode(mode: string)
 		if not normal then
 			menuOpen = false
 		end
-		left.Visible = normal and menuOpen
+		leftBox.Visible = normal and menuOpen
 		menuButtons.shop.Visible = normal
 		if menuToggle then
 			menuToggle.Visible = normal
 		end
 	else
-		left.Visible = normal
+		leftBox.Visible = normal
 	end
-	right.Visible = normal or mode == "hunt"
-	topBar.Visible = mode ~= "cinematic"
+	-- V67: на точке броска на экране только шкала заряда: без монет, заданий, шансов и кнопки броска
+	right.Visible = normal
+	topBar.Visible = mode ~= "cinematic" and mode ~= "hunt"
+	hotbar.Visible = normal -- V72: только в обычном режиме (в тренировке он торчал из-под кнопки LIFT)
 	hunt.Visible = mode == "hunt"
+	chanceLabel.Visible = false
+	exitBtn.Visible = true -- V68: кнопка выхода видна всегда (и на ПК, вместе с Q)
 	pcall(function()
 		GuiService.TouchControlsEnabled = mode ~= "hunt" and mode ~= "cinematic" and mode ~= "busy"
 	end)
@@ -903,7 +1162,46 @@ function Hud.setMode(mode: string)
 		Hud.meterVisible(true)
 		-- V64: на телефоне заряд держит палец в любом месте экрана (кнопка 🗡️ тоже работает)
 		Hud.setHint(UI.mobile and "Hold anywhere on the screen, release in time" or "Hold LMB / Space · release before SLIP · Q to leave")
+		-- V67: подсказка видна 3.5 с при входе на точку броска и гаснет; после броска (возврат из сцены улова) не показывается
+		hintToken += 1
+		local token = hintToken
+		local hs = hint:FindFirstChildOfClass("UIStroke")
+		if prev == "cinematic" then
+			hint.TextTransparency = 1
+			if hs then
+				hs.Transparency = 1
+			end
+		else
+			hint.TextTransparency = 0
+			if hs then
+				hs.Transparency = 0
+			end
+			task.delay(3.5, function()
+				if token == hintToken and Hud.mode == "hunt" then
+					UI.tween(hint, 0.5, { TextTransparency = 1 })
+					if hs then
+						UI.tween(hs, 0.5, { Transparency = 1 })
+					end
+				end
+			end)
+		end
 	end
+end
+
+-- V82: в тренировке из верхней панели остаётся только Сила (список сам центрирует её)
+function Hud.setTraining(on: boolean)
+	coins.frame.Visible = not on
+	bag.frame.Visible = not on
+	lvlFrame.Visible = not on
+end
+
+-- центр карточки Силы на экране (для всплывающих чисел), nil если не видна
+function Hud.powerPos(): Vector2?
+	local f = power.frame
+	if not f or not f.Visible then
+		return nil
+	end
+	return f.AbsolutePosition + f.AbsoluteSize / 2
 end
 
 function Hud.refresh(d: any)
@@ -919,19 +1217,21 @@ function Hud.refresh(d: any)
 		bag.value.TextColor3 = C.text
 		bag.icon.Rotation = 0
 	end
-	setBagFill(n, d.bagCap)
 	setLevel(d.level)
 	local need = Config.xpForLevel(d.level)
-	xpBar.set(d.xp / need, Num.short(d.xp) .. " / " .. Num.short(need), true)
+	xpBar.set(d.xp / need, Num.short(d.xp) .. "/" .. Num.short(need) .. " XP", true)
 	refreshQuests(d)
 	local bb = menuButtons.bag
 	if bb then
 		UI.badge(bb, n >= d.bagCap and n or nil)
 	end
 	bagIsFull = n >= d.bagCap
-	updateMenuBadge()
+	updatePassBadge(d)
 end
 
 Backend.onChange(Hud.refresh)
+Perks.Changed.Event:Connect(function()
+	updatePassBadge(Backend.data)
+end)
 
 return Hud

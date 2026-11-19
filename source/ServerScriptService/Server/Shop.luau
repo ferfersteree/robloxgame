@@ -51,7 +51,7 @@ for _, it in SHOP.PRODUCTS do
 end
 
 local function newShop(): any
-	return { boosts = {}, starter = false, receipts = {}, pending = {}, test = {}, spent = 0, lastGift = 0, exotic = { owned = {}, equipped = {}, level = {}, shards = 0, hatch = {} } }
+	return { boosts = {}, starter = false, receipts = {}, pending = {}, test = {}, spent = 0, lastGift = 0, exotic = { owned = {}, equipped = {}, level = {}, shards = 0, hatch = {} }, hpass = { season = -1, premium = false, claimed = {} }, hpassCos = {}, hpassBundleXp = 0 }
 end
 
 local function deepCopy(t: any): any
@@ -63,6 +63,37 @@ local function deepCopy(t: any): any
 		out[k] = deepCopy(v)
 	end
 	return out
+end
+
+-- V71: Hunter Pass. Цвет в сохранении: { r, g, b } 0..255 (Color3 в DataStore не кладём)
+local function colorToSave(c: Color3): { number }
+	return { math.floor(c.R * 255 + 0.5), math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5) }
+end
+
+local function colorFromSave(t: any): Color3?
+	if type(t) ~= "table" then
+		return nil
+	end
+	local r, g, b = tonumber(t[1]), tonumber(t[2]), tonumber(t[3])
+	if not r or not g or not b or r ~= r or g ~= g or b ~= b then
+		return nil
+	end
+	return Color3.fromRGB(math.clamp(r, 0, 255), math.clamp(g, 0, 255), math.clamp(b, 0, 255))
+end
+
+-- Тексты тегов и названия аур, которые пропуск вообще выдаёт (из сохранения берём только их)
+local PASS_TAGS: { [string]: boolean } = {}
+local PASS_AURAS: { [string]: boolean } = {}
+for _, r in Config.PASS.REWARDS do
+	for _, lane in { r.free, r.premium } do
+		for _, it in lane do
+			if it.type == "tag" then
+				PASS_TAGS[it.text] = true
+			elseif it.type == "aura" then
+				PASS_AURAS[it.name] = true
+			end
+		end
+	end
 end
 
 -- V26: ранг поддержки. Пассы считаются по владению (покупка на сайте тоже), товары по чекам.
@@ -94,7 +125,16 @@ local function stateOf(prof: any): any
 			boosts[id] = left
 		end
 	end
+	-- V71: пропуск показываем только за текущий сезон (старый сезон = пусто)
+	local hp = prof.shop.hpass
+	local hpassCur = type(hp) == "table" and hp.season == Config.passSeason()
 	return {
+		hpass = {
+			season = Config.passSeason(),
+			premium = hpassCur and hp.premium == true,
+			claimed = hpassCur and hp.claimed or {},
+		},
+		hpassCos = prof.shop.hpassCos,
 		passes = prof.passes,
 		boosts = boosts,
 		server = serverLuck,
@@ -148,6 +188,16 @@ local function badgeOf(prof: any): (string?, Color3, Color3, number)
 	elseif prof.passes.vip then
 		return "VIP", Color3.fromRGB(255, 210, 62), Color3.fromRGB(255, 210, 62), 5
 	end
+	-- V71: тег и аура Hunter Pass, когда нет FOUNDER/ранга/VIP (аура у тех уже есть)
+	local cos = prof.shop.hpassCos
+	if type(cos) == "table" then
+		local tag = type(cos.tag) == "string" and cos.tag or nil
+		local tagColor = colorFromSave(cos.tagColor) or Color3.new(1, 1, 1)
+		local auraColor = colorFromSave(cos.aura)
+		if tag or auraColor then
+			return tag, tagColor, auraColor or tagColor, auraColor and 6 or 0
+		end
+	end
 	return nil, Color3.new(1, 1, 1), Color3.new(1, 1, 1), 0
 end
 
@@ -171,26 +221,28 @@ local function vipTag(player: Player)
 	if oldAura then
 		oldAura:Destroy()
 	end
-	if not label then
+	if not label and rate == 0 then
 		return
 	end
-	local bb = Instance.new("BillboardGui")
-	bb.Name = "VipTag"
-	bb.Size = UDim2.fromOffset(110, 26)
-	bb.StudsOffset = Vector3.new(0, 3.1, 0)
-	bb.MaxDistance = 90
-	bb.ResetOnSpawn = false
-	local l = Instance.new("TextLabel")
-	l.BackgroundTransparency = 1
-	l.Size = UDim2.fromScale(1, 1)
-	l.Font = Enum.Font.FredokaOne
-	l.Text = label
-	l.TextScaled = true
-	l.TextColor3 = color
-	l.TextStrokeColor3 = Color3.fromRGB(74, 38, 0)
-	l.TextStrokeTransparency = 0
-	l.Parent = bb
-	bb.Parent = head
+	if label then
+		local bb = Instance.new("BillboardGui")
+		bb.Name = "VipTag"
+		bb.Size = UDim2.fromOffset(110, 26)
+		bb.StudsOffset = Vector3.new(0, 3.1, 0)
+		bb.MaxDistance = 90
+		bb.ResetOnSpawn = false
+		local l = Instance.new("TextLabel")
+		l.BackgroundTransparency = 1
+		l.Size = UDim2.fromScale(1, 1)
+		l.Font = Enum.Font.FredokaOne
+		l.Text = label
+		l.TextScaled = true
+		l.TextColor3 = color
+		l.TextStrokeColor3 = Color3.fromRGB(74, 38, 0)
+		l.TextStrokeTransparency = 0
+		l.Parent = bb
+		bb.Parent = head
+	end
 	local root = char:FindFirstChild("HumanoidRootPart")
 	if root and rate > 0 then
 		local e = Instance.new("ParticleEmitter")
@@ -213,10 +265,10 @@ local function refreshVip(player: Player)
 	if not prof then
 		return
 	end
-	local label = badgeOf(prof)
+	local label, _, _, rate = badgeOf(prof)
 	player:SetAttribute("VIP", prof.passes.vip == true)
 	player:SetAttribute("Rank", rankOf(prof))
-	if not label then
+	if not label and rate == 0 then
 		return
 	end
 	if not prof.vipConn then
@@ -415,6 +467,40 @@ local function loadProfile(player: Player)
 						end
 					end
 				end
+					-- V71: Hunter Pass: премиум, забранные серверные награды, косметика (теги/ауры только из таблицы пропуска)
+				local hp = s.hpass
+				if type(hp) == "table" then
+					local season = tonumber(hp.season)
+					shop.hpass.season = if season and season == season then math.floor(season) else -1
+					shop.hpass.premium = hp.premium == true
+					for key, v in (type(hp.claimed) == "table" and hp.claimed or {}) do
+						if type(key) == "string" and v == true and key:match("^[fp]%d+$") then
+							shop.hpass.claimed[key] = true
+						end
+					end
+				end
+				local bx = tonumber(s.hpassBundleXp)
+				shop.hpassBundleXp = if bx and bx == bx then math.clamp(bx, 0, 100000) else 0
+				local cs = s.hpassCos
+				if type(cs) == "table" then
+					local cos = shop.hpassCos
+					cos.tags = {}
+					for _, t in (type(cs.tags) == "table" and cs.tags or {}) do
+						if type(t) == "string" and PASS_TAGS[t] and not table.find(cos.tags, t) then
+							table.insert(cos.tags, t)
+						end
+					end
+					local tc = colorFromSave(cs.tagColor)
+					if type(cs.tag) == "string" and PASS_TAGS[cs.tag] and tc then
+						cos.tag = cs.tag
+						cos.tagColor = colorToSave(tc)
+					end
+					local ac = colorFromSave(cs.aura)
+					if type(cs.auraName) == "string" and PASS_AURAS[cs.auraName] and ac then
+						cos.auraName = cs.auraName
+						cos.aura = colorToSave(ac)
+					end
+				end
 				if type(s.receipts) == "table" then
 					shop.receipts = s.receipts
 				end
@@ -497,6 +583,18 @@ local function applyProduct(prof: any, item: any, purchaseId: string)
 		table.insert(s.pending, { id = purchaseId, kind = "starter", key = item.key })
 		local st = SHOP.STARTER
 		s.boosts[st.boost] = (s.boosts[st.boost] or 0) + st.dur
+	elseif item.kind == "hpass" then
+		-- V71: Hunter Pass: премиум на текущий сезон; бандл ещё кладёт опыт в очередь (клиент добавит и подтвердит)
+		local n = Config.passSeason()
+		if type(s.hpass) ~= "table" or s.hpass.season ~= n then
+			s.hpass = { season = n, premium = false, claimed = {} }
+			s.hpassBundleXp = 0
+		end
+		s.hpass.premium = true
+		if item.xp then
+			s.hpassBundleXp = (tonumber(s.hpassBundleXp) or 0) + item.xp
+			table.insert(s.pending, { id = purchaseId, kind = "hpassxp", xp = item.xp, season = n, key = item.key })
+		end
 	end
 end
 
@@ -553,6 +651,119 @@ local function processReceipt(info: any): Enum.ProductPurchaseDecision
 	afterGrant(player, item)
 	refreshVip(player)
 	return Enum.ProductPurchaseDecision.PurchaseGranted
+end
+
+---------------------------------------------------------------------
+-- V71: награда Hunter Pass серверного ряда (яйцо, буст, тег, аура)
+---------------------------------------------------------------------
+local function hpassClaim(player: Player, prof: any, tierArg: any, lane: any): boolean
+	local P = Config.PASS
+	local tier = tonumber(tierArg)
+	if not tier or tier ~= tier or tier ~= math.floor(tier) or tier < 1 or tier > P.TIERS then
+		return false
+	end
+	if lane ~= "f" and lane ~= "p" then
+		return false
+	end
+	local n = Config.passSeason()
+	local s = prof.shop
+	if type(s.hpass) ~= "table" or s.hpass.season ~= n then
+		s.hpass = { season = n, premium = false, claimed = {} }
+		s.hpassBundleXp = 0
+	end
+	local hp = s.hpass
+	if lane == "p" and not hp.premium then
+		return false
+	end
+	local key = lane .. tier
+	-- V74: часть премиум-уровней переехала с клиентской выдачи (монеты, Сила) на серверную: кто уже забрал такой
+	-- уровень раньше, отмечен только в клиентском сохранении. Учитываем и эту отметку, чтобы не выдать второй раз.
+	local sv = prof.save
+	local svh = type(sv) == "table" and sv.hpass or nil
+	if type(svh) == "table" and svh.season == n and type(svh.claimed) == "table" and svh.claimed[key] == true then
+		return false
+	end
+	if hp.claimed[key] then
+		return false
+	end
+	local r = P.REWARDS[tier]
+	local list = r and (if lane == "f" then r.free else r.premium)
+	if not list or Config.passSide(list) ~= "server" then
+		return false
+	end
+	-- опыт берём из снимка клиента, но не выше того, что можно набрать за время сезона (+ бандл)
+	local sv = type(prof.save) == "table" and prof.save.hpass or nil
+	if type(sv) ~= "table" or sv.season ~= n then
+		return false
+	end
+	local xp = tonumber(sv.xp) or 0
+	if xp ~= xp then
+		return false
+	end
+	if not IS_STUDIO then
+		local cap = (Config.passDay() + 1) * 300 + (Config.passWeek() + 1) * 1200 + (tonumber(s.hpassBundleXp) or 0)
+		xp = math.min(xp, cap)
+	end
+	xp = math.min(xp, P.TIERS * P.XP_PER_TIER)
+	if Config.passTier(xp) < tier then
+		return false
+	end
+	local backup = deepCopy(s)
+	hp.claimed[key] = true -- метка до любых yield
+	local rewardId = "hpass_" .. n .. "_" .. key
+	local okG, err = pcall(function()
+		for _, it in list do
+			if it.type == "egg" then
+				local egg = Config.SHOP_BY_KEY[it.key]
+				if prof.eggsOff then
+					table.insert(s.pending, { id = rewardId, kind = "coins", k = 0.5, key = "hpass" })
+				elseif egg then
+					rollEgg(prof, egg, rewardId)
+				end
+			elseif it.type == "boost" then
+				local item = Config.SHOP_BY_KEY[it.key]
+				if item and item.boosts then
+					for _, id in item.boosts do
+						s.boosts[id] = (s.boosts[id] or 0) + item.dur
+					end
+				end
+			elseif it.type == "tag" then
+				local cos = s.hpassCos
+				cos.tags = cos.tags or {}
+				if not table.find(cos.tags, it.text) then
+					table.insert(cos.tags, it.text)
+				end
+				cos.tag = it.text
+				cos.tagColor = colorToSave(it.color)
+			elseif it.type == "shards" then
+				-- V74: осколки питомцев
+				local E = s.exotic
+				E.shards = (tonumber(E.shards) or 0) + math.max(0, math.floor(tonumber(it.n) or 0))
+			elseif it.type == "aura" then
+				s.hpassCos.auraName = it.name
+				s.hpassCos.aura = colorToSave(it.color)
+			end
+		end
+	end)
+	if not okG then
+		warn("[Shop] hpassClaim " .. key .. " failed: " .. tostring(err))
+		prof.shop = backup
+		return false
+	end
+	prof.dirty = true
+	-- busy: пока идёт сохранение, другие запросы (save/чеки) ждут, иначе откат вернул бы уже подтверждённое
+	prof.busy = true
+	local okS, saved = pcall(saveProfile, player, prof)
+	prof.busy = false
+	if not okS or not saved then
+		prof.shop = backup
+		push(player)
+		return false
+	end
+	refreshVip(player)
+	push(player)
+	ShopEv:FireClient(player, "hpassGranted", { tier = tier, lane = lane })
+	return true
 end
 
 ---------------------------------------------------------------------
@@ -694,6 +905,8 @@ local function onInvoke(player: Player, action: any, a: any, b: any): ...any
 		saveProfile(player, prof)
 		push(player)
 		return true
+	elseif action == "hpassClaim" then
+		return hpassClaim(player, prof, a, b)
 	elseif action == "hatchAck" then
 		-- клиент показал вылупление: убираем из очереди (само животное уже выдано)
 		local E = prof.shop.exotic

@@ -38,7 +38,7 @@ Config.START = {
 -- Натяжение: держишь — множитель растёт m(t) = e^(r·t), в скрытый момент «СРЫВ»
 ---------------------------------------------------------------------
 Config.TENSION = {
-	rate = 1.0, -- r: ×100 примерно за 4.6 с
+	rate = 0.6, -- r: ×100 примерно за 7.7 с (V68: было 1.0 и 4.6 с; срывов столько же: точка срыва задаётся множителем, не временем)
 	cap = 100, -- на капе бросок происходит сам
 	tellTime = 0.6, -- за сколько секунд до срыва копьё начинает сильно дрожать (V65: было 0.42, больше времени отпустить)
 	slipEase = 0.55, -- V65: множитель «хрупкости» alpha всех копий: меньше — реже срыв (1 — как до V65)
@@ -342,25 +342,416 @@ Config.FORGE = {
 	costMul = 0.3, -- цена уровня = max(40, price·costMul)·(lvl+1)^1.7
 }
 
--- Гантели: прирост Силы за подъём
+-- V82: 15 уровней гантелей. Уровни 1..7 не менялись. gain = очки за подъём, bar = очков до заполнения шкалы
+-- (при заполнении игрок получает bar * 1.1 Силы). reps = bar / gain (подъёмов на шкалу), растёт 12 -> 40.
+-- Лимит дальности 8*sqrt(Сила) = 12700 -> нужно ~2.5M Силы; монеты (цена) держат темп, а не gain.
+--  lvl  cost        gain   reps  bar
+--   1   0           1      12    12
+--   2   40          2      14    28
+--   3   250         4      16    64
+--   4   1 500       8      18    144
+--   5   8 000       15     20    300
+--   6   40 000      30     22    660
+--   7   150 000     60     24    1 440
+--   8   600 000     115    26    2 990
+--   9   1 800 000   225    28    6 300
+--  10   5 000 000   430    30    12 900
+--  11   13 000 000  800    32    25 600
+--  12   32 000 000  1 500  34    51 000
+--  13   60 000 000  2 800  36    100 800
+--  14   100 000 000 5 200  38    197 600
+--  15   180 000 000 9 500  40    380 000  (как самые дорогие копья)
 Config.DUMBBELL = {
-	{ cost = 0, gain = 1, name = "Wooden" },
-	{ cost = 40, gain = 2, name = "Stone" },
-	{ cost = 250, gain = 4, name = "Bronze" },
-	{ cost = 1500, gain = 8, name = "Iron" },
-	{ cost = 8000, gain = 15, name = "Granite" },
-	{ cost = 40000, gain = 30, name = "Golden" },
-	{ cost = 150000, gain = 60, name = "Mammoth" },
+	{ cost = 0, gain = 1, name = "Wooden", bar = 12 },
+	{ cost = 40, gain = 2, name = "Stone", bar = 28 },
+	{ cost = 250, gain = 4, name = "Bronze", bar = 64 },
+	{ cost = 1500, gain = 8, name = "Iron", bar = 144 },
+	{ cost = 8000, gain = 15, name = "Granite", bar = 300 },
+	{ cost = 40000, gain = 30, name = "Golden", bar = 660 },
+	{ cost = 150000, gain = 60, name = "Mammoth", bar = 1440 },
+	{ cost = 600000, gain = 115, name = "Crystal", bar = 2990 },
+	{ cost = 1800000, gain = 225, name = "Obsidian", bar = 6300 },
+	{ cost = 5000000, gain = 430, name = "Frost", bar = 12900 },
+	{ cost = 13000000, gain = 800, name = "Magma", bar = 25600 },
+	{ cost = 32000000, gain = 1500, name = "Storm", bar = 51000 },
+	{ cost = 60000000, gain = 2800, name = "Jade", bar = 100800 },
+	{ cost = 100000000, gain = 5200, name = "Celestial", bar = 197600 },
+	{ cost = 180000000, gain = 9500, name = "Primal", bar = 380000 },
 }
-Config.DUMBBELL_LOOK = {
-	{ color = Color3.fromRGB(150, 98, 56), material = Enum.Material.Plastic, size = 0.9 },
-	{ color = Color3.fromRGB(128, 128, 132), material = Enum.Material.Plastic, size = 1.0 },
-	{ color = Color3.fromRGB(205, 127, 50), material = Enum.Material.Plastic, size = 1.1 },
-	{ color = Color3.fromRGB(90, 94, 104), material = Enum.Material.Plastic, size = 1.2 },
-	{ color = Color3.fromRGB(176, 160, 150), material = Enum.Material.Plastic, size = 1.3 },
-	{ color = Color3.fromRGB(255, 196, 48), material = Enum.Material.Plastic, size = 1.4 },
-	{ color = Color3.fromRGB(240, 232, 214), material = Enum.Material.Plastic, size = 1.55 },
-}
+Config.TRAIN_FILL_BONUS = 1.1 -- Сила за полную шкалу = bar * 1.1
+-- V82: 15 гантелей и 15 стадий стойки. Данные дизайнера (Opus): docs/concepts_v82/dumbbells_v82.lua, превью там же
+-- (dumbbells_sheet.png, stands_sheet.png). Формат и правила: docs/concepts_v82/training_contract.md.
+do
+	local D = {
+		NAMES = { "Wooden", "Stone", "Bronze", "Iron", "Granite", "Golden", "Mammoth", "Crystal", "Obsidian", "Frost", "Magma", "Storm", "Jade", "Celestial", "Primal" },
+		DUMBBELL_LOOK = {
+			-- 1 Wooden: oak blocks held by two brass straps
+			{ color = Color3.fromRGB(150, 98, 56), material = Enum.Material.Wood, size = 0.9, parts = {
+				{ name = "Bar", shape = "Cylinder", size = {1.68, 0.26, 0.26}, offset = {0, 0, 0}, material = "Wood", rgb = {99, 61, 37}, weight = false, mirror = false },
+				{ name = "Head", shape = "Block", size = {0.52, 0.68, 0.68}, offset = {1.04, 0, 0}, material = "Wood", rgb = {158, 98, 52}, weight = true, mirror = true },
+				{ name = "Strap", shape = "Block", size = {0.1, 0.72, 0.72}, offset = {1.17, 0, 0}, material = "Metal", rgb = {219, 165, 83}, weight = false, mirror = true },
+				{ name = "Strap2", shape = "Block", size = {0.1, 0.72, 0.72}, offset = {0.91, 0, 0}, material = "Metal", rgb = {219, 165, 83}, weight = false, mirror = true },
+			} },
+			-- 2 Stone: slate blocks lashed with rope, a cobble chip on top
+			{ color = Color3.fromRGB(128, 128, 132), material = Enum.Material.Slate, size = 1, parts = {
+				{ name = "Bar", shape = "Cylinder", size = {1.8, 0.26, 0.26}, offset = {0, 0, 0}, material = "Wood", rgb = {109, 71, 47}, weight = false, mirror = false },
+				{ name = "Head", shape = "Block", size = {0.6, 0.78, 0.78}, offset = {1.1, 0, 0}, material = "Slate", rgb = {128, 137, 145}, weight = true, mirror = true },
+				{ name = "Lash", shape = "Block", size = {0.1, 0.82, 0.82}, offset = {0.95, 0, 0}, material = "Fabric", rgb = {196, 160, 104}, weight = false, mirror = true },
+				{ name = "Chip", shape = "Block", size = {0.34, 0.1, 0.5}, offset = {1.16, 0.44, 0.05}, material = "Cobblestone", rgb = {150, 156, 160}, weight = false, mirror = true },
+			} },
+			-- 3 Bronze: round bronze plates with a pale bronze cap and collar
+			{ color = Color3.fromRGB(205, 127, 50), material = Enum.Material.Metal, size = 1.1, parts = {
+				{ name = "Bar", shape = "Cylinder", size = {1.9, 0.24, 0.24}, offset = {0, 0, 0}, material = "Metal", rgb = {100, 65, 48}, weight = false, mirror = false },
+				{ name = "Head", shape = "Cylinder", size = {0.56, 0.88, 0.88}, offset = {1.15, 0, 0}, material = "Metal", rgb = {184, 104, 55}, weight = true, mirror = true },
+				{ name = "Plate", shape = "Cylinder", size = {0.12, 0.96, 0.96}, offset = {0.83, 0, 0}, material = "Metal", rgb = {236, 158, 82}, weight = false, mirror = true },
+				{ name = "Cap", shape = "Cylinder", size = {0.08, 0.56, 0.56}, offset = {1.46, 0, 0}, material = "Metal", rgb = {236, 158, 82}, weight = false, mirror = true },
+				{ name = "Collar", shape = "Cylinder", size = {0.1, 0.36, 0.36}, offset = {0.66, 0, 0}, material = "Metal", rgb = {140, 90, 60}, weight = false, mirror = true },
+			} },
+			-- 4 Iron: dark iron plates with the blue stripe and steel collars
+			{ color = Color3.fromRGB(81, 157, 204), material = Enum.Material.Metal, size = 1.2, parts = {
+				{ name = "Bar", shape = "Cylinder", size = {2, 0.26, 0.26}, offset = {0, 0, 0}, material = "Metal", rgb = {125, 139, 147}, weight = false, mirror = false },
+				{ name = "Head", shape = "Cylinder", size = {0.66, 0.96, 0.96}, offset = {1.2, 0, 0}, material = "Metal", rgb = {66, 77, 92}, weight = true, mirror = true },
+				{ name = "Stripe", shape = "Cylinder", size = {0.1, 1, 1}, offset = {1.2, 0, 0}, material = "SmoothPlastic", rgb = {81, 157, 204}, weight = false, mirror = true },
+				{ name = "Collar", shape = "Cylinder", size = {0.14, 0.44, 0.44}, offset = {0.78, 0, 0}, material = "Metal", rgb = {150, 160, 168}, weight = false, mirror = true },
+				{ name = "Bolt", shape = "Cylinder", size = {0.07, 0.4, 0.4}, offset = {1.565, 0, 0}, material = "Metal", rgb = {125, 139, 147}, weight = false, mirror = true },
+			} },
+			-- 5 Granite: speckled granite cubes with emerald gem insets
+			{ color = Color3.fromRGB(176, 160, 150), material = Enum.Material.Granite, size = 1.3, parts = {
+				{ name = "Bar", shape = "Cylinder", size = {2.1, 0.26, 0.26}, offset = {0, 0, 0}, material = "Metal", rgb = {67, 70, 76}, weight = false, mirror = false },
+				{ name = "Head", shape = "Block", size = {0.78, 1.06, 1.06}, offset = {1.27, 0, 0}, material = "Granite", rgb = {112, 103, 111}, weight = true, mirror = true },
+				{ name = "Band", shape = "Block", size = {0.1, 1.1, 1.1}, offset = {0.95, 0, 0}, material = "SmoothPlastic", rgb = {117, 213, 181}, weight = false, mirror = true },
+				{ name = "Gem", shape = "Block", size = {0.06, 0.38, 0.38}, offset = {1.69, 0, 0}, material = "Glass", rgb = {80, 220, 150}, weight = false, mirror = true },
+				{ name = "GemFront", shape = "Block", size = {0.34, 0.34, 0.06}, offset = {1.27, 0, 0.55}, material = "Glass", rgb = {80, 220, 150}, weight = false, mirror = true },
+			} },
+			-- 6 Golden: gold discs with twin foil rims and a glowing sun core
+			{ color = Color3.fromRGB(255, 196, 48), material = Enum.Material.Metal, size = 1.4, parts = {
+				{ name = "Bar", shape = "Cylinder", size = {2.2, 0.26, 0.26}, offset = {0, 0, 0}, material = "Metal", rgb = {146, 97, 32}, weight = false, mirror = false },
+				{ name = "Head", shape = "Cylinder", size = {0.84, 1.16, 1.16}, offset = {1.38, 0, 0}, material = "Metal", rgb = {245, 179, 42}, weight = true, mirror = true },
+				{ name = "Rim", shape = "Cylinder", size = {0.1, 1.24, 1.24}, offset = {1, 0, 0}, material = "Foil", rgb = {255, 214, 90}, weight = false, mirror = true },
+				{ name = "Rim2", shape = "Cylinder", size = {0.1, 1.24, 1.24}, offset = {1.72, 0, 0}, material = "Foil", rgb = {255, 214, 90}, weight = false, mirror = true },
+				{ name = "Core", shape = "Cylinder", size = {0.06, 0.66, 0.66}, offset = {1.82, 0, 0}, material = "Neon", rgb = {255, 221, 91}, weight = false, mirror = true, neon = true },
+			} },
+			-- 7 Mammoth: ivory marble blocks with stacked tusks curling up
+			{ color = Color3.fromRGB(240, 232, 214), material = Enum.Material.Marble, size = 1.55, parts = {
+				{ name = "Bar", shape = "Cylinder", size = {2.3, 0.28, 0.28}, offset = {0, 0, 0}, material = "Wood", rgb = {99, 74, 61}, weight = false, mirror = false },
+				{ name = "Head", shape = "Block", size = {0.9, 1.22, 1.22}, offset = {1.45, 0, 0}, material = "Marble", rgb = {243, 232, 201}, weight = true, mirror = true },
+				{ name = "Band", shape = "Block", size = {0.12, 1.26, 1.26}, offset = {1.12, 0, 0}, material = "Wood", rgb = {169, 126, 80}, weight = false, mirror = true },
+				{ name = "Cap", shape = "Block", size = {0.06, 0.8, 0.8}, offset = {1.93, 0, 0}, material = "Wood", rgb = {169, 126, 80}, weight = false, mirror = true },
+				{ name = "TuskRoot", shape = "Block", size = {0.3, 0.26, 0.32}, offset = {1.62, 0.72, 0.2}, material = "SmoothPlastic", rgb = {255, 246, 221}, weight = false, mirror = true },
+				{ name = "TuskMid", shape = "Block", size = {0.24, 0.24, 0.24}, offset = {1.74, 0.94, 0.28}, material = "SmoothPlastic", rgb = {255, 248, 228}, weight = false, mirror = true },
+				{ name = "TuskTip", shape = "Block", size = {0.16, 0.22, 0.18}, offset = {1.84, 1.14, 0.33}, material = "SmoothPlastic", rgb = {255, 250, 233}, weight = false, mirror = true },
+			} },
+			-- 8 Crystal: violet rock with glass crystal shards sprouting on top
+			{ color = Color3.fromRGB(180, 110, 255), material = Enum.Material.Slate, size = 1.65, parts = {
+				{ name = "Bar", shape = "Cylinder", size = {2.4, 0.28, 0.28}, offset = {0, 0, 0}, material = "Metal", rgb = {200, 205, 215}, weight = false, mirror = false },
+				{ name = "Head", shape = "Block", size = {0.92, 1.26, 1.26}, offset = {1.54, 0, 0}, material = "Slate", rgb = {88, 70, 110}, weight = true, mirror = true },
+				{ name = "Collar", shape = "Cylinder", size = {0.12, 0.5, 0.5}, offset = {1, 0, 0}, material = "Metal", rgb = {200, 205, 215}, weight = false, mirror = true },
+				{ name = "Shard", shape = "Block", size = {0.28, 0.62, 0.28}, offset = {1.54, 0.9, 0}, material = "Glass", rgb = {190, 120, 255}, weight = false, mirror = true },
+				{ name = "Shard2", shape = "Block", size = {0.2, 0.42, 0.2}, offset = {1.34, 0.8, 0.26}, material = "Glass", rgb = {220, 165, 255}, weight = false, mirror = true },
+				{ name = "Shard3", shape = "Block", size = {0.2, 0.36, 0.2}, offset = {1.74, 0.77, -0.24}, material = "Glass", rgb = {165, 95, 240}, weight = false, mirror = true },
+				{ name = "Core", shape = "Cylinder", size = {0.06, 0.62, 0.62}, offset = {2.02, 0, 0}, material = "Neon", rgb = {200, 130, 255}, weight = false, mirror = true, neon = true },
+			} },
+			-- 9 Obsidian: black basalt discs with a crown of 3 glass spikes, teal glow seam and core
+			{ color = Color3.fromRGB(40, 220, 200), material = Enum.Material.Basalt, size = 1.75, parts = {
+				{ name = "Bar", shape = "Cylinder", size = {2.5, 0.28, 0.28}, offset = {0, 0, 0}, material = "Metal", rgb = {40, 36, 48}, weight = false, mirror = false },
+				{ name = "Head", shape = "Cylinder", size = {0.96, 1.3, 1.3}, offset = {1.58, 0, 0}, material = "Basalt", rgb = {34, 30, 42}, weight = true, mirror = true },
+				{ name = "SpikeUp", shape = "Block", size = {0.26, 0.5, 0.26}, offset = {1.58, 0.86, 0}, material = "Glass", rgb = {55, 48, 72}, weight = false, mirror = true },
+				{ name = "SpikeFront", shape = "Block", size = {0.22, 0.38, 0.22}, offset = {1.58, 0.68, 0.42}, material = "Glass", rgb = {55, 48, 72}, weight = false, mirror = true },
+				{ name = "SpikeBack", shape = "Block", size = {0.22, 0.38, 0.22}, offset = {1.58, 0.68, -0.42}, material = "Glass", rgb = {55, 48, 72}, weight = false, mirror = true },
+				{ name = "Seam", shape = "Cylinder", size = {0.06, 1.34, 1.34}, offset = {1.3, 0, 0}, material = "Neon", rgb = {40, 230, 210}, weight = false, mirror = true, neon = true },
+				{ name = "Core", shape = "Cylinder", size = {0.06, 0.66, 0.66}, offset = {2.09, 0, 0}, material = "Neon", rgb = {40, 230, 210}, weight = false, mirror = true, neon = true },
+			} },
+			-- 10 Frost: ice blocks with an icicle crown and a frost core
+			{ color = Color3.fromRGB(150, 220, 255), material = Enum.Material.Ice, size = 1.85, parts = {
+				{ name = "Bar", shape = "Cylinder", size = {2.6, 0.28, 0.28}, offset = {0, 0, 0}, material = "Metal", rgb = {170, 200, 225}, weight = false, mirror = false },
+				{ name = "Head", shape = "Block", size = {1, 1.4, 1.34}, offset = {1.64, 0, 0}, material = "Ice", rgb = {150, 215, 255}, weight = true, mirror = true },
+				{ name = "Band", shape = "Block", size = {0.1, 1.46, 1.4}, offset = {1.24, 0, 0}, material = "Glacier", rgb = {230, 248, 255}, weight = false, mirror = true },
+				{ name = "Icicle", shape = "Block", size = {0.22, 0.56, 0.22}, offset = {1.5, 0.96, 0.3}, material = "Ice", rgb = {210, 240, 255}, weight = false, mirror = true },
+				{ name = "Icicle2", shape = "Block", size = {0.2, 0.74, 0.2}, offset = {1.76, 1.05, -0.2}, material = "Ice", rgb = {225, 245, 255}, weight = false, mirror = true },
+				{ name = "Icicle3", shape = "Block", size = {0.18, 0.4, 0.18}, offset = {1.98, 0.88, 0.32}, material = "Ice", rgb = {200, 235, 255}, weight = false, mirror = true },
+				{ name = "Core", shape = "Block", size = {0.06, 0.7, 0.7}, offset = {2.17, 0, 0}, material = "Neon", rgb = {140, 230, 255}, weight = false, mirror = true, neon = true },
+			} },
+			-- 11 Magma: cracked lava discs in basalt shells, flame tongues on top
+			{ color = Color3.fromRGB(255, 110, 40), material = Enum.Material.CrackedLava, size = 1.95, parts = {
+				{ name = "Bar", shape = "Cylinder", size = {2.7, 0.3, 0.3}, offset = {0, 0, 0}, material = "Metal", rgb = {50, 40, 38}, weight = false, mirror = false },
+				{ name = "Head", shape = "Cylinder", size = {1, 1.4, 1.4}, offset = {1.7, 0, 0}, material = "CrackedLava", rgb = {255, 110, 40}, weight = true, mirror = true },
+				{ name = "Shell", shape = "Cylinder", size = {0.14, 1.44, 1.44}, offset = {1.28, 0, 0}, material = "Basalt", rgb = {60, 45, 40}, weight = false, mirror = true },
+				{ name = "Shell2", shape = "Cylinder", size = {0.14, 1.44, 1.44}, offset = {2.12, 0, 0}, material = "Basalt", rgb = {60, 45, 40}, weight = false, mirror = true },
+				{ name = "Core", shape = "Cylinder", size = {0.07, 0.8, 0.8}, offset = {2.235, 0, 0}, material = "Neon", rgb = {255, 140, 40}, weight = false, mirror = true, neon = true },
+				{ name = "Flame", shape = "Block", size = {0.26, 0.42, 0.26}, offset = {1.7, 0.88, 0}, material = "Neon", rgb = {255, 170, 50}, weight = false, mirror = true, neon = true },
+				{ name = "Ember", shape = "Block", size = {0.16, 0.26, 0.16}, offset = {1.48, 0.8, 0.24}, material = "Neon", rgb = {255, 90, 30}, weight = false, mirror = true, neon = true },
+			} },
+			-- 12 Storm: storm-slate blocks ringed by blue neon, zigzag lightning bolts on top
+			{ color = Color3.fromRGB(90, 150, 255), material = Enum.Material.Slate, size = 2.05, parts = {
+				{ name = "Bar", shape = "Cylinder", size = {2.8, 0.3, 0.3}, offset = {0, 0, 0}, material = "Metal", rgb = {80, 90, 110}, weight = false, mirror = false },
+				{ name = "Head", shape = "Block", size = {1.06, 1.56, 1.36}, offset = {1.76, 0, 0}, material = "Slate", rgb = {70, 80, 112}, weight = true, mirror = true },
+				{ name = "Ring", shape = "Block", size = {0.1, 1.64, 1.42}, offset = {1.76, 0, 0}, material = "Neon", rgb = {110, 190, 255}, weight = false, mirror = true, neon = true },
+				{ name = "Bolt", shape = "Block", size = {0.14, 0.36, 0.14}, offset = {1.66, 0.96, 0}, material = "Neon", rgb = {255, 232, 90}, weight = false, mirror = true, neon = true },
+				{ name = "Bolt2", shape = "Block", size = {0.14, 0.32, 0.14}, offset = {1.82, 1.26, 0}, material = "Neon", rgb = {255, 232, 90}, weight = false, mirror = true, neon = true },
+				{ name = "Bolt3", shape = "Block", size = {0.14, 0.28, 0.14}, offset = {1.7, 1.52, 0}, material = "Neon", rgb = {255, 232, 90}, weight = false, mirror = true, neon = true },
+				{ name = "Cap", shape = "Block", size = {0.06, 0.8, 0.8}, offset = {2.32, 0, 0}, material = "Metal", rgb = {200, 210, 230}, weight = false, mirror = true },
+			} },
+			-- 13 Jade: jade marble blocks, gold trims, glowing green runes
+			{ color = Color3.fromRGB(80, 210, 130), material = Enum.Material.Marble, size = 2.15, parts = {
+				{ name = "Bar", shape = "Cylinder", size = {2.9, 0.3, 0.3}, offset = {0, 0, 0}, material = "Metal", rgb = {210, 170, 70}, weight = false, mirror = false },
+				{ name = "Head", shape = "Block", size = {1.1, 1.66, 1.36}, offset = {1.82, 0, 0}, material = "Marble", rgb = {60, 170, 110}, weight = true, mirror = true },
+				{ name = "Trim", shape = "Block", size = {0.1, 1.72, 1.42}, offset = {1.34, 0, 0}, material = "Foil", rgb = {240, 200, 90}, weight = false, mirror = true },
+				{ name = "Trim2", shape = "Block", size = {0.1, 1.72, 1.42}, offset = {2.3, 0, 0}, material = "Foil", rgb = {240, 200, 90}, weight = false, mirror = true },
+				{ name = "RuneFront", shape = "Block", size = {0.36, 0.36, 0.04}, offset = {1.82, 0, 0.69}, material = "Neon", rgb = {140, 255, 180}, weight = false, mirror = true, neon = true },
+				{ name = "RuneTop", shape = "Block", size = {0.36, 0.06, 0.36}, offset = {1.82, 0.85, 0}, material = "Neon", rgb = {140, 255, 180}, weight = false, mirror = true, neon = true },
+				{ name = "Cap", shape = "Block", size = {0.06, 0.6, 0.6}, offset = {2.4, 0, 0}, material = "Neon", rgb = {140, 255, 180}, weight = false, mirror = true, neon = true },
+			} },
+			-- 14 Celestial: navy glass blocks with a gold halo band, a star and a floating moon orb
+			{ color = Color3.fromRGB(200, 175, 255), material = Enum.Material.Glass, size = 2.25, parts = {
+				{ name = "Bar", shape = "Cylinder", size = {3, 0.3, 0.3}, offset = {0, 0, 0}, material = "Metal", rgb = {230, 225, 255}, weight = false, mirror = false },
+				{ name = "Head", shape = "Block", size = {1.14, 1.76, 1.38}, offset = {1.86, 0, 0}, material = "Glass", rgb = {44, 40, 120}, weight = true, mirror = true },
+				{ name = "Halo", shape = "Block", size = {0.08, 1.84, 1.44}, offset = {1.86, 0, 0}, material = "Neon", rgb = {255, 215, 120}, weight = false, mirror = true, neon = true },
+				{ name = "Rim", shape = "Block", size = {0.12, 1.82, 1.42}, offset = {1.33, 0, 0}, material = "Foil", rgb = {255, 210, 110}, weight = false, mirror = true },
+				{ name = "Star", shape = "Block", size = {0.14, 0.14, 0.04}, offset = {1.58, 0.46, 0.7}, material = "Neon", rgb = {255, 250, 225}, weight = false, mirror = true, neon = true },
+				{ name = "Moon", shape = "Ball", size = {0.46, 0.46, 0.46}, offset = {1.86, 1.27, 0}, material = "Neon", rgb = {255, 240, 190}, weight = false, mirror = true, neon = true },
+				{ name = "Cap", shape = "Block", size = {0.06, 0.9, 0.9}, offset = {2.46, 0, 0}, material = "Neon", rgb = {190, 170, 255}, weight = false, mirror = true, neon = true },
+			} },
+			-- 15 Primal: dark stone blocks in a ForceField fire aura, bone horns, wrapped grip
+			{ color = Color3.fromRGB(255, 80, 50), material = Enum.Material.Slate, size = 2.4, parts = {
+				{ name = "Bar", shape = "Cylinder", size = {3.1, 0.34, 0.34}, offset = {0, 0, 0}, material = "Wood", rgb = {70, 40, 30}, weight = false, mirror = false },
+				{ name = "GripWrap", shape = "Cylinder", size = {0.9, 0.4, 0.4}, offset = {0, 0, 0}, material = "Fabric", rgb = {130, 40, 30}, weight = false, mirror = false },
+				{ name = "Head", shape = "Block", size = {1.14, 1.86, 1.3}, offset = {1.96, 0, 0}, material = "Slate", rgb = {45, 40, 55}, weight = true, mirror = true },
+				{ name = "Aura", shape = "Block", size = {1.24, 2, 1.42}, offset = {1.96, 0, 0}, material = "ForceField", rgb = {255, 110, 50}, weight = false, mirror = true },
+				{ name = "Band", shape = "Block", size = {0.12, 2.04, 1.44}, offset = {1.46, 0, 0}, material = "Foil", rgb = {255, 190, 70}, weight = false, mirror = true },
+				{ name = "Core", shape = "Block", size = {0.06, 1, 0.8}, offset = {2.57, 0, 0}, material = "Neon", rgb = {255, 80, 40}, weight = false, mirror = true, neon = true },
+				{ name = "HornRoot", shape = "Block", size = {0.34, 0.46, 0.34}, offset = {2.1, 1.18, 0.3}, material = "Marble", rgb = {240, 226, 196}, weight = false, mirror = true },
+				{ name = "HornTip", shape = "Block", size = {0.22, 0.42, 0.22}, offset = {2.28, 1.6, 0.42}, material = "Marble", rgb = {255, 240, 215}, weight = false, mirror = true },
+			} },
+		},
+		GYM_STAND = {
+			-- 1 Wooden: classic CAMP GYM: oak decks, rope lashings on the front posts, wooden post caps
+			{
+				palette = { wood = Color3.fromRGB(181, 122, 71), trim = Color3.fromRGB(125, 80, 46), stone = Color3.fromRGB(84, 98, 101), sign = Color3.fromRGB(44, 117, 108), signText = Color3.fromRGB(255, 255, 255) },
+				materials = { wood = "Wood", trim = "Wood", stone = "Slate" },
+				extras = {
+					{ name = "Lashing", shape = "Block", size = {0.36, 0.14, 0.38}, offset = {4.72, 1.2, 1.23}, material = "Fabric", rgb = {204, 170, 112}, weight = false, mirror = true },
+					{ name = "Lashing", shape = "Block", size = {0.36, 0.14, 0.38}, offset = {4.72, 2.8, 1.23}, material = "Fabric", rgb = {204, 170, 112}, weight = false, mirror = true },
+					{ name = "UprightCap", shape = "Block", size = {0.42, 0.16, 0.44}, offset = {4.72, 3.72, 1.23}, material = "Wood", rgb = {125, 80, 46}, weight = false, mirror = true },
+				},
+			},
+			-- 2 Stone: cobblestone footings, slate post caps, stone piles on the bottom deck ends, rope lashings
+			{
+				palette = { wood = Color3.fromRGB(168, 114, 70), trim = Color3.fromRGB(110, 72, 44), stone = Color3.fromRGB(124, 128, 132), sign = Color3.fromRGB(70, 84, 92), signText = Color3.fromRGB(255, 255, 255) },
+				materials = { wood = "Wood", trim = "Wood", stone = "Cobblestone" },
+				extras = {
+					{ name = "Lashing", shape = "Block", size = {0.36, 0.14, 0.38}, offset = {4.72, 1.2, 1.23}, material = "Fabric", rgb = {204, 170, 112}, weight = false, mirror = true },
+					{ name = "Lashing", shape = "Block", size = {0.36, 0.14, 0.38}, offset = {4.72, 2.8, 1.23}, material = "Fabric", rgb = {204, 170, 112}, weight = false, mirror = true },
+					{ name = "UprightCap", shape = "Block", size = {0.46, 0.2, 0.48}, offset = {4.72, 3.74, 1.23}, material = "Slate", rgb = {140, 146, 150}, weight = false, mirror = true },
+					{ name = "StoneStack", shape = "Block", size = {0.5, 0.4, 0.6}, offset = {4.58, 0.68, 0.3}, material = "Cobblestone", rgb = {130, 136, 140}, weight = false, mirror = true },
+					{ name = "Pebble", shape = "Block", size = {0.3, 0.24, 0.34}, offset = {4.6, 0.6, -0.45}, material = "Slate", rgb = {150, 156, 160}, weight = false, mirror = true },
+				},
+			},
+			-- 3 Bronze: bronze frame, bronze corner brackets and caps, fire braziers on the top deck ends
+			{
+				palette = { wood = Color3.fromRGB(176, 116, 66), trim = Color3.fromRGB(184, 104, 55), stone = Color3.fromRGB(110, 104, 98), sign = Color3.fromRGB(120, 62, 30), signText = Color3.fromRGB(255, 226, 170) },
+				materials = { wood = "Wood", trim = "Metal", stone = "Slate" },
+				extras = {
+					{ name = "Bracket", shape = "Block", size = {0.34, 0.34, 0.06}, offset = {4.72, 0.42, 1.4}, material = "Metal", rgb = {205, 127, 50}, weight = false, mirror = true },
+					{ name = "Bracket", shape = "Block", size = {0.34, 0.34, 0.06}, offset = {4.72, 2, 1.4}, material = "Metal", rgb = {205, 127, 50}, weight = false, mirror = true },
+					{ name = "Bracket", shape = "Block", size = {0.34, 0.34, 0.06}, offset = {4.72, 3.58, 1.4}, material = "Metal", rgb = {205, 127, 50}, weight = false, mirror = true },
+					{ name = "UprightCap", shape = "Block", size = {0.42, 0.16, 0.44}, offset = {4.72, 3.72, 1.23}, material = "Metal", rgb = {184, 104, 55}, weight = false, mirror = true },
+					{ name = "Brazier", shape = "Block", size = {0.42, 0.2, 0.42}, offset = {4.6, 3.74, 0}, material = "Metal", rgb = {184, 104, 55}, weight = false, mirror = true },
+					{ name = "BrazierFire", shape = "Block", size = {0.24, 0.28, 0.24}, offset = {4.6, 3.98, 0}, material = "Neon", rgb = {255, 170, 60}, weight = false, mirror = true, neon = true },
+				},
+			},
+			-- 4 Iron: iron frame, bands and caps, blue side banners, blue lanterns on the top deck ends
+			{
+				palette = { wood = Color3.fromRGB(150, 102, 64), trim = Color3.fromRGB(70, 80, 94), stone = Color3.fromRGB(90, 96, 104), sign = Color3.fromRGB(40, 62, 92), signText = Color3.fromRGB(170, 220, 255) },
+				materials = { wood = "Wood", trim = "Metal", stone = "Slate" },
+				extras = {
+					{ name = "Lashing", shape = "Block", size = {0.36, 0.14, 0.38}, offset = {4.72, 1.2, 1.23}, material = "Metal", rgb = {66, 77, 92}, weight = false, mirror = true },
+					{ name = "Lashing", shape = "Block", size = {0.36, 0.14, 0.38}, offset = {4.72, 2.8, 1.23}, material = "Metal", rgb = {66, 77, 92}, weight = false, mirror = true },
+					{ name = "UprightCap", shape = "Block", size = {0.44, 0.18, 0.46}, offset = {4.72, 3.73, 1.23}, material = "Metal", rgb = {90, 100, 115}, weight = false, mirror = true },
+					{ name = "Banner", shape = "Block", size = {0.06, 1.5, 0.9}, offset = {4.9, 2.8, 0}, material = "Fabric", rgb = {81, 157, 204}, weight = false, mirror = true },
+					{ name = "BannerBar", shape = "Block", size = {0.07, 0.14, 0.94}, offset = {4.9, 3.4, 0}, material = "Metal", rgb = {66, 77, 92}, weight = false, mirror = true },
+					{ name = "Lantern", shape = "Block", size = {0.26, 0.3, 0.26}, offset = {4.6, 3.84, 0}, material = "Neon", rgb = {120, 190, 255}, weight = false, mirror = true, neon = true },
+					{ name = "LanternTop", shape = "Block", size = {0.34, 0.08, 0.34}, offset = {4.6, 4.03, 0}, material = "Metal", rgb = {66, 77, 92}, weight = false, mirror = true },
+				},
+			},
+			-- 5 Granite: granite frame and footings, granite caps with emerald gems, mint banners, green lanterns
+			{
+				palette = { wood = Color3.fromRGB(160, 112, 74), trim = Color3.fromRGB(112, 103, 111), stone = Color3.fromRGB(150, 140, 140), sign = Color3.fromRGB(50, 70, 64), signText = Color3.fromRGB(150, 240, 200) },
+				materials = { wood = "Wood", trim = "Granite", stone = "Granite" },
+				extras = {
+					{ name = "UprightCap", shape = "Block", size = {0.5, 0.24, 0.52}, offset = {4.72, 3.76, 1.23}, material = "Granite", rgb = {176, 160, 150}, weight = false, mirror = true },
+					{ name = "CapGem", shape = "Block", size = {0.2, 0.2, 0.06}, offset = {4.72, 3.76, 1.5}, material = "Glass", rgb = {80, 220, 150}, weight = false, mirror = true },
+					{ name = "Banner", shape = "Block", size = {0.06, 1.5, 0.9}, offset = {4.9, 2.8, 0}, material = "Fabric", rgb = {117, 213, 181}, weight = false, mirror = true },
+					{ name = "BannerGem", shape = "Block", size = {0.07, 0.26, 0.26}, offset = {4.91, 2.6, 0}, material = "Glass", rgb = {60, 190, 120}, weight = false, mirror = true },
+					{ name = "Lantern", shape = "Block", size = {0.26, 0.3, 0.26}, offset = {4.6, 3.84, 0}, material = "Neon", rgb = {140, 255, 190}, weight = false, mirror = true, neon = true },
+					{ name = "LanternTop", shape = "Block", size = {0.36, 0.1, 0.36}, offset = {4.6, 4.04, 0}, material = "Granite", rgb = {112, 103, 111}, weight = false, mirror = true },
+				},
+			},
+			-- 6 Golden: gold foil trims on every deck edge, glowing gold orbs, red-and-gold banners, coin stacks
+			{
+				palette = { wood = Color3.fromRGB(190, 128, 70), trim = Color3.fromRGB(245, 179, 42), stone = Color3.fromRGB(205, 180, 130), sign = Color3.fromRGB(150, 30, 40), signText = Color3.fromRGB(255, 215, 90) },
+				materials = { wood = "Wood", trim = "Foil", stone = "Sandstone" },
+				extras = {
+					{ name = "DeckTrim", shape = "Block", size = {9.72, 0.08, 0.04}, offset = {0, 0.4, 1.5}, material = "Foil", rgb = {245, 179, 42}, weight = false, mirror = false },
+					{ name = "DeckTrim", shape = "Block", size = {9.72, 0.08, 0.04}, offset = {0, 1.98, 1.5}, material = "Foil", rgb = {245, 179, 42}, weight = false, mirror = false },
+					{ name = "DeckTrim", shape = "Block", size = {9.72, 0.08, 0.04}, offset = {0, 3.56, 1.5}, material = "Foil", rgb = {245, 179, 42}, weight = false, mirror = false },
+					{ name = "UprightCap", shape = "Block", size = {0.42, 0.16, 0.44}, offset = {4.72, 3.72, 1.23}, material = "Foil", rgb = {245, 179, 42}, weight = false, mirror = true },
+					{ name = "Orb", shape = "Ball", size = {0.3, 0.3, 0.3}, offset = {4.72, 3.95, 1.23}, material = "Neon", rgb = {255, 215, 90}, weight = false, mirror = true, neon = true },
+					{ name = "Banner", shape = "Block", size = {0.06, 1.5, 0.9}, offset = {4.9, 2.8, 0}, material = "Fabric", rgb = {170, 35, 45}, weight = false, mirror = true },
+					{ name = "BannerTrim", shape = "Block", size = {0.07, 0.12, 0.94}, offset = {4.9, 2.1, 0}, material = "Foil", rgb = {245, 179, 42}, weight = false, mirror = true },
+					{ name = "CoinStack", shape = "Block", size = {0.36, 0.24, 0.36}, offset = {4.6, 3.76, 0}, material = "Foil", rgb = {245, 179, 42}, weight = false, mirror = true },
+				},
+				light = Color3.fromRGB(255, 210, 80),
+			},
+			-- 7 Mammoth: bone-white frame, curved mammoth tusks over the front posts, fur pelts on the top deck ends, hide banners
+			{
+				palette = { wood = Color3.fromRGB(150, 100, 66), trim = Color3.fromRGB(240, 228, 200), stone = Color3.fromRGB(120, 110, 100), sign = Color3.fromRGB(92, 60, 40), signText = Color3.fromRGB(255, 240, 210) },
+				materials = { wood = "Wood", trim = "Marble", stone = "Slate" },
+				extras = {
+					{ name = "Tusk", shape = "Block", size = {0.26, 0.5, 0.26}, offset = {4.72, 3.89, 1.23}, material = "Marble", rgb = {250, 242, 222}, weight = false, mirror = true },
+					{ name = "Tusk2", shape = "Block", size = {0.22, 0.4, 0.22}, offset = {4.6, 4.3, 1.23}, material = "Marble", rgb = {252, 246, 230}, weight = false, mirror = true },
+					{ name = "Tusk3", shape = "Block", size = {0.18, 0.3, 0.18}, offset = {4.45, 4.62, 1.23}, material = "Marble", rgb = {255, 250, 238}, weight = false, mirror = true },
+					{ name = "Pelt", shape = "Block", size = {0.5, 0.12, 1.9}, offset = {4.6, 3.7, 0}, material = "Fabric", rgb = {130, 92, 60}, weight = false, mirror = true },
+					{ name = "Banner", shape = "Block", size = {0.06, 1.4, 0.9}, offset = {4.9, 2.8, 0}, material = "Fabric", rgb = {196, 160, 110}, weight = false, mirror = true },
+					{ name = "BannerBone", shape = "Block", size = {0.07, 0.12, 0.94}, offset = {4.9, 2.25, 0}, material = "Marble", rgb = {240, 228, 200}, weight = false, mirror = true },
+					{ name = "BoneCap", shape = "Block", size = {0.42, 0.16, 0.44}, offset = {4.72, 3.72, -1.23}, material = "Marble", rgb = {240, 228, 200}, weight = false, mirror = true },
+				},
+			},
+			-- 8 Crystal: violet slate frame, glass crystals on every post, glowing crystal clusters, neon violet deck edges
+			{
+				palette = { wood = Color3.fromRGB(160, 140, 175), trim = Color3.fromRGB(110, 80, 150), stone = Color3.fromRGB(90, 80, 110), sign = Color3.fromRGB(70, 40, 110), signText = Color3.fromRGB(230, 190, 255) },
+				materials = { wood = "Wood", trim = "Slate", stone = "Slate" },
+				extras = {
+					{ name = "DeckTrim", shape = "Block", size = {9.72, 0.05, 0.04}, offset = {0, 0.4, 1.5}, material = "Neon", rgb = {180, 110, 255}, weight = false, mirror = false, neon = true },
+					{ name = "DeckTrim", shape = "Block", size = {9.72, 0.05, 0.04}, offset = {0, 1.98, 1.5}, material = "Neon", rgb = {180, 110, 255}, weight = false, mirror = false, neon = true },
+					{ name = "DeckTrim", shape = "Block", size = {9.72, 0.05, 0.04}, offset = {0, 3.56, 1.5}, material = "Neon", rgb = {180, 110, 255}, weight = false, mirror = false, neon = true },
+					{ name = "Crystal", shape = "Block", size = {0.24, 0.7, 0.24}, offset = {4.72, 4, 1.23}, material = "Glass", rgb = {190, 120, 255}, weight = false, mirror = true },
+					{ name = "Crystal2", shape = "Block", size = {0.18, 0.45, 0.18}, offset = {4.55, 3.87, 1.05}, material = "Glass", rgb = {220, 170, 255}, weight = false, mirror = true },
+					{ name = "BackCrystal", shape = "Block", size = {0.22, 0.55, 0.22}, offset = {4.72, 3.92, -1.23}, material = "Glass", rgb = {165, 95, 240}, weight = false, mirror = true },
+					{ name = "GlowCrystal", shape = "Block", size = {0.3, 0.6, 0.3}, offset = {4.6, 0.78, 0.3}, material = "Neon", rgb = {200, 130, 255}, weight = false, mirror = true, neon = true },
+					{ name = "GlowCrystal2", shape = "Block", size = {0.2, 0.36, 0.2}, offset = {4.5, 0.66, -0.15}, material = "Glass", rgb = {210, 150, 255}, weight = false, mirror = true },
+				},
+				light = Color3.fromRGB(190, 120, 255),
+			},
+			-- 9 Obsidian: charcoal planks, black glass frame and spikes with teal tips, obsidian shards, teal neon deck edges and runes
+			{
+				palette = { wood = Color3.fromRGB(58, 52, 66), trim = Color3.fromRGB(30, 28, 38), stone = Color3.fromRGB(45, 42, 50), sign = Color3.fromRGB(20, 20, 28), signText = Color3.fromRGB(90, 255, 230) },
+				materials = { wood = "WoodPlanks", trim = "Glass", stone = "Basalt" },
+				extras = {
+					{ name = "DeckTrim", shape = "Block", size = {9.72, 0.05, 0.04}, offset = {0, 0.4, 1.5}, material = "Neon", rgb = {40, 230, 210}, weight = false, mirror = false, neon = true },
+					{ name = "DeckTrim", shape = "Block", size = {9.72, 0.05, 0.04}, offset = {0, 1.98, 1.5}, material = "Neon", rgb = {40, 230, 210}, weight = false, mirror = false, neon = true },
+					{ name = "DeckTrim", shape = "Block", size = {9.72, 0.05, 0.04}, offset = {0, 3.56, 1.5}, material = "Neon", rgb = {40, 230, 210}, weight = false, mirror = false, neon = true },
+					{ name = "Spike", shape = "Block", size = {0.26, 0.7, 0.26}, offset = {4.72, 3.99, 1.23}, material = "Glass", rgb = {40, 36, 52}, weight = false, mirror = true },
+					{ name = "SpikeTip", shape = "Block", size = {0.14, 0.3, 0.14}, offset = {4.72, 4.49, 1.23}, material = "Neon", rgb = {60, 240, 220}, weight = false, mirror = true, neon = true },
+					{ name = "BackSpike", shape = "Block", size = {0.22, 0.5, 0.22}, offset = {4.72, 3.89, -1.23}, material = "Glass", rgb = {40, 36, 52}, weight = false, mirror = true },
+					{ name = "Shard", shape = "Block", size = {0.34, 0.56, 0.3}, offset = {4.6, 0.76, 0.2}, material = "Glass", rgb = {35, 32, 45}, weight = false, mirror = true },
+					{ name = "Shard2", shape = "Block", size = {0.22, 0.36, 0.22}, offset = {4.5, 0.66, -0.35}, material = "Glass", rgb = {35, 32, 45}, weight = false, mirror = true },
+					{ name = "Rune", shape = "Block", size = {0.2, 0.2, 0.04}, offset = {4.72, 1.2, 1.4}, material = "Neon", rgb = {60, 240, 220}, weight = false, mirror = true, neon = true },
+				},
+				light = Color3.fromRGB(40, 230, 210),
+			},
+			-- 10 Frost: frosted planks, ice frame and glacier footings, snow caps with ice spikes, icicles, snow drifts
+			{
+				palette = { wood = Color3.fromRGB(205, 225, 240), trim = Color3.fromRGB(150, 210, 250), stone = Color3.fromRGB(200, 225, 240), sign = Color3.fromRGB(60, 120, 180), signText = Color3.fromRGB(255, 255, 255) },
+				materials = { wood = "WoodPlanks", trim = "Ice", stone = "Glacier" },
+				extras = {
+					{ name = "SnowCap", shape = "Block", size = {0.5, 0.16, 0.52}, offset = {4.72, 3.72, 1.23}, material = "Snow", rgb = {245, 250, 255}, weight = false, mirror = true },
+					{ name = "IceSpike", shape = "Block", size = {0.24, 0.6, 0.24}, offset = {4.72, 4.02, 1.23}, material = "Ice", rgb = {180, 230, 255}, weight = false, mirror = true },
+					{ name = "IceSpike2", shape = "Block", size = {0.16, 0.36, 0.16}, offset = {4.56, 3.9, 1.08}, material = "Ice", rgb = {205, 240, 255}, weight = false, mirror = true },
+					{ name = "Icicle", shape = "Block", size = {0.12, 0.36, 0.12}, offset = {4.4, 3.3, 1.4}, material = "Ice", rgb = {200, 235, 255}, weight = false, mirror = true },
+					{ name = "Icicle2", shape = "Block", size = {0.1, 0.24, 0.1}, offset = {4.4, 1.78, 1.4}, material = "Ice", rgb = {200, 235, 255}, weight = false, mirror = true },
+					{ name = "Icicle3", shape = "Block", size = {0.12, 0.3, 0.12}, offset = {4.4, 0.2, 1.4}, material = "Ice", rgb = {200, 235, 255}, weight = false, mirror = true },
+					{ name = "SnowMound", shape = "Block", size = {0.5, 0.2, 1.2}, offset = {4.6, 0.58, 0}, material = "Snow", rgb = {245, 250, 255}, weight = false, mirror = true },
+				},
+				light = Color3.fromRGB(150, 225, 255),
+			},
+			-- 11 Magma: charred decks, cracked-lava frame, basalt footings with glowing cracks, fire bowls, lava pools
+			{
+				palette = { wood = Color3.fromRGB(70, 46, 38), trim = Color3.fromRGB(255, 100, 30), stone = Color3.fromRGB(50, 44, 44), sign = Color3.fromRGB(40, 28, 26), signText = Color3.fromRGB(255, 150, 50) },
+				materials = { wood = "Wood", trim = "CrackedLava", stone = "Basalt" },
+				extras = {
+					{ name = "Crack", shape = "Block", size = {0.5, 0.05, 0.04}, offset = {4.72, 0.18, 1.49}, material = "Neon", rgb = {255, 110, 30}, weight = false, mirror = true, neon = true },
+					{ name = "PostCrack", shape = "Block", size = {0.05, 1, 0.04}, offset = {4.7, 1.1, 1.39}, material = "Neon", rgb = {255, 110, 30}, weight = false, mirror = true, neon = true },
+					{ name = "FireBowl", shape = "Block", size = {0.42, 0.2, 0.44}, offset = {4.72, 3.74, 1.23}, material = "Basalt", rgb = {50, 44, 44}, weight = false, mirror = true },
+					{ name = "Flame", shape = "Block", size = {0.26, 0.4, 0.26}, offset = {4.72, 4.04, 1.23}, material = "Neon", rgb = {255, 140, 40}, weight = false, mirror = true, neon = true },
+					{ name = "FlameTip", shape = "Block", size = {0.14, 0.22, 0.14}, offset = {4.72, 4.34, 1.23}, material = "Neon", rgb = {255, 210, 90}, weight = false, mirror = true, neon = true },
+					{ name = "LavaPool", shape = "Block", size = {0.5, 0.04, 1.6}, offset = {4.6, 0.5, 0}, material = "Neon", rgb = {255, 90, 20}, weight = false, mirror = true, neon = true },
+					{ name = "MagmaRock", shape = "Block", size = {0.36, 0.3, 0.36}, offset = {4.6, 0.63, 0.55}, material = "CrackedLava", rgb = {255, 110, 40}, weight = false, mirror = true },
+				},
+				light = Color3.fromRGB(255, 120, 40),
+			},
+			-- 12 Storm: storm-blue planks, steel frame, lightning rods with sparking orbs, floating clouds, bolt banners
+			{
+				palette = { wood = Color3.fromRGB(90, 105, 135), trim = Color3.fromRGB(185, 195, 215), stone = Color3.fromRGB(60, 66, 80), sign = Color3.fromRGB(28, 36, 64), signText = Color3.fromRGB(255, 230, 80) },
+				materials = { wood = "WoodPlanks", trim = "Metal", stone = "Slate" },
+				extras = {
+					{ name = "Rod", shape = "Block", size = {0.1, 0.9, 0.1}, offset = {4.72, 4.09, 1.23}, material = "Metal", rgb = {190, 200, 215}, weight = false, mirror = true },
+					{ name = "RodOrb", shape = "Ball", size = {0.26, 0.26, 0.26}, offset = {4.72, 4.6, 1.23}, material = "Neon", rgb = {150, 215, 255}, weight = false, mirror = true, neon = true },
+					{ name = "Cloud", shape = "Block", size = {0.6, 0.3, 0.5}, offset = {4.6, 4.6, -1.05}, material = "SmoothPlastic", rgb = {215, 222, 240}, weight = false, mirror = true },
+					{ name = "Cloud2", shape = "Block", size = {0.4, 0.24, 0.4}, offset = {4.54, 4.82, -0.75}, material = "SmoothPlastic", rgb = {235, 240, 250}, weight = false, mirror = true },
+					{ name = "Banner", shape = "Block", size = {0.06, 1.4, 0.9}, offset = {4.9, 2.8, 0}, material = "Fabric", rgb = {40, 50, 90}, weight = false, mirror = true },
+					{ name = "Bolt", shape = "Block", size = {0.07, 0.4, 0.14}, offset = {4.91, 3, 0.08}, material = "Neon", rgb = {255, 230, 80}, weight = false, mirror = true, neon = true },
+					{ name = "Bolt2", shape = "Block", size = {0.07, 0.4, 0.14}, offset = {4.91, 2.66, -0.08}, material = "Neon", rgb = {255, 230, 80}, weight = false, mirror = true, neon = true },
+				},
+				light = Color3.fromRGB(120, 200, 255),
+			},
+			-- 13 Jade: red temple wood, gold foil frame, jade footings, jade lanterns, gold spires, glowing runes
+			{
+				palette = { wood = Color3.fromRGB(160, 64, 48), trim = Color3.fromRGB(240, 200, 90), stone = Color3.fromRGB(80, 170, 120), sign = Color3.fromRGB(40, 130, 90), signText = Color3.fromRGB(255, 225, 120) },
+				materials = { wood = "Wood", trim = "Foil", stone = "Marble" },
+				extras = {
+					{ name = "Lantern", shape = "Block", size = {0.34, 0.42, 0.34}, offset = {4.6, 3.86, 0}, material = "Neon", rgb = {120, 240, 160}, weight = false, mirror = true, neon = true },
+					{ name = "LanternRoof", shape = "Block", size = {0.5, 0.1, 0.5}, offset = {4.6, 4.12, 0}, material = "Foil", rgb = {240, 200, 90}, weight = false, mirror = true },
+					{ name = "RoofCap", shape = "Block", size = {0.5, 0.1, 0.52}, offset = {4.72, 3.69, 1.23}, material = "Foil", rgb = {240, 200, 90}, weight = false, mirror = true },
+					{ name = "JadeSpire", shape = "Block", size = {0.16, 0.36, 0.16}, offset = {4.72, 3.92, 1.23}, material = "Marble", rgb = {80, 170, 120}, weight = false, mirror = true },
+					{ name = "SpireBall", shape = "Ball", size = {0.2, 0.2, 0.2}, offset = {4.72, 4.2, 1.23}, material = "Foil", rgb = {240, 200, 90}, weight = false, mirror = true },
+					{ name = "Rune", shape = "Block", size = {0.2, 0.26, 0.04}, offset = {4.72, 1.2, 1.4}, material = "Neon", rgb = {140, 255, 180}, weight = false, mirror = true, neon = true },
+					{ name = "Rune2", shape = "Block", size = {0.2, 0.26, 0.04}, offset = {4.72, 2.8, 1.4}, material = "Neon", rgb = {140, 255, 180}, weight = false, mirror = true, neon = true },
+				},
+				light = Color3.fromRGB(120, 255, 170),
+			},
+			-- 14 Celestial: white marble rack with gold trims, sun orbs, floating violet runes and stars
+			{
+				palette = { wood = Color3.fromRGB(235, 232, 250), trim = Color3.fromRGB(255, 210, 110), stone = Color3.fromRGB(190, 190, 225), sign = Color3.fromRGB(34, 32, 90), signText = Color3.fromRGB(255, 225, 140) },
+				materials = { wood = "Marble", trim = "Foil", stone = "Marble" },
+				extras = {
+					{ name = "DeckTrim", shape = "Block", size = {9.72, 0.08, 0.04}, offset = {0, 0.4, 1.5}, material = "Foil", rgb = {255, 210, 110}, weight = false, mirror = false },
+					{ name = "DeckTrim", shape = "Block", size = {9.72, 0.08, 0.04}, offset = {0, 1.98, 1.5}, material = "Foil", rgb = {255, 210, 110}, weight = false, mirror = false },
+					{ name = "DeckTrim", shape = "Block", size = {9.72, 0.08, 0.04}, offset = {0, 3.56, 1.5}, material = "Foil", rgb = {255, 210, 110}, weight = false, mirror = false },
+					{ name = "GoldCap", shape = "Block", size = {0.44, 0.12, 0.46}, offset = {4.72, 3.7, 1.23}, material = "Foil", rgb = {255, 210, 110}, weight = false, mirror = true },
+					{ name = "SunOrb", shape = "Ball", size = {0.36, 0.36, 0.36}, offset = {4.72, 3.95, 1.23}, material = "Neon", rgb = {255, 220, 130}, weight = false, mirror = true, neon = true },
+					{ name = "FloatRune", shape = "Block", size = {0.26, 0.26, 0.06}, offset = {4.72, 4.45, 1.23}, material = "Neon", rgb = {190, 170, 255}, weight = false, mirror = true, neon = true },
+					{ name = "FloatRune2", shape = "Block", size = {0.22, 0.22, 0.06}, offset = {4.5, 4.85, 0.6}, material = "Neon", rgb = {190, 170, 255}, weight = false, mirror = true, neon = true },
+					{ name = "StarA", shape = "Ball", size = {0.18, 0.18, 0.18}, offset = {4.6, 5.15, 0}, material = "Neon", rgb = {255, 250, 220}, weight = false, mirror = true, neon = true },
+					{ name = "StarB", shape = "Ball", size = {0.16, 0.16, 0.16}, offset = {4.85, 4.1, -0.6}, material = "Neon", rgb = {255, 250, 220}, weight = false, mirror = true, neon = true },
+				},
+				light = Color3.fromRGB(200, 180, 255),
+			},
+			-- 15 Primal: dark ancient wood, fire-gold trims, granite footings, giant bone horns, aura fires, crimson fang banners
+			{
+				palette = { wood = Color3.fromRGB(82, 52, 40), trim = Color3.fromRGB(230, 120, 40), stone = Color3.fromRGB(60, 56, 62), sign = Color3.fromRGB(90, 20, 20), signText = Color3.fromRGB(255, 190, 80) },
+				materials = { wood = "Wood", trim = "Foil", stone = "Granite" },
+				extras = {
+					{ name = "Horn", shape = "Block", size = {0.36, 0.5, 0.36}, offset = {4.72, 3.89, 1.23}, material = "Marble", rgb = {240, 226, 196}, weight = false, mirror = true },
+					{ name = "Horn2", shape = "Block", size = {0.3, 0.44, 0.3}, offset = {4.62, 4.35, 1.18}, material = "Marble", rgb = {246, 234, 206}, weight = false, mirror = true },
+					{ name = "Horn3", shape = "Block", size = {0.22, 0.38, 0.22}, offset = {4.48, 4.74, 1.1}, material = "Marble", rgb = {250, 240, 215}, weight = false, mirror = true },
+					{ name = "HornTip", shape = "Block", size = {0.14, 0.3, 0.14}, offset = {4.37, 5.06, 1}, material = "Marble", rgb = {255, 246, 225}, weight = false, mirror = true },
+					{ name = "Fire", shape = "Block", size = {0.28, 0.4, 0.28}, offset = {4.6, 3.84, 0}, material = "Neon", rgb = {255, 120, 40}, weight = false, mirror = true, neon = true },
+					{ name = "FireAura", shape = "Block", size = {0.5, 0.7, 0.5}, offset = {4.6, 3.99, 0}, material = "ForceField", rgb = {255, 90, 40}, weight = false, mirror = true },
+					{ name = "Banner", shape = "Block", size = {0.06, 1.5, 0.9}, offset = {4.9, 2.75, 0}, material = "Fabric", rgb = {150, 25, 25}, weight = false, mirror = true },
+					{ name = "Fang", shape = "Block", size = {0.07, 0.3, 0.3}, offset = {4.91, 2.3, 0}, material = "Neon", rgb = {255, 170, 60}, weight = false, mirror = true, neon = true },
+				},
+				light = Color3.fromRGB(255, 110, 50),
+			},
+		},
+	}
+	Config.DUMBBELL_LOOK = D.DUMBBELL_LOOK
+	Config.GYM_STAND = D.GYM_STAND
+	for i, nm in D.NAMES do
+		if Config.DUMBBELL[i] then
+			Config.DUMBBELL[i].name = nm
+		end
+	end
+end
 Config.REP_COOLDOWN = 0.55
 
 -- Сумка: вместимость по уровням
@@ -441,7 +832,7 @@ Config.QUESTS = {
 	{ id = "q4", npc = "herbalist", title = "Fireflies", text = "Collect 5 fireflies", kind = "collect", arg = "ff", goal = 5, reward = { coins = 150, boost = "coins", dur = 240 } },
 	{ id = "q5", npc = "hunter", title = "Sharp Eye", text = "Score 60 points at the target range", kind = "range", goal = 60, reward = { coins = 250, xp = 80 } },
 	{ id = "q6", npc = "tracker", title = "A Rare Trail", text = "Catch a rare animal", kind = "rarity", arg = 3, goal = 1, reward = { coins = 400, boost = "range", dur = 300 } },
-	{ id = "q7", npc = "herbalist", title = "Acrobat", text = "Complete the obstacle course", kind = "course", goal = 1, reward = { coins = 300, xp = 100 } },
+	{ id = "q7", npc = "herbalist", title = "Camp Workout", text = "Do 25 dumbbell reps", kind = "train", goal = 25, reward = { coins = 300, xp = 100 } }, -- V78: полосы препятствий больше нет, задание про неё заменено
 	{ id = "q8", npc = "hunter", title = "Forest Champion", text = "Make a throw at ×25 or higher", kind = "tier", arg = 25, goal = 1, reward = { coins = 1500, boost = "tension", dur = 240 } },
 	{ id = "q9", npc = "tracker", title = "Ancient Trails", text = "Catch an animal in the Ancient Forest", kind = "zone", arg = 4, goal = 1, reward = { coins = 5000, xp = 400 } },
 	{ id = "q10", npc = "herbalist", title = "Egg Hunt", text = "Find 5 hidden eggs", kind = "collect", arg = "egg", goal = 5, reward = { coins = 2500, boost = "luck", dur = 600 } },
@@ -449,33 +840,63 @@ Config.QUESTS = {
 	{ id = "q12", npc = "tracker", title = "Legend", text = "Make a throw at ×100", kind = "tier", arg = 100, goal = 1, reward = { coins = 20000, boost = "luck", dur = 900 } },
 }
 
--- Реплики NPC (Dialog). Первая — приветствие, дальше — советы по кругу
+-- Реплики NPC (Dialog). V84: role — подпись под именем; greet — приветствия (одно при первом разговоре за сессию);
+-- lines — советы по кругу. Задание этого NPC и подсказку по прогрессу игрока Dialog добавляет сам.
 Config.NPC = {
-	hunter = { name = "Quest Board", color = Color3.fromRGB(110, 200, 90), lines = {
-		"A new hunter! The shelter is at the forest edge. Step inside and hold to charge your throw.",
-		"Hold longer for a bigger multiplier. If your grip slips, the spear still flies with 25% of your luck.",
-		"When the spear starts shaking, release before your grip slips.",
-		"Longer throws reach deeper zones, where bigger and rarer animals live.",
+	hunter = { name = "Quest Board", role = "Hunter's Lodge", color = Color3.fromRGB(110, 200, 90), greet = {
+		"Welcome to the lodge, hunter! Every job posted here pays in coins, XP or a free boost.",
+		"Back again? Good. The forest never runs out of work.",
+	}, lines = {
+		"Step onto the red floor of the Throwing Grounds. It takes you straight to the throwing spot.",
+		"Hold to charge your throw. The longer you hold, the bigger the multiplier: ×2, ×5, ×10, ×25 and ×100.",
+		"When the spear starts shaking, let go. If your grip slips, the spear still flies just as far, but most of the luck you built up is lost.",
+		"Longer throws land in deeper zones, where bigger and rarer animals live.",
+		"Strength decides how far you can throw. Train at the dumbbell stand beside your cabin.",
+		"The Hunter Pass has its own missions. Open Pass on the left to see today's.",
 	} },
-	herbalist = { name = "Herbalist", color = Color3.fromRGB(220, 120, 220), lines = {
+	herbalist = { name = "Herbalist", role = "Potions & Remedies", color = Color3.fromRGB(220, 120, 220), greet = {
+		"Come in, come in! Mind the cauldron, it bites.",
+		"Oh, it's you! I just finished a fresh batch.",
+	}, lines = {
 		"My luck potions smell like chamomile and coins.",
-		"Fireflies love the shade near the village. Collect some and I will reward you.",
-		"There are eggs hidden around the village. Search the grass!",
+		"A potion works for a few minutes. Drink it right before a long hunt, not after.",
+		"Fireflies gather in the shade near the village. Walk into them to catch them.",
+		"There are eggs hidden around the village. Look behind the cabins and in the grass!",
+		"Pets hatch from eggs in the Shop. A good pet brings luck, coins or a longer throw.",
 	} },
-	tracker = { name = "Tracker", color = Color3.fromRGB(240, 180, 80), lines = {
-		"Every zone is a world of its own. Even the air is green in the Wild Marsh.",
-		"A Spirit Deer was spotted among the Wild Marsh ruins...",
-		"Something big and furry lives in the Ancient Forest. No idea what it is.",
-		"Climb the lookout tower for a view of the whole map.",
+	tracker = { name = "Tracker", role = "Knows Every Trail", color = Color3.fromRGB(240, 180, 80), greet = {
+		"Quiet... hear that? No? Good. Means it hasn't smelled us yet.",
+		"You again. Your boots are loud, but your aim is getting better.",
+	}, lines = {
+		"Every zone is a world of its own. Glowing mushrooms light the Wild Marsh.",
+		"A Spirit Deer was spotted in the Wild Marsh. Rare as a quiet goose.",
+		"Something big and furry lives in the Ancient Forest. Bring a sharp spear.",
+		"The Collection shows every animal you have caught, and the shadows of those you haven't.",
+		"Climb the lookout tower to see the whole forest at once.",
+		"They say there is a volcano at the edge of the world. No spear has ever reached it.",
 	} },
-	armorer = { name = "Armorer", color = Color3.fromRGB(120, 180, 255), lines = {
-		"A better spear means new animals. That old stick will not catch a yeti.",
+	armorer = { name = "Armorer", role = "Spears for Every Hunt", color = Color3.fromRGB(120, 180, 255), greet = {
+		"Looking for something sharper? You came to the right rack.",
+	}, lines = {
+		"A better spear means new animals. That old stick will not catch a Yeti.",
+		"Sharp spears pierce tougher hides. Some animals shrug off anything less.",
+		"Every spear has its own luck and range. Read the card before you buy.",
+		"Spears you own stay yours. Switch between them any time, for free.",
 	} },
-	merchant = { name = "Merchant", color = Color3.fromRGB(255, 200, 60), lines = {
+	merchant = { name = "Merchant", role = "Buys Every Catch", color = Color3.fromRGB(255, 200, 60), greet = {
+		"Fresh catch? Put it on the counter, let me have a look!",
+	}, lines = {
 		"Wrapped catches sell for twice as much!",
+		"Prices change through the day. Check the tags in my window before you sell.",
+		"A bigger bag means fewer trips back to camp. I sell those too.",
+		"Rare animals are worth keeping an eye on. One good catch can pay for a new spear.",
 	} },
-	smith = { name = "Blacksmith", color = Color3.fromRGB(255, 130, 60), lines = {
+	smith = { name = "Blacksmith", role = "Forge & Upgrades", color = Color3.fromRGB(255, 130, 60), greet = {
+		"Hot day for hammering. What are we improving?",
+	}, lines = {
 		"Bring me your spear and I will improve its luck and range.",
+		"Each forge level costs more than the last, but a tuned spear outlasts three new ones.",
+		"I work on the spear in your hands. Pick your favourite before you pay.",
 	} },
 }
 
@@ -484,7 +905,7 @@ Config.NPC = {
 ---------------------------------------------------------------------
 Config.ACTIVITY = {
 	range = { shots = 6, coinPerPoint = 1, xpPerPoint = 0.5 },
-	course = { coins = 120, xp = 60, coinPerCoin = 5, parTime = 45 },
+	course = { coins = 120, xp = 60, coinPerCoin = 5, parTime = 150 }, -- V74: полоса втрое длиннее, время на бонус 150 с (совпадает с COURSE_PAR в Client/Activities)
 	firefly = { coins = 15, xp = 5 },
 	egg = { coins = 250, xp = 50 },
 	lookout = { coins = 25, xp = 10, once = true },
@@ -665,6 +1086,9 @@ Config.SHOP = {
 		{ key = "coins2", id = 0, price = 99, kind = "coins", k = 0.8, name = "Coin Sack" },
 		{ key = "coins3", id = 0, price = 199, kind = "coins", k = 2, name = "Coin Chest" },
 		{ key = "coins4", id = 0, price = 399, kind = "coins", k = 5, name = "Hunter's Hoard", best = true },
+		-- V71: Hunter Pass. kind "hpass": в каталог магазина не попадает, продаётся окном пропуска.
+		{ key = "pass_premium", id = 0, price = 299, kind = "hpass", name = "Hunter Pass Premium", desc = "Unlocks the gold reward row of the Hunter Pass for the whole season." },
+		{ key = "pass_bundle", id = 0, price = 499, kind = "hpass", xp = 3000, name = "Hunter Pass + 10 Tiers", desc = "Premium and 10 tiers (3000 Pass XP) right away." },
 	},
 	STARTER = { spear = "iron", coins = 4000, bagLvl = 3, boost = "fortune", dur = 1800 },
 	-- V26: ранг поддержки по сумме потраченных Robux (пассы считаются по владению, товары по чекам).
@@ -697,6 +1121,179 @@ for _, it in Config.SHOP.PASSES do
 end
 for _, it in Config.SHOP.PRODUCTS do
 	Config.SHOP_BY_KEY[it.key] = it
+end
+
+---------------------------------------------------------------------
+-- V71: Hunter Pass (боевой пропуск). Имена hpass/pass* без путаницы с Game Pass: Config.pass* - только про этот пропуск.
+-- Награда R: client-сторона (coins, power) или server-сторона (egg, boost, tag, aura); ряд бывает только одной стороны.
+---------------------------------------------------------------------
+do
+	local function C(k: number): any
+		return { type = "coins", k = k }
+	end
+	local function S(n: number): any
+		return { type = "power", n = n }
+	end
+	local function E(key: string): any
+		return { type = "egg", key = key }
+	end
+	local function B(key: string): any
+		return { type = "boost", key = key }
+	end
+	local function T(text: string, color: Color3): any
+		return { type = "tag", text = text, color = color }
+	end
+	local function A(name: string, color: Color3): any
+		return { type = "aura", name = name, color = color }
+	end
+	-- V74: зелье Травницы на dur секунд (luck, coins, range, tension из Config.BOOSTS): выдаёт клиентская экономика
+	local function P(boost: string, dur: number): any
+		return { type = "potion", boost = boost, dur = dur }
+	end
+	-- V74: осколки питомцев (улучшение питомцев): выдаёт сервер
+	local function H(n: number): any
+		return { type = "shards", n = n }
+	end
+	local function R(free: { any }, premium: { any }): any
+		return { free = free, premium = premium }
+	end
+	Config.PASS = {
+		name = "Hunter Pass",
+		season = "Pinewatch",
+		START = 1794873600, -- 2026-11-17 00:00:00 UTC
+		DAYS = 28,
+		TIERS = 30,
+		XP_PER_TIER = 300,
+		BUNDLE_XP = 3000,
+		BUNDLE_MAX_XP = 6000,
+		DAILY = {
+			{
+				{ id = "dA1", text = "Catch 8 animals", kind = "catch", goal = 8, xp = 100 },
+				{ id = "dA2", text = "Complete 30 dumbbell reps", kind = "train", goal = 30, xp = 100 },
+				{ id = "dA3", text = "Wrap 5 catches", kind = "wrap", goal = 5, xp = 100 },
+			},
+			{
+				{ id = "dB1", text = "Catch 5 animals in zone 1", kind = "zone", arg = 1, goal = 5, xp = 100 },
+				{ id = "dB2", text = "Throw at x2 or more 4 times", kind = "tier", arg = 2, goal = 4, xp = 100 },
+				{ id = "dB3", text = "Complete 20 dumbbell reps", kind = "train", goal = 20, xp = 100 }, -- светлячки собираются один раз за аккаунт: задание бы застревало
+			},
+			{
+				{ id = "dC1", text = "Catch 2 animals of rarity 2+", kind = "rarity", arg = 2, goal = 2, xp = 100 },
+				{ id = "dC2", text = "Sell catches worth 100 coins", kind = "sell", goal = 100, xp = 100 },
+				{ id = "dC3", text = "Score 30 points at the target range", kind = "range", goal = 30, xp = 100 },
+			},
+			{
+				{ id = "dD1", text = "Throw at x5 or more twice", kind = "tier", arg = 5, goal = 2, xp = 100 },
+				{ id = "dD2", text = "Score 40 points at the target range", kind = "range", goal = 40, xp = 100 }, -- V78: вместо полосы препятствий
+				{ id = "dD3", text = "Wrap 3 catches", kind = "wrap", goal = 3, xp = 100 }, -- яйца в поле тоже разовые
+			},
+		},
+		WEEKLY = {
+			{ id = "w1", text = "Catch 50 animals", kind = "catch", goal = 50, xp = 240 },
+			{ id = "w2", text = "Catch 6 animals of rarity 2+", kind = "rarity", arg = 2, goal = 6, xp = 240 },
+			{ id = "w3", text = "Make 12 throws at x5 or more", kind = "tier", arg = 5, goal = 12, xp = 240 },
+			{ id = "w4", text = "Complete 100 dumbbell reps", kind = "train", goal = 100, xp = 240 },
+			{ id = "w5", text = "Wrap 18 catches", kind = "wrap", goal = 18, xp = 240 },
+		},
+		REWARDS = {
+			[1] = R({ C(0.25) }, { E("egg_forest") }),
+			[2] = R({ S(10) }, { P("luck", 900) }), -- V74: в премиум-ряду нет обычных монет и Силы: зелья, осколки питомцев, метки, ауры, яйца, бусты
+			[3] = R({ C(0.5) }, { B("fortune20") }),
+			[4] = R({ E("egg_forest") }, { H(15) }),
+			[5] = R({ C(0.75) }, { E("egg_amber") }),
+			[6] = R({ S(15) }, { P("coins", 900) }),
+			[7] = R({ C(0.5) }, { T("Pine Scout", Color3.fromRGB(110, 220, 140)) }),
+			[8] = R({ T("Trail Scout", Color3.fromRGB(120, 210, 120)) }, { B("fair30") }),
+			[9] = R({ S(20) }, { P("range", 1200) }),
+			[10] = R({ E("egg_forest") }, { E("egg_tide") }),
+			[11] = R({ C(0.75) }, { H(25) }),
+			[12] = R({ S(25) }, { P("tension", 1200) }),
+			[13] = R({ C(0.75) }, { T("Fern Tracker", Color3.fromRGB(90, 230, 150)) }),
+			[14] = R({ S(30) }, { B("jackpot20") }),
+			[15] = R({ B("fair30") }, { B("jackpot20") }),
+			[16] = R({ C(1) }, { P("luck", 1800) }),
+			[17] = R({ S(35) }, { H(40) }),
+			[18] = R({ E("egg_forest") }, { E("egg_forest") }),
+			[19] = R({ C(1) }, { P("coins", 1800) }),
+			[20] = R({ T("Campfire", Color3.fromRGB(255, 160, 70)) }, { B("fortune20") }),
+			[21] = R({ S(40) }, { A("Fern Glow", Color3.fromRGB(120, 255, 150)) }),
+			[22] = R({ C(1) }, { E("egg_forest") }),
+			[23] = R({ S(45) }, { A("Ember Trail", Color3.fromRGB(255, 110, 40)) }),
+			[24] = R({ C(1) }, { H(60) }),
+			[25] = R({ E("egg_amber") }, { E("egg_amber") }),
+			[26] = R({ S(50) }, { P("range", 1800), P("tension", 1800) }),
+			[27] = R({ C(1.25) }, { T("Elk Rider", Color3.fromRGB(255, 200, 90)) }),
+			[28] = R({ S(55) }, { B("fair30") }),
+			[29] = R({ C(1.5) }, { H(100) }),
+			[30] = R({ T("Pinewatch Ranger", Color3.fromRGB(120, 200, 255)) }, { E("egg_storm"), A("Pinewatch Aurora", Color3.fromRGB(110, 255, 210)) }),
+		},
+	}
+end
+
+local PASS_MISSION_BY_ID: { [string]: any } = {}
+for _, set in Config.PASS.DAILY do
+	for _, m in set do
+		PASS_MISSION_BY_ID[m.id] = m
+	end
+end
+for _, m in Config.PASS.WEEKLY do
+	PASS_MISSION_BY_ID[m.id] = m
+end
+
+function Config.passMission(id: string): any
+	return PASS_MISSION_BY_ID[id]
+end
+
+-- Номер сезона n (>= 0), начало и конец (unix). До START считается сезон 0.
+function Config.passSeason(now: number?): (number, number, number)
+	local P = Config.PASS
+	local t = tonumber(now) or Config.marketNow()
+	if t ~= t then
+		t = P.START
+	end
+	local len = P.DAYS * 86400
+	local n = math.max(0, math.floor((t - P.START) / len))
+	local s = P.START + n * len
+	return n, s, s + len
+end
+
+function Config.passDay(now: number?): number
+	local t = tonumber(now) or Config.marketNow()
+	if t ~= t then
+		t = Config.PASS.START
+	end
+	local _, s = Config.passSeason(t)
+	return math.clamp(math.floor((t - s) / 86400), 0, Config.PASS.DAYS - 1)
+end
+
+function Config.passWeek(now: number?): number
+	return math.clamp(math.floor(Config.passDay(now) / 7), 0, 3)
+end
+
+function Config.passTier(xp: number): number
+	local v = tonumber(xp) or 0
+	if v ~= v then
+		return 0
+	end
+	return math.clamp(math.floor(v / Config.PASS.XP_PER_TIER), 0, Config.PASS.TIERS)
+end
+
+function Config.passDaily(now: number?): { any }
+	return Config.PASS.DAILY[(Config.passDay(now) % 4) + 1]
+end
+
+function Config.passWeekly(): { any }
+	return Config.PASS.WEEKLY
+end
+
+-- Сторона ряда наград: coins/power считает клиент, остальное сервер.
+function Config.passSide(r: { any }): string
+	for _, it in r do
+		if it.type ~= "coins" and it.type ~= "power" and it.type ~= "potion" then
+			return "server"
+		end
+	end
+	return "client"
 end
 
 -- Монеты в паке: доля k от цены копья, следующего за самым дорогим купленным.

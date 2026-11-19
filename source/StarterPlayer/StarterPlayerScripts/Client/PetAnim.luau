@@ -1,10 +1,11 @@
 --!nonstrict
--- StarterPlayerScripts/Client/PetAnim (V35)
+-- StarterPlayerScripts/Client/PetAnim (V36)
 -- Animations of the pet models from the pack (custom Motor6D rigs, front = -Z, bones are world aligned at rest).
 -- The pack has no animation clips, so everything is driven by writing Motor6D.Transform every frame.
 --
 --   idle   breathing, a look around, ear flicks, tail sway          (loops)
---   move   walk / flap / paddle cycle, the stage moves the pet      (loops)
+--   move   walk / flap / paddle cycle, the stage moves the pet      (loops); anim:setSpeed(v) scales rate and stride
+--   sit    haunches down, front legs straight, tail sways, breathing (loops, поверх idle)
 --   react  jump with a spin, ears and limbs wave                    (Claude Design prototype, ~1.1-1.6 s)
 --   hatch  pecking from inside, jump out of the egg, landing        (Claude Design prototype, 2.7-5 s)
 --
@@ -143,6 +144,13 @@ function PetAnim.new(model: Model, id: string?)
 	self.ru = -1 -- react progress 0..1
 	self.hu = -1 -- hatch progress 0..1
 	self.ts = 1
+	self.ws = 0 -- вес позы sit
+	self.spd = nil -- скорость питомца, студ/с (nil: старое поведение, фиксированный темп)
+	self.sp = 0 -- сглаженная скорость
+	self.amp = 1
+	self.cph = 0 -- фаза шага (циклы)
+	self.fph = math.random() -- фаза взмаха крыльев (циклы)
+	self.hover = false -- летает / парит: ноги подобраны, крылья машут и на месте
 
 	local limits = {}
 	for _, c in model:GetChildren() do
@@ -210,6 +218,16 @@ function PetAnim:setMode(m: string)
 	self.mode = m
 end
 
+-- v: скорость питомца в студах/с (nil: сбросить на фиксированный темп)
+function PetAnim:setSpeed(v: number?)
+	self.spd = v
+end
+
+-- парит или летит: ноги не шагают, крылья машут и на месте
+function PetAnim:setHover(on: boolean)
+	self.hover = on == true
+end
+
 function PetAnim:react()
 	if self.hu < 0 and self.ru < 0 then
 		self.ru = 0
@@ -270,7 +288,11 @@ function PetAnim:_idle(t: number, w: number)
 			local lag = 0.1 * (j.depth + 1)
 			addR(j, 0, 0.1 * wave(t, 0.8, -lag) + 0.35 * pulse(t, 3.3, 0.5, 2) * wave(t, 6, -lag), 0, w)
 		elseif r == "wing" then
-			addR(j, 0, 0, s * 0.05 * wave(t, 0.5, ph), w)
+			if self.hover and self.flyer then
+				addR(j, 0, 0, s * (0.12 + 0.38 * sin(TAU * self.fph - j.depth * 0.3)), w) -- висит в воздухе: ровные взмахи
+			else
+				addR(j, 0, 0, s * 0.05 * wave(t, 0.5, ph), w)
+			end
 		elseif r == "ant" then
 			addR(j, 0.08 * wave(t, 1.3, ph), 0, 0.14 * wave(t, 0.9, ph + 0.3), w)
 		elseif r == "flipper" then
@@ -285,31 +307,36 @@ end
 
 function PetAnim:_move(t: number, w: number)
 	local h = self.h / 3
-	local ph = t * 1.55
+	local ph = self.cph -- фаза шага: темп зависит от скорости (setSpeed)
+	local amp = self.amp -- размах шага: бег шире шага
+	local lg = self.hover and 0.25 or 1 -- летящий / парящий: ноги почти не шагают
 	for _, j in self.joints do
 		local r, s = j.role, j.side
 		local pj = ph + j.idx * 0.33
 		if r == "body" then
-			addP(j, 0, 0.07 * h * max(0, sin(TAU * ph)), 0, w)
+			addP(j, 0, 0.07 * h * amp * max(0, sin(TAU * ph)), 0, w)
 			addR(j, 0.06 * sin(TAU * ph + 1), 0, 0.04 * sin(TAU * ph), w)
 		elseif r == "head" or r == "neck" then
 			addR(j, 0.14 * sin(TAU * ph * 2 + 0.6), 0.05 * sin(TAU * ph), 0, w)
 		elseif r == "fore" or r == "hind" then
 			-- diagonal pairs: fore-left with hind-right
 			local half = (r == "hind" and 0.5 or 0) + (s > 0 and 0.5 or 0)
-			local a = (j.dist and 0.35 or 0.6)
+			local a = (j.dist and 0.35 or 0.6) * amp * lg
 			local lag = j.dist and 0.12 or 0
 			addR(j, -a * sin(TAU * (ph + half - lag)), 0, 0, w)
-			addP(j, 0, 0.05 * h * max(0, cos(TAU * (ph + half))), 0, w)
+			addP(j, 0, 0.05 * h * amp * lg * max(0, cos(TAU * (ph + half))), 0, w)
 		elseif r == "sleg" then
 			local half = (j.k % 2 == 0 and 0.5 or 0) + (s > 0 and 0.5 or 0)
-			addR(j, 0, -s * 0.45 * sin(TAU * (ph + half)), -s * 0.3 * max(0, cos(TAU * (ph + half))) * -1, w)
+			addR(j, 0, -s * 0.45 * amp * lg * sin(TAU * (ph + half)), s * 0.3 * amp * lg * max(0, cos(TAU * (ph + half))), w)
 		elseif r == "wing" then
 			-- flyers flap, shell cases barely move
-			local a = self.flyer and 0.75 or 0.18
-			addR(j, 0, 0, s * a * sin(TAU * (ph * 2) - j.depth * 0.3), w)
+			if self.flyer then
+				addR(j, 0, 0, s * 0.75 * sin(TAU * self.fph - j.depth * 0.3), w) -- темп взмахов от скорости
+			else
+				addR(j, 0, 0, s * 0.18 * sin(TAU * (ph * 2) - j.depth * 0.3), w)
+			end
 		elseif r == "flipper" then
-			addR(j, 0, 0, s * 0.5 * sin(TAU * ph + (j.dist and 0.5 or 0)), w)
+			addR(j, 0, 0, s * 0.5 * (0.6 + 0.4 * amp) * sin(TAU * ph + (j.dist and 0.5 or 0)), w)
 		elseif r == "tail" then
 			local lag = 0.12 * (j.depth + 1)
 			addR(j, 0, 0.3 * wave(t, 1.6, -lag), 0, w)
@@ -319,6 +346,36 @@ function PetAnim:_move(t: number, w: number)
 			addR(j, 0.2 * wave(t, 2.1, pj), 0, 0.2 * wave(t, 1.7, pj), w)
 		elseif r == "deco" then
 			addR(j, 0.08 * sin(TAU * ph * 2 + pj), 0, 0.1 * wave(t, 1.4, pj), w)
+		end
+	end
+end
+
+-- сидит: зад опущен, передние лапы прямые, хвост виляет, дыхание, иногда ухо дёрнется и взгляд в сторону
+function PetAnim:_sit(t: number, w: number)
+	local h = self.h / 3
+	for _, j in self.joints do
+		local r, s = j.role, j.side
+		local ph = j.idx * 0.37 + (s > 0 and 0.2 or 0)
+		if r == "body" then
+			addP(j, 0, -0.16 * h + 0.014 * h * wave(t, 0.8), 0, w)
+			addR(j, 0.26 + 0.012 * wave(t, 0.8, 0.25), 0, 0, w)
+		elseif r == "hind" then
+			addR(j, (j.dist and 0.45 or 0.75), 0, 0, w) -- лапы подобраны вперёд под корпус
+		elseif r == "fore" then
+			addR(j, j.dist and -0.16 or -0.3, 0, 0, w) -- прямые: гасим наклон корпуса
+		elseif r == "sleg" then
+			addR(j, 0, 0, -s * 0.25, w)
+		elseif r == "head" then
+			addR(j, -0.22, 0.2 * wave(t, 0.13, 0.4) * ss(0.3, 0.7, wave(t, 0.07) * 0.5 + 0.5), 0, w) -- голова ровно, взгляд по сторонам
+		elseif r == "neck" then
+			addR(j, -0.06, 0, 0, w)
+		elseif r == "tail" then
+			addR(j, 0.15, 0.32 * wave(t, 0.9, -0.12 * (j.depth + 1)), 0, w)
+		elseif r == "ear" then
+			local p = pulse(t, 3.2 + 1.3 * (s > 0 and 1 or 0), 0.3, s > 0 and 1.4 or 0)
+			addR(j, 0, 0, out(j, 0.4 * p), w)
+		elseif r == "wing" then
+			addR(j, 0, 0, s * 0.04, w)
 		end
 	end
 end
@@ -399,7 +456,24 @@ function PetAnim:update(dt: number)
 	if self.wm < 0.002 then
 		self.wm = 0
 	end
-	self.mt += dt * (0.35 + 0.65 * self.wm)
+	local wk = 0.35 + 0.65 * self.wm
+	self.mt += dt * wk
+	-- скорость: темп шага, размах и частота взмахов
+	if self.spd then
+		self.sp += (self.spd - self.sp) * min(1, dt * 8)
+		self.amp = clamp(0.5 + 0.035 * self.sp, 0.5, 1.4)
+		self.cph += dt * min(3.6, 0.9 + 0.12 * self.sp) * wk
+		self.fph += dt * min(8, 2.4 + 0.22 * self.sp)
+	else
+		self.amp = 1
+		self.cph += dt * 1.55 * wk
+		self.fph += dt * 3.1 * wk
+	end
+	local tsit = self.mode == "sit" and 1 or 0
+	self.ws += (tsit - self.ws) * min(1, dt * 4.5)
+	if self.ws < 0.002 then
+		self.ws = 0
+	end
 	if self.ru >= 0 then
 		self.ru += dt / (d and d.rd or 1.2)
 		if self.ru >= 1 then
@@ -426,6 +500,9 @@ function PetAnim:update(dt: number)
 	end
 	if self.wm > 0 and not hatching then
 		self:_move(self.mt, self.wm)
+	end
+	if self.ws > 0 and not hatching then
+		self:_sit(self.t, self.ws)
 	end
 	local root = self.root
 	root.x, root.y, root.z, root.rx, root.ry, root.rz, root.s = 0, 0, 0, 0, 0, 0, 1
@@ -485,7 +562,7 @@ function PetAnim:reset()
 	for _, j in self.joints do
 		j.m.Transform = CFrame.identity
 	end
-	self.hu, self.ru, self.wm = -1, -1, 0
+	self.hu, self.ru, self.wm, self.ws = -1, -1, 0, 0
 end
 
 return PetAnim

@@ -5,6 +5,7 @@ local RS = game:GetService("ReplicatedStorage")
 
 local Config = require(RS.Shared.Config)
 local Plots = require(script.Parent.Plots)
+local Util = require(RS.Shared.Util)
 
 local Cosmetics = {}
 
@@ -121,17 +122,141 @@ local function refreshRack(plot: Model, owned: { string })
 	f.Parent = plot
 end
 
--- Гантели на стойке
+-- Гантели на стойке (V70: стойка CAMP GYM; V82: вид стойки и текущая пара зависят от уровня)
+local function bboxExtent(cf: CFrame, size: Vector3, dir: Vector3): number
+	return math.abs(dir:Dot(cf.RightVector)) * size.X + math.abs(dir:Dot(cf.UpVector)) * size.Y + math.abs(dir:Dot(cf.LookVector)) * size.Z
+end
+
+-- один раз на двор: заменить старую стойку на новую
+local function buildGym(gym: Instance)
+	if gym:GetAttribute("V70Rack") then
+		return
+	end
+	local old = gym:FindFirstChild("Display")
+	local stand = gym:FindFirstChild("Stand") :: BasePart?
+	if not (old and old:IsA("Model") and stand) then
+		return
+	end
+	local cf, size = old:GetBoundingBox()
+	local base = Vector3.new(cf.Position.X, cf.Position.Y - size.Y / 2, cf.Position.Z)
+	local dir = Util.flat(stand.Position - base)
+	if dir.Magnitude < 0.01 then
+		dir = Util.flat(-cf.LookVector)
+	end
+	dir = dir.Unit
+	base += dir * 0.5 -- чуть ближе к площадке: задом стойка не заходит в грядку за ней
+	local perp = Vector3.new(-dir.Z, 0, dir.X)
+	local s = math.clamp(bboxExtent(cf, size, perp) * 1.6 / 9.92, 0.6, 1.0)
+	gym:SetAttribute("RackBase", base)
+	gym:SetAttribute("RackDir", dir)
+	gym:SetAttribute("RackScale", s)
+	-- декоративная гантель на земле: запоминаем её место до замены
+	local nat = gym:FindFirstChild("NativeDumbbell")
+	if nat and nat:IsA("Model") then
+		local ncf, nsize = nat:GetBoundingBox()
+		gym:SetAttribute("NativePos", Vector3.new(ncf.Position.X, base.Y, ncf.Position.Z))
+		local axis = nsize.X > nsize.Z and ncf.RightVector or ncf.LookVector -- длинная горизонтальная ось
+		gym:SetAttribute("NativeAxis", Util.flat(axis).Unit)
+		nat:Destroy()
+	end
+	gym:SetAttribute("V70Rack", true)
+	gym:SetAttribute("ShownLevel", nil)
+end
+
+-- V82: пересобрать стойку под уровень в том же месте и масштабе (база и масштаб запомнены при первой сборке)
+local function placeRack(gym: Instance, level: number)
+	local base, dir, s = gym:GetAttribute("RackBase"), gym:GetAttribute("RackDir"), gym:GetAttribute("RackScale")
+	if typeof(base) ~= "Vector3" or typeof(dir) ~= "Vector3" or type(s) ~= "number" then
+		-- запасной путь: берём место и масштаб уже стоящей стойки
+		local cur = gym:FindFirstChild("Display")
+		if not (cur and cur:IsA("Model")) then
+			return false
+		end
+		local pv = cur:GetPivot()
+		base, dir, s = pv.Position, pv.ZVector, cur:GetScale()
+		gym:SetAttribute("RackBase", base)
+		gym:SetAttribute("RackDir", dir)
+		gym:SetAttribute("RackScale", s)
+	end
+	local rack = Util.gymRack(level)
+	rack:ScaleTo(s)
+	rack:PivotTo(CFrame.lookAt(base, base - dir)) -- +Z смотрит на площадку игрока
+	local old = gym:FindFirstChild("Display")
+	if old then
+		old:Destroy()
+	end
+	rack.Name = "Display"
+	rack.Parent = gym
+	return true
+end
+
+local function refreshNative(gym: Instance, level: number)
+	local pos = gym:GetAttribute("NativePos")
+	if typeof(pos) ~= "Vector3" then
+		return
+	end
+	local cur = gym:FindFirstChild("NativeDumbbell")
+	if cur and cur:GetAttribute("Tier") == level then
+		return
+	end
+	if cur then
+		cur:Destroy()
+	end
+	local m = Util.dumbbell(level)
+	m:ScaleTo((gym:GetAttribute("RackScale") :: number?) or 1) -- в масштабе стойки, чтобы не лезть в неё
+	local bcf, bsize = m:GetBoundingBox()
+	local lift = -(bcf.Position.Y - bsize.Y / 2) -- низ на землю
+	local axis = gym:GetAttribute("NativeAxis")
+	local at = Vector3.new(pos.X, pos.Y + lift, pos.Z)
+	m:PivotTo(typeof(axis) == "Vector3" and CFrame.lookAt(at, at + axis) or CFrame.new(at))
+	m.Name = "NativeDumbbell"
+	m.Parent = gym
+end
+
+-- V83: стенд пересобирается не чаще раза в GYM_REBUILD_GAP секунд (до 218 деталей за раз),
+-- лишние запросы сводятся к одному отложенному с последним уровнем
+local GYM_REBUILD_GAP = 0.5
+local gymBuiltAt: { [Instance]: number } = setmetatable({}, { __mode = "k" }) :: any
+local gymPending: { [Instance]: number } = setmetatable({}, { __mode = "k" }) :: any
+
 local function refreshGym(plot: Model, level: number)
 	local gym = plot:FindFirstChild("Gym")
-	local display = gym and gym:FindFirstChild("Display")
-	local look = Config.DUMBBELL_LOOK[math.clamp(level, 1, #Config.DUMBBELL_LOOK)]
-	if display then
-		for _, p in display:GetDescendants() do
-			if p:IsA("BasePart") and p:GetAttribute("Weight") then
-				p.Color = look.color
-				p.Material = look.material
+	if not gym then
+		return
+	end
+	if level ~= level then
+		level = 1 -- NaN
+	end
+	level = math.clamp(math.floor(level), 1, #Config.DUMBBELL_LOOK)
+	buildGym(gym)
+	if gymPending[gym] ~= nil then
+		gymPending[gym] = level -- отложенная пересборка уже ждёт: возьмёт последний уровень
+		return
+	end
+	if gym:GetAttribute("ShownLevel") == level then
+		return
+	end
+	local now = os.clock()
+	local last = gymBuiltAt[gym]
+	if last and now - last < GYM_REBUILD_GAP then
+		gymPending[gym] = level
+		task.delay(GYM_REBUILD_GAP - (now - last), function()
+			local want = gymPending[gym]
+			gymPending[gym] = nil
+			if want and plot.Parent and gym.Parent then
+				refreshGym(plot, want)
 			end
+		end)
+		return
+	end
+	gymBuiltAt[gym] = now
+	if gym:GetAttribute("V70Rack") then
+		local ok, placed = pcall(placeRack, gym, level)
+		if not ok then
+			warn("[Cosmetics] stand: " .. tostring(placed))
+		elseif placed then
+			pcall(refreshNative, gym, level)
+			gym:SetAttribute("ShownLevel", level)
 		end
 	end
 end
@@ -154,7 +279,7 @@ function Cosmetics.apply(player: Player, raw: any)
 		end
 		look.owned = owned
 	end
-	if type(raw.dumbbell) == "number" then
+	if type(raw.dumbbell) == "number" and raw.dumbbell == raw.dumbbell then
 		look.dumbbell = math.clamp(math.floor(raw.dumbbell), 1, #Config.DUMBBELL)
 	end
 	looks[player] = look
@@ -176,6 +301,14 @@ function Cosmetics.release(player: Player, plot: Model?)
 	if plot then
 		refreshRack(plot, {})
 		refreshGym(plot, 1)
+	end
+end
+
+-- V70: заменить стойки во всех дворах при загрузке модуля
+for _, plot in Plots.all() do
+	local ok, err = pcall(refreshGym, plot, 1)
+	if not ok then
+		warn("[Cosmetics] gym rack: " .. tostring(err))
 	end
 end
 

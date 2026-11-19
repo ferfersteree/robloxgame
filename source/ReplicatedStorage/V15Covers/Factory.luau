@@ -17,6 +17,11 @@ function Factory.Get(id: string): any
  return spec
 end
 
+-- V82: ground-cells strip lying in front of each bush (tools/biome_covers.py: v.box(.., 0,0, -5,-4, ground=True))
+local function isGroundStrip(v: any): boolean
+ return (v[5] or 0)==0 and v[2]==0 and (v[3]==-5 or v[3]==-4)
+end
+
 local function surfaceCells(id: string, spec: any): {any}
  if exposed[id] then return exposed[id] end
  local occupied = {}
@@ -62,7 +67,10 @@ function Factory.Create(id: string, cf: CFrame?, parent: Instance?, options: any
  for name,position in pairs(spec.attachments or {}) do local a=Instance.new("Attachment");a.Name=name;a.Position=Vector3.new(table.unpack(position))*scale;a.Parent=pivot end
  local origin=spec.origin or {0,.25,0}
  local all=options and options.AllCells==true
- local cells=if all then spec.voxels else surfaceCells(id,spec)
+ local cells0=if all then spec.voxels else surfaceCells(id,spec)
+ -- V82: полоса кубиков-«земли» перед кустом (группа 0, y=0, z -5..-4) убрана: остаётся один куст
+ local cells={}
+ for _,v in ipairs(cells0) do if not isGroundStrip(v) then table.insert(cells,v) end end
  for i,v in ipairs(cells) do
   local p=Instance.new("Part")
   p.Name="Cell_"..i;p.Size=Vector3.new(unit,unit,unit);p.Anchored=true;p.CanCollide=false;p.CanTouch=false;p.CanQuery=false;p.CastShadow=options and options.CastShadow==true or false;p.Material=Enum.Material.Plastic

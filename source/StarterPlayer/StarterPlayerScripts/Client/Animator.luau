@@ -17,6 +17,14 @@ local NativeAssets = RS:WaitForChild("V15SpearPresentation")
 local NativeFactory = require(NativeAssets.SpearFactoryV15)
 -- клипы бросков (копьё в руке держится по направлению броска, а не по кисти)
 local THROW = { Throw1 = true, Throw2 = true, Throw5 = true, Throw10 = true, Throw25 = true, Throw100 = true }
+-- V69: броски идут медленнее в столько раз, чтобы были видны замах и сам бросок (время выпуска и события клипа тоже)
+local THROW_SLOW = 1.7
+local function slowed(name: string?, t: number): number
+	if name and THROW[name] then
+		return t / THROW_SLOW
+	end
+	return t
+end
 
 local JOINTS = {
 	"Root", "Waist", "Neck",
@@ -52,7 +60,7 @@ local holdOverride: boolean? = nil -- принудительно показат�
 -- V64: уровень заряда своего персонажа (0..1) и дрожь перед срывом (0..1); задаёт HuntCtl каждый кадр
 local chargeK: number? = nil
 local chargeTremble = 0
-local CHARGE_RAMP = 2.6 -- у чужих персонажей и на витрине заряд растёт сам за столько секунд
+local CHARGE_RAMP = 4.3 -- V68: заряд медленнее (rate 0.6) -- у чужих персонажей и на витрине заряд растёт сам за столько секунд
 
 local spearsFolder = Instance.new("Folder")
 spearsFolder.Name = "HandSpears"
@@ -183,7 +191,7 @@ local function clipOf(rig: Rig): (string?, number)
 		if not localClip then
 			return nil, 0
 		end
-		return resolve(localClip, os.clock() - localT0)
+		return resolve(localClip, slowed(localClip, os.clock() - localT0))
 	end
 	local pose = rig.char:GetAttribute("Pose")
 	if type(pose) ~= "string" then
@@ -191,7 +199,7 @@ local function clipOf(rig: Rig): (string?, number)
 	end
 	local t0 = rig.char:GetAttribute("PoseT")
 	local t = workspace:GetServerTimeNow() - (type(t0) == "number" and t0 or 0)
-	return resolve(pose, math.max(t, 0))
+	return resolve(pose, slowed(pose, math.max(t, 0)))
 end
 
 local function findTool(char: Model): Tool?
@@ -443,8 +451,18 @@ RunService.PreRender:Connect(function()
 				end
 				if aimed then
 					sp:PivotTo(Animator.spearCF(hand.Position, dir))
-				elseif sp:GetAttribute("V15Spear") and not clip then
-					sp:PivotTo(NativeFactory.AtGrip(sp,hand.CFrame*CFrame.new(.02,-.1,-.07)))
+				elseif not clip then
+					-- V82: прогулка по лагерю: копьё в правой руке почти вертикально, остриё вверх и чуть вперёд.
+					-- Ориентация задана в мире (не от кисти: стандартная анимация с инструментом вскидывает руку, и копьё лежало поперёк)
+					local flatF = Vector3.new(fwd.X, 0, fwd.Z)
+					flatF = if flatF.Magnitude > 1e-3 then flatF.Unit else Vector3.new(0, 0, -1)
+					local carry = (Vector3.yAxis + flatF * 0.2).Unit
+					if sp:GetAttribute("V15Spear") then
+						local rot = Animator.spearCF(Vector3.zero, carry).Rotation
+						sp:PivotTo(NativeFactory.AtGrip(sp, CFrame.new(hand.Position) * rot))
+					else
+						sp:PivotTo(Animator.spearCF(hand.Position - carry * 0.2, carry))
+					end
 				else
 					sp:PivotTo(Animator.spearCF(hand.Position - dir * 0.2, dir))
 				end
@@ -477,12 +495,12 @@ function Animator.current(): (string?, number)
 	if not localClip then
 		return nil, 0
 	end
-	return resolve(localClip, os.clock() - localT0)
+	return resolve(localClip, slowed(localClip, os.clock() - localT0))
 end
 
 function Animator.release(clip: string): number
 	local c = PoseData.clips[clip]
-	return c and c.release or 0.2
+	return (c and c.release or 0.2) * (if THROW[clip] then THROW_SLOW else 1)
 end
 
 function Animator.setHold(on: boolean?)
@@ -498,7 +516,17 @@ end
 -- V64: события клипа (прыжок, приземление, топот): { { время, имя }, ... }
 function Animator.events(clip: string): { any }
 	local c = PoseData.clips[clip]
-	return c and c.events or {}
+	if not c or not c.events then
+		return {}
+	end
+	if not THROW[clip] then
+		return c.events
+	end
+	local out = {}
+	for _, ev in c.events do
+		table.insert(out, { ev[1] * THROW_SLOW, ev[2] })
+	end
+	return out
 end
 
 function Animator.handPosition(char: Model?): Vector3?
