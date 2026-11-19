@@ -602,17 +602,6 @@ function Reveal.play(res: any, pos: Vector3, o: RevealOpts?)
 	-- V63: светящийся круг под зверем цвета редкости и надпись GIANT у крупных особей
 	local glyph: Part? = nil
 	if rig and not escaped then
-		local g = Instance.new("Part")
-		g.Name = "RevealGlyph"
-		g.Anchored = true
-		g.CanCollide = false
-		g.CanQuery = false
-		g.CanTouch = false
-		g.CastShadow = false
-		g.Shape = Enum.PartType.Cylinder
-		g.Material = Enum.Material.Neon
-		g.Color = col
-		g.Transparency = 1
 		-- V65: круг по следу зверя (раньше не меньше 8 стадов: у мелких зверей он закрывал их золотым куполом)
 		local foot = 1.2
 		if visualAnimal then
@@ -623,22 +612,12 @@ function Reveal.play(res: any, pos: Vector3, o: RevealOpts?)
 			end
 		end
 		local gr = math.clamp(foot * 0.6 + 0.3, 0.8, 20)
-		g.Size = Vector3.new(0.08, 1, 1)
 		local gp = rig.cf.Position
-		g.CFrame = CFrame.new(gp.X, effectPos.Y + 0.15, gp.Z) * CFrame.Angles(0, 0, math.pi / 2)
-		g.Parent = Fx.folder
+		-- V67: вместо залитого неонового диска светящееся кольцо с бледной заливкой и искрами (Fx.glyph);
+		-- атрибут Fading и Destroy ниже работают как раньше
+		local g = Fx.glyph(Vector3.new(gp.X, effectPos.Y + 0.15, gp.Z), col, gr)
 		game:GetService("Debris"):AddItem(g, 60)
-		Fx.tween(g, 0.5, { Transparency = 0.78, Size = Vector3.new(0.08, gr * 2, gr * 2) }, Enum.EasingStyle.Back)
 		glyph = g
-		task.spawn(function()
-			local t0 = os.clock()
-			while g.Parent and not g:GetAttribute("Fading") do
-				if os.clock() - t0 > 0.55 then
-					g.Transparency = 0.8 + 0.08 * math.sin((os.clock() - t0) * 4)
-				end
-				RunService.RenderStepped:Wait()
-			end
-		end)
 		if Fauna150.IsGiant(sz) then
 			Fx.text(gp + Vector3.new(0, math.max(2, h * 1.15 + 1), 0), "GIANT!", Theme.C.gold, 44, 2.2)
 			Fx.shake(0.4, 0.5)

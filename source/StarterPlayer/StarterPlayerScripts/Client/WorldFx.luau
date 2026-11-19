@@ -143,23 +143,179 @@ function Fx.impact(kind: string, pos: Vector3, c1: Color3, c2: Color3, k: number
 	end
 end
 
--- Плоское кольцо-волна по земле
-function Fx.ring(pos: Vector3, color: Color3, radius: number, dur: number?, thick: number?)
+-- V67: кольцо на земле — полая светящаяся окружность, а не залитый диск. Одна неподвижная деталь, сверху SurfaceGui:
+-- круг (UICorner) с двумя обводками UIStroke: тонкая яркая линия и широкий мягкий ореол того же цвета.
+-- Проверено в Studio: (1) на полностью прозрачной детали (Transparency = 1) SurfaceGui не рисуется, поэтому 0.99;
+-- (2) если размер детали меняется каждый кадр, SurfaceGui не успевает перерисоваться и кольца не видно,
+-- поэтому деталь сразу полного размера, а растёт содержимое: общий контейнер с UIScale.
+-- (3) SurfaceGui видна только с одной стороны: у кольца в воздухе (вершина полёта копья, выпуск в прыжке) камера
+-- снизу, поэтому там рисунок дублируется на нижнюю грань (bothSides).
+-- Возвращает деталь, списки обводок (ядра, ореолы), контейнеров и их UIScale (по одному на сторону), поле (margin,
+-- стады) и плотность (пикселей на стад).
+local WHITE = Color3.new(1, 1, 1)
+local function ringGui(pos: Vector3, color: Color3, radius: number, core: number, halo: number, bothSides: boolean?): (Part, { UIStroke }, { UIStroke }, { Frame }, { UIScale }, number, number)
+	-- радиус не меньше половины ореола плюс линия (иначе у кружков отрицательный размер) и не больше 60 стадов
+	radius = math.clamp(radius, halo * 0.5 + core + 0.2, 60)
+	local margin = halo + 0.15
+	local size = 2 * (radius + margin)
+	local pps = math.clamp(math.floor(420 / size), 6, 40)
 	local p = Instance.new("Part")
-	p.Shape = Enum.PartType.Cylinder
+	p.Name = "FxRing"
 	p.Anchored = true
 	p.CanCollide = false
 	p.CanQuery = false
 	p.CanTouch = false
-	p.Material = Enum.Material.Neon
-	p.Color = color
-	p.Transparency = 0.15
-	p.Size = Vector3.new(thick or 0.3, 1, 1)
-	p.CFrame = CFrame.new(pos) * CFrame.Angles(0, 0, math.rad(90))
-	p.Parent = folder
+	p.CastShadow = false
+	p.Material = Enum.Material.SmoothPlastic
+	p.Transparency = 0.99
+	p.Size = Vector3.new(size, 0.05, size)
+	p.CFrame = CFrame.new(pos)
+	local cores, halos, holders, scales = {}, {}, {}, {}
+	local function circle(holder: Frame, th: number, transp: number, col: Color3): UIStroke
+		local inset = margin + th / 2
+		local f = Instance.new("Frame")
+		f.AnchorPoint = Vector2.new(0.5, 0.5)
+		f.Position = UDim2.fromScale(0.5, 0.5)
+		f.Size = UDim2.new(1, -2 * inset * pps, 1, -2 * inset * pps)
+		f.BackgroundTransparency = 1
+		f.BorderSizePixel = 0
+		local c = Instance.new("UICorner")
+		c.CornerRadius = UDim.new(0.5, 0)
+		c.Parent = f
+		local s = Instance.new("UIStroke")
+		s.Color = col
+		s.Thickness = th * pps
+		s.Transparency = transp
+		s.Parent = f
+		f.Parent = holder
+		return s
+	end
+	for _, face in (if bothSides then { Enum.NormalId.Top, Enum.NormalId.Bottom } else { Enum.NormalId.Top }) do
+		local g = Instance.new("SurfaceGui")
+		g.Face = face
+		g.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+		g.PixelsPerStud = pps
+		g.LightInfluence = 0
+		g.Brightness = 2
+		g.Parent = p
+		local holder = Instance.new("Frame")
+		holder.Name = "Holder"
+		holder.AnchorPoint = Vector2.new(0.5, 0.5)
+		holder.Position = UDim2.fromScale(0.5, 0.5)
+		holder.Size = UDim2.fromScale(1, 1)
+		holder.BackgroundTransparency = 1
+		holder.BorderSizePixel = 0
+		local sc = Instance.new("UIScale")
+		sc.Parent = holder
+		holder.Parent = g
+		table.insert(halos, circle(holder, halo, 0.7, color))
+		table.insert(cores, circle(holder, core, 0.05, color:Lerp(WHITE, 0.4)))
+		table.insert(holders, holder)
+		table.insert(scales, sc)
+	end
+	return p, cores, halos, holders, scales, margin, pps
+end
+Fx.ringGui = ringGui
+
+-- Есть ли земля (не эффекты и не персонажи) в паре стадов под точкой
+local groundParams = RaycastParams.new()
+groundParams.FilterType = Enum.RaycastFilterType.Exclude
+local function nearGround(pos: Vector3): boolean
+	local skip: { Instance } = { folder }
+	for _, pl in game:GetService("Players"):GetPlayers() do
+		if pl.Character then
+			table.insert(skip, pl.Character)
+		end
+	end
+	groundParams.FilterDescendantsInstances = skip
+	return workspace:Raycast(pos + Vector3.new(0, 0.5, 0), Vector3.new(0, -2.5, 0), groundParams) ~= nil
+end
+
+-- Кольцо-волна по земле: расходится от центра, линия к концу тоньше, сначала яркая, потом гаснет
+function Fx.ring(pos: Vector3, color: Color3, radius: number, dur: number?, thick: number?)
 	local d = dur or 0.6
-	tween(p, d, { Size = Vector3.new(0.05, radius * 2, radius * 2), Transparency = 1 })
+	local core = thick or math.clamp(radius * 0.05, 0.14, 0.8)
+	local halo = core * 3.2
+	local p, cores, halos, _, scales = ringGui(pos, color, radius, core, halo, not nearGround(pos))
+	for i, sc in scales do
+		local sCore, sHalo = cores[i], halos[i]
+		-- UIScale уменьшает и обводки, поэтому в начале линия толще, чтобы маленькое кольцо читалось
+		sc.Scale = 0.12
+		sCore.Thickness *= 2.4
+		sHalo.Thickness *= 1.6
+		tween(sc, d, { Scale = 1 }, Enum.EasingStyle.Quart)
+		tween(sCore, d, { Transparency = 1, Thickness = sCore.Thickness * 0.3 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+		tween(sHalo, d * 0.85, { Transparency = 1, Thickness = sHalo.Thickness * 0.5 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+	end
+	p.Parent = folder
 	Debris:AddItem(p, d + 0.1)
+end
+
+-- V67: знак под пойманным зверем: светящееся кольцо с бледной заливкой и искрами, которые поднимаются с круга.
+-- Появляется с отскоком, мерцает, пока на детали нет атрибута Fading, а с ним за 0.35 с гаснет.
+-- Деталь почти прозрачна (0.99), поэтому прежний код Reveal (Fading, Transparency → 1, Destroy) работает как раньше.
+function Fx.glyph(pos: Vector3, color: Color3, radius: number): Part
+	local core = math.clamp(radius * 0.07, 0.12, 0.55)
+	local halo = core * 3.6
+	local p, cores, halos, holders, scales, margin, pps = ringGui(pos, color, radius, core, halo)
+	local sCore, sHalo, holder, sc = cores[1], halos[1], holders[1], scales[1]
+	p.Name = "RevealGlyph"
+	-- бледная заливка круга
+	local fill = Instance.new("Frame")
+	fill.AnchorPoint = Vector2.new(0.5, 0.5)
+	fill.Position = UDim2.fromScale(0.5, 0.5)
+	fill.Size = UDim2.new(1, -2 * (margin + core) * pps, 1, -2 * (margin + core) * pps)
+	fill.BackgroundColor3 = color
+	fill.BackgroundTransparency = 1
+	fill.BorderSizePixel = 0
+	local fc = Instance.new("UICorner")
+	fc.CornerRadius = UDim.new(0.5, 0)
+	fc.Parent = fill
+	fill.ZIndex = 0
+	fill.Parent = holder
+	sCore.Transparency = 1
+	sHalo.Transparency = 1
+	sc.Scale = 0.2
+	p.Parent = folder
+	tween(sc, 0.5, { Scale = 1 }, Enum.EasingStyle.Back)
+	tween(sCore, 0.35, { Transparency = 0.05 })
+	tween(sHalo, 0.5, { Transparency = 0.72 })
+	tween(fill, 0.5, { BackgroundTransparency = 0.82 })
+	-- искры, поднимающиеся с круга (в «Reduced Effects» реже)
+	local e = Instance.new("ParticleEmitter")
+	e.Texture = TEX.sparkle
+	e.Color = ColorSequence.new(WHITE, color)
+	e.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, math.clamp(radius * 0.12, 0.25, 0.9)), NumberSequenceKeypoint.new(1, 0) })
+	e.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.1), NumberSequenceKeypoint.new(1, 1) })
+	e.Lifetime = NumberRange.new(0.9, 1.6)
+	e.Speed = NumberRange.new(1.5, 3.5)
+	e.SpreadAngle = Vector2.new(10, 10)
+	e.EmissionDirection = Enum.NormalId.Top
+	e.Shape = Enum.ParticleEmitterShape.Disc
+	e.ShapeStyle = Enum.ParticleEmitterShapeStyle.Surface
+	e.Acceleration = Vector3.new(0, 1.5, 0)
+	e.LightEmission = 1
+	e.LightInfluence = 0
+	e.Rate = math.clamp(radius * 6, 6, 30) * (if Fx.lowFx then 0.35 else 1)
+	e.Parent = p
+	task.spawn(function()
+		local t0 = os.clock()
+		while p.Parent and not p:GetAttribute("Fading") do
+			local t = os.clock() - t0
+			if t > 0.55 then
+				sHalo.Transparency = 0.72 + 0.1 * math.sin(t * 4)
+				fill.BackgroundTransparency = 0.82 + 0.05 * math.sin(t * 4 + 1)
+			end
+			RunService.RenderStepped:Wait()
+		end
+		e.Enabled = false
+		if p.Parent then
+			tween(sCore, 0.35, { Transparency = 1 })
+			tween(sHalo, 0.35, { Transparency = 1 })
+			tween(fill, 0.35, { BackgroundTransparency = 1 })
+		end
+	end)
+	return p
 end
 
 -- V64: кольцо ударной волны поперёк направления (звуковой хлопок при броске)
@@ -208,8 +364,10 @@ function Fx.streak(a: Vector3, b: Vector3, color: Color3, width: number?, dur: n
 	Debris:AddItem(p, t + 0.1)
 end
 
--- Сфера-вспышка
+-- Сфера-вспышка. V67: вместо плотного неонового шара мягкая вспышка: билборд из трёх кругов (белое ядро,
+-- цветная середина, бледный ореол), который раздувается и гаснет, и под ним едва заметный шар
 function Fx.sphere(pos: Vector3, color: Color3, r: number, dur: number?)
+	local d = dur or 0.4
 	local p = Instance.new("Part")
 	p.Shape = Enum.PartType.Ball
 	p.Anchored = true
@@ -218,14 +376,40 @@ function Fx.sphere(pos: Vector3, color: Color3, r: number, dur: number?)
 	p.CanTouch = false
 	p.Material = Enum.Material.Neon
 	p.Color = color
-	p.Transparency = 0.2
+	p.Transparency = 0.72
 	p.Size = Vector3.one * 0.5
 	p.CFrame = CFrame.new(pos)
 	p.CastShadow = false
 	p.Parent = folder
-	local d = dur or 0.4
-	tween(p, d, { Size = Vector3.one * r * 2, Transparency = 1 })
-	Debris:AddItem(p, d + 0.1)
+	tween(p, d, { Size = Vector3.one * r * 1.6, Transparency = 1 })
+	Debris:AddItem(p, d + 0.15)
+	local bb = Instance.new("BillboardGui")
+	bb.Size = UDim2.fromScale(r * 0.6, r * 0.6)
+	bb.LightInfluence = 0
+	bb.Brightness = 3
+	bb.Adornee = p
+	bb.Parent = p
+	local layers = {
+		{ s = 1, t = 0.8, c = color },
+		{ s = 0.62, t = 0.5, c = color:Lerp(WHITE, 0.35) },
+		{ s = 0.3, t = 0.05, c = WHITE },
+	}
+	for i, L in layers do
+		local f = Instance.new("Frame")
+		f.AnchorPoint = Vector2.new(0.5, 0.5)
+		f.Position = UDim2.fromScale(0.5, 0.5)
+		f.Size = UDim2.fromScale(L.s, L.s)
+		f.BackgroundColor3 = L.c
+		f.BackgroundTransparency = L.t
+		f.BorderSizePixel = 0
+		f.ZIndex = i
+		local c = Instance.new("UICorner")
+		c.CornerRadius = UDim.new(0.5, 0)
+		c.Parent = f
+		f.Parent = bb
+		tween(f, d, { BackgroundTransparency = 1 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+	end
+	tween(bb, d, { Size = UDim2.fromScale(r * 2.6, r * 2.6) }, Enum.EasingStyle.Quart)
 end
 
 function Fx.light(pos: Vector3, color: Color3, range: number, brightness: number, dur: number?): PointLight
@@ -240,28 +424,114 @@ function Fx.light(pos: Vector3, color: Color3, range: number, brightness: number
 	return l
 end
 
--- Столб света из неба (редкие раскрытия)
+-- Столб света из неба (редкие раскрытия). V67: вместо сплошного неонового цилиндра луч из трёх полупрозрачных
+-- лент (Beam, всегда лицом к камере): белое ядро, цветная середина и широкий бледный ореол. Луч вырастает из земли
+-- вверх, к верху растворяется, слегка пульсирует, а внутри поднимаются искры; у основания кольцо и свет.
+-- Возвращает невидимую деталь-основание (как и раньше, Part); если её удалить, луч и искры гаснут сразу
+-- (кольцо и свет у основания догорают сами).
 function Fx.pillar(pos: Vector3, color: Color3, height: number, dur: number, width: number?): Part
-	local p = Instance.new("Part")
-	p.Shape = Enum.PartType.Cylinder
-	p.Anchored = true
-	p.CanCollide = false
-	p.CanQuery = false
-	p.CanTouch = false
-	p.Material = Enum.Material.Neon
-	p.Color = color
-	p.Transparency = 1
-	p.CastShadow = false
 	local w = width or 3
-	p.Size = Vector3.new(height, w * 0.2, w * 0.2)
-	p.CFrame = CFrame.new(pos + Vector3.new(0, height / 2, 0)) * CFrame.Angles(0, 0, math.rad(90))
-	p.Parent = folder
-	tween(p, 0.35, { Transparency = 0.25, Size = Vector3.new(height, w, w) }, Enum.EasingStyle.Back)
-	task.delay(math.max(0.4, dur - 0.5), function()
-		tween(p, 0.5, { Transparency = 1, Size = Vector3.new(height, 0.1, 0.1) })
+	height = height or 120
+	dur = math.max(dur or 3, 0.2)
+	local base = Instance.new("Part")
+	base.Name = "FxPillar"
+	base.Anchored = true
+	base.CanCollide = false
+	base.CanQuery = false
+	base.CanTouch = false
+	base.CastShadow = false
+	base.Transparency = 1
+	base.Size = Vector3.new(0.2, 0.2, 0.2)
+	base.CFrame = CFrame.new(pos)
+	local a0 = Instance.new("Attachment")
+	a0.Parent = base
+	local a1 = Instance.new("Attachment")
+	a1.Position = Vector3.new(0, 0.2, 0)
+	a1.Parent = base
+	local hot = color:Lerp(WHITE, 0.6)
+	local layers = {
+		{ w = w * 0.32, t = 0, c0 = WHITE, c1 = hot },
+		{ w = w * 0.95, t = 0.45, c0 = hot, c1 = color },
+		{ w = w * 2.6, t = 0.87, c0 = color, c1 = color },
+	}
+	local beams = {}
+	for _, L in layers do
+		local b = Instance.new("Beam")
+		b.Attachment0 = a0
+		b.Attachment1 = a1
+		b.FaceCamera = true
+		b.LightEmission = 1
+		b.LightInfluence = 0
+		b.Segments = 1
+		b.Color = ColorSequence.new(L.c0, L.c1)
+		b.Width0 = 0
+		b.Width1 = 0
+		b.Parent = base
+		table.insert(beams, { b = b, L = L })
+	end
+	local spark: ParticleEmitter? = nil
+	if not Fx.lowFx then
+		local e = Instance.new("ParticleEmitter")
+		e.Texture = TEX.sparkle
+		e.Color = ColorSequence.new(WHITE, color)
+		e.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.35 + w * 0.08), NumberSequenceKeypoint.new(1, 0) })
+		e.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.8, 0.3), NumberSequenceKeypoint.new(1, 1) })
+		e.Lifetime = NumberRange.new(1.4, 2.6)
+		e.Speed = NumberRange.new(12, 28)
+		e.SpreadAngle = Vector2.new(7, 7)
+		e.Drag = 0.35
+		e.LightEmission = 1
+		e.LightInfluence = 0
+		e.Rate = 22
+		e.Parent = a0
+		spark = e
+	end
+	base.Parent = folder
+	Fx.ring(pos + Vector3.new(0, 0.15, 0), color, w * 2.2, 0.7)
+	Fx.light(pos + Vector3.new(0, 3, 0), color, 26 + w * 3, 6, dur)
+	-- угасание: последние 0.55 с, но у короткого луча не раньше его середины
+	local grow, fadeAt = 0.35, math.max(dur * 0.5, dur - 0.55)
+	local t0 = os.clock()
+	local conn: RBXScriptConnection? = nil
+	conn = RunService.RenderStepped:Connect(function()
+		local t = os.clock() - t0
+		if not base.Parent or t >= dur then
+			-- луч погас; основание с искрами ещё живёт, пока последние искры не долетят (Debris ниже)
+			if conn then
+				conn:Disconnect()
+			end
+			for _, it in beams do
+				it.b.Enabled = false
+			end
+			if spark then
+				spark.Enabled = false
+			end
+			return
+		end
+		local up = math.clamp(t / grow, 0, 1)
+		up = 1 - (1 - up) ^ 3
+		local fade = math.clamp((t - fadeAt) / (dur - fadeAt), 0, 1)
+		a1.Position = Vector3.new(0, math.max(0.2, height * up), 0)
+		-- ширина: раскрытие с небольшим перехлёстом, лёгкая пульсация, к концу луч сужается
+		local open = math.clamp(t / 0.28, 0, 1)
+		local k = (open * (1 + 0.25 * math.sin(open * math.pi))) * (1 + 0.07 * math.sin(t * 9)) * (1 - 0.85 * fade)
+		for _, it in beams do
+			local L = it.L
+			it.b.Width0 = L.w * k
+			it.b.Width1 = L.w * k * 1.25
+			local tb = L.t + (1 - L.t) * fade
+			it.b.Transparency = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, tb),
+				NumberSequenceKeypoint.new(0.55, math.min(1, tb * 0.5 + 0.38 + 0.6 * fade)),
+				NumberSequenceKeypoint.new(1, 1),
+			})
+		end
+		if spark and fade > 0 then
+			spark.Enabled = false
+		end
 	end)
-	Debris:AddItem(p, dur + 0.2)
-	return p
+	Debris:AddItem(base, dur + 3)
+	return base
 end
 
 -- Ломаная молния между точками

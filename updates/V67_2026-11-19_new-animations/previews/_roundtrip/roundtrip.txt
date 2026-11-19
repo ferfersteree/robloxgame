@@ -1,0 +1,2 @@
+поз в PoseData: 41
+наибольшая ошибка матриц после круга Roblox->Blender->Roblox: 3.45e-04 (поза chargeLow)
