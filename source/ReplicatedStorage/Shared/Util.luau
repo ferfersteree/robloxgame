@@ -137,7 +137,99 @@ local function normPart(spec: any): any
 end
 
 -- Гантель уровня level (1..15). Гриф вдоль Z модели (X концепта -> Z), PrimaryPart "Grip" в начале координат.
+-- V85: гантели и стенды из мешей Claude Design (ReplicatedStorage.GymMeshes: DB_01..DB_15, ST_01..ST_15).
+-- Меши загружены в Roblox и вставлены в место; если папки или модели нет, строим прежние модели из деталей.
+-- Эффекты повторяют таблицу дизайнера (docs/concepts_v83/fx_table.md) без Beam и Trail: только свет и частицы.
+local MESH_FX: { [number]: { c: Color3, rate: number, light: boolean } } = {
+	[1] = { c = Color3.fromRGB(255, 242, 168), rate = 0.6, light = false },
+	[3] = { c = Color3.fromRGB(255, 214, 120), rate = 0.8, light = false },
+	[5] = { c = Color3.fromRGB(62, 240, 192), rate = 1.5, light = true },
+	[6] = { c = Color3.fromRGB(255, 211, 77), rate = 2.5, light = true },
+	[7] = { c = Color3.fromRGB(230, 244, 255), rate = 2, light = false },
+	[8] = { c = Color3.fromRGB(185, 140, 255), rate = 3, light = true },
+	[9] = { c = Color3.fromRGB(168, 85, 255), rate = 3, light = true },
+	[10] = { c = Color3.fromRGB(191, 234, 255), rate = 3.5, light = true },
+	[11] = { c = Color3.fromRGB(255, 122, 26), rate = 4, light = true },
+	[12] = { c = Color3.fromRGB(159, 231, 255), rate = 4, light = true },
+	[13] = { c = Color3.fromRGB(77, 255, 158), rate = 4, light = true },
+	[14] = { c = Color3.fromRGB(232, 228, 255), rate = 4.5, light = true },
+	[15] = { c = Color3.fromRGB(255, 90, 30), rate = 5, light = true },
+}
+local function meshSource(kind: string, tier: number): Model?
+	local RS = game:GetService("ReplicatedStorage")
+	local lib = RS:FindFirstChild("GymMeshes")
+	local src = lib and lib:FindFirstChild(string.format("%s_%02d", kind, tier))
+	return if src and src:IsA("Model") then src else nil
+end
+local function biggestPart(m: Model): BasePart?
+	local best, bv = nil, -1
+	for _, d in m:GetDescendants() do
+		if d:IsA("BasePart") and d.Transparency < 1 then
+			local v = d.Size.X * d.Size.Y * d.Size.Z
+			if v > bv then
+				best, bv = d, v
+			end
+		end
+	end
+	return best
+end
+local function addMeshFx(m: Model, tier: number, scale: number)
+	local fx = MESH_FX[tier]
+	local host = biggestPart(m)
+	if not fx or not host then
+		return
+	end
+	local e = Instance.new("ParticleEmitter")
+	e.Name = "GymSparkle"
+	e.Texture = "rbxasset://textures/sparkle.png"
+	e.Color = ColorSequence.new(fx.c, Color3.new(1, 1, 1))
+	e.LightEmission = 0.8
+	e.Rate = fx.rate
+	e.Lifetime = NumberRange.new(0.8, 1.6)
+	e.Speed = NumberRange.new(0.2, 0.6)
+	e.SpreadAngle = Vector2.new(180, 180)
+	e.Shape = Enum.ParticleEmitterShape.Box
+	e.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.3, 0.32 * scale), NumberSequenceKeypoint.new(1, 0) })
+	e.Transparency = NumberSequence.new(0.1, 1)
+	e.Rotation = NumberRange.new(0, 360)
+	e.RotSpeed = NumberRange.new(-80, 80)
+	e.Parent = host
+	if fx.light then
+		local l = Instance.new("PointLight")
+		l.Name = "GymGlow"
+		l.Color = fx.c
+		l.Brightness = 0.9
+		l.Range = 5 * scale
+		l.Shadows = false
+		l.Parent = host
+	end
+end
+
 function Util.dumbbell(level: number): Model
+	local n = #Config.DUMBBELL_LOOK
+	local lv0 = if level == level then level else 1
+	local tier0 = math.clamp(math.floor(lv0), 1, n)
+	local src = meshSource("DB", tier0)
+	if src then
+		-- меш: гриф вдоль X, начало в центре хвата; как у прежней модели — гриф вдоль Z и невидимый Grip в центре
+		local m = src:Clone()
+		m.Name = "Dumbbell"
+		m:SetAttribute("Tier", tier0)
+		m:SetAttribute("Mesh", true)
+		m:PivotTo(CFrame.Angles(0, math.rad(90), 0))
+		local grip = mkPart("Grip", Vector3.new(0.2, 0.2, 0.2), CFrame.new(), Enum.Material.SmoothPlastic, Color3.new(1, 1, 1), m)
+		grip.Transparency = 1
+		grip.CastShadow = false
+		m.PrimaryPart = grip
+		m.WorldPivot = CFrame.new()
+		addMeshFx(m, tier0, 1)
+		return m
+	end
+	return Util.dumbbellParts(tier0)
+end
+
+-- прежняя модель из деталей Config.DUMBBELL_LOOK (запасной путь)
+function Util.dumbbellParts(level: number): Model
 	local n = #Config.DUMBBELL_LOOK
 	local lv = if level == level then level else 1
 	local tier = math.clamp(math.floor(lv), 1, n)
@@ -175,11 +267,54 @@ function Util.dumbbell(level: number): Model
 	return m
 end
 
+-- V85: стенд из меша уровня: начало = середина пола, +Z к игроку; текущая пара на месте из данных дизайнера (PairX, PairY)
+local function meshRack(lv: number): Model?
+	local src = meshSource("ST", lv)
+	if not src then
+		return nil
+	end
+	local rack = src:Clone()
+	rack.Name = "GymRack"
+	rack:SetAttribute("Level", lv)
+	rack:SetAttribute("Mesh", true)
+	local cur = Instance.new("Model")
+	cur.Name = "Tier" .. lv
+	cur:SetAttribute("Tier", lv)
+	local px = tonumber(src:GetAttribute("PairX")) or 2.2
+	local py = tonumber(src:GetAttribute("PairY")) or 2.4
+	for _, side in { -1, 1 } do
+		local d = Util.dumbbell(lv)
+		-- Util.dumbbell отдаёт гриф вдоль Z; на стенде гриф вдоль X, как у дизайнера
+		d:PivotTo(CFrame.new(side * px, py, 0) * CFrame.Angles(0, math.rad(90), 0))
+		d.Parent = cur
+	end
+	cur.Parent = rack
+	local fx = MESH_FX[lv]
+	if fx and fx.light then
+		local host = biggestPart(rack)
+		if host then
+			local l = Instance.new("PointLight")
+			l.Name = "StandGlow"
+			l.Color = fx.c
+			l.Brightness = 1.2
+			l.Range = 12
+			l.Shadows = false
+			l.Parent = host
+		end
+	end
+	rack.WorldPivot = CFrame.new()
+	return rack
+end
+
 -- Стойка CAMP GYM: начало = середина пола, +Z к игроку. V82: вид по Config.GYM_STAND[level]; текущая пара на верхней полке.
 function Util.gymRack(level: number?): Model
 	local n = #Config.DUMBBELL_LOOK
 	local lvRaw = level or 1
 	local lv = math.clamp(math.floor(if lvRaw == lvRaw then lvRaw else 1), 1, n)
+	local mr = meshRack(lv)
+	if mr then
+		return mr
+	end
 	local st = (Config.GYM_STAND and (Config.GYM_STAND[lv] or Config.GYM_STAND[1])) or {}
 	local pal = st.palette or {}
 	local mats = st.materials or {}
