@@ -257,13 +257,26 @@ local function processHits()
 	if not fresh and not (hitPass % 12 == 0 and #smalls > 0) then
 		return
 	end
-	-- соседи: все видимые активные кнопки экрана, в том числе созданные без UI.* (сами полосы не считаются)
+	-- соседи: все видимые активные кнопки экрана, в том числе созданные без UI.* (сами полосы не считаются).
+	-- Кнопки слоёв ниже открытого окна (HUD) не считаем: затемнение окна Overlay_* на весь экран перехватывает ввод,
+	-- и слот копья под окном раньше без нужды отнимал у кнопки Shop всю зону нажатия
+	local all = pgui:GetDescendants()
+	local modalOrder = -math.huge
+	for _, o in all do
+		if o:IsA("TextButton") and o.Active and string.find(o.Name, "^Overlay_") and hitVisible(o) then
+			local g = o:FindFirstAncestorWhichIsA("ScreenGui")
+			modalOrder = math.max(modalOrder, if g then g.DisplayOrder else 0)
+		end
+	end
 	local rects: { [GuiButton]: { number } } = {}
-	for _, o in pgui:GetDescendants() do
+	for _, o in all do
 		if (o:IsA("TextButton") or o:IsA("ImageButton")) and o.Active and not string.find(o.Name, "^HitArea") and hitVisible(o) then
 			local op, osz = o.AbsolutePosition, o.AbsoluteSize
 			if osz.X > 2 and osz.Y > 2 then
-				rects[o] = { op.X, op.Y, op.X + osz.X, op.Y + osz.Y }
+				local g = o:FindFirstAncestorWhichIsA("ScreenGui")
+				if (if g then g.DisplayOrder else 0) >= modalOrder then
+					rects[o] = { op.X, op.Y, op.X + osz.X, op.Y + osz.Y }
+				end
 			end
 		end
 	end

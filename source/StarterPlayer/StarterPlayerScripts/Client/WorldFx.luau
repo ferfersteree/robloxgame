@@ -938,7 +938,7 @@ end
 -- выключаются (с запасом, вблизи ничего не меняется), у вывесок SurfaceGui ставится MaxDistance, у света выключаются тени.
 -- Трогаем только то, что стояло в карте при старте: эффекты, подписи над головой и все GUI, которые создают другие скрипты
 -- (Fx.text, Guide, Reveal, метки игроков), не затронуты. Свет и частицы собираемых светлячков и яиц переключает
--- Activities.refreshCollected, их тоже не трогаем. Если телефон всё равно не тянет (медиана кадра дольше 28 мс две проверки
+-- Activities.refreshCollected, их тоже не трогаем. Если телефон всё равно не тянет (медиана кадра дольше 42 мс, то есть меньше 24 кадров в секунду, две проверки
 -- подряд), «Reduced Effects» включаются сами один раз за заход (в настройках можно вернуть).
 -- Проверка на ПК: ReplicatedStorage.ForceMobileUI = true.
 ---------------------------------------------------------------------
@@ -950,15 +950,31 @@ function Fx.isPhone(): boolean
 end
 
 -- V89: «Reduced Effects» отключает и дорогие полноэкранные эффекты Lighting (Bloom, SunRays); яркость по зонам (ZoneFx)
--- меняет Intensity, а не Enabled, поэтому не мешает. При выключении включаются только те, что мы сами отключили.
+-- меняет Intensity, а не Enabled, поэтому не мешает. Сцена яйца (EggOpen3D) на время сцены выключает эти эффекты, а в конце
+-- возвращает: пока включён Reduced Effects, такое «возвращение» гасится заново. При выключении режима включаются только те
+-- эффекты, которые отключили мы.
 local postOff: { [Instance]: boolean } = {}
+local postWatch: { [Instance]: RBXScriptConnection } = {}
+local postLow = false
 function Fx.setPostEffects(low: boolean)
+	postLow = low
 	local Lighting = game:GetService("Lighting")
 	if low then
 		for _, e in Lighting:GetChildren() do
-			if (e:IsA("BloomEffect") or e:IsA("SunRaysEffect")) and e.Enabled then
-				postOff[e] = true
-				e.Enabled = false
+			if e:IsA("BloomEffect") or e:IsA("SunRaysEffect") then
+				local fx = e :: any
+				if fx.Enabled then
+					postOff[e] = true
+					fx.Enabled = false
+				end
+				if not postWatch[e] then
+					postWatch[e] = fx:GetPropertyChangedSignal("Enabled"):Connect(function()
+						if postLow and fx.Enabled then
+							postOff[e] = true
+							fx.Enabled = false
+						end
+					end)
+				end
 			end
 		end
 	else
@@ -1118,7 +1134,7 @@ function Fx.startPhoneCulling(onSlow: (() -> ())?)
 					table.sort(window)
 					local med = window[math.ceil(#window / 2)]
 					window, acc = {}, 0
-					if med > 1 / 36 then
+					if med > 1 / 24 then
 						slowRuns += 1
 						if slowRuns >= 2 then
 							conn:Disconnect()
