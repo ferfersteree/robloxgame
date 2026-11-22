@@ -97,6 +97,197 @@ camera:GetPropertyChangedSignal("ViewportSize"):Connect(rescale)
 RSvc:GetAttributeChangedSignal("ForceViewport"):Connect(rescale)
 RSvc:GetAttributeChangedSignal("ForceMobileUI"):Connect(rescale)
 
+---------------------------------------------------------------------
+-- V89: телефон. Зона нажатия мелких кнопок не меньше MIN_HIT пикселей (палец толще курсора). Картинка и поведение кнопки
+-- не меняются: снаружи вокруг кнопки кладутся до четырёх невидимых кнопок-полос «HitAreaT/B/L/R» (сверху, снизу, слева,
+-- справа), они запускают то же действие. Внутри своей рамки под пальцем остаётся сама кнопка: её анимация нажатия и
+-- собственные обработчики ввода (например жест у кнопки тренировки) работают как раньше.
+-- Полосы не заходят на другие активные кнопки на экране (любые, не только созданные через UI.*: зазор делится пополам).
+-- По рамке прокрутки не режем: вне неё ввод не проходит и так, а зона, обрезанная по видимому окну, после прокрутки
+-- осталась бы неполной. Считаются, когда размер кнопки перестал меняться (окно раскрылось до конца), и пересчитываются
+-- каждые ~4 с, пока на экране есть мелкие кнопки (появились соседи, поменялась раскладка). Полный обход экрана в окне Shop
+-- (около 3500 элементов) занимает около 3 мс на ПК, поэтому чаще не пересчитываем.
+-- На ПК ничего не меняется. Проверка на ПК: ReplicatedStorage.ForceMobileUI = true.
+---------------------------------------------------------------------
+local MIN_HIT = 44
+-- слабые и ключи, и значения: значение (замыкание) держит кнопку, а при слабых одних ключах кнопка не освобождалась бы никогда
+local hitActs: { [GuiButton]: () -> () } = setmetatable({}, { __mode = "kv" }) :: any
+local hitDone: { [GuiButton]: boolean } = setmetatable({}, { __mode = "k" }) :: any
+local hitSeen: { [GuiButton]: Vector2 } = setmetatable({}, { __mode = "k" }) :: any -- размер кнопки в прошлом проходе
+local hitPass = 0 -- номер прохода (раз в 0,35 с): каждый двенадцатый пересчитывает все мелкие кнопки
+local function phoneMode(): boolean
+	return UI.mobile or RSvc:GetAttribute("ForceMobileUI") == true
+end
+local function registerHit(b: GuiButton, act: () -> ())
+	if phoneMode() then
+		hitActs[b] = act
+	end
+end
+local function hitVisible(o: GuiObject): boolean
+	local p: Instance? = o
+	while p and p ~= pgui do
+		if p:IsA("GuiObject") and not p.Visible then
+			return false
+		end
+		if p:IsA("LayerCollector") and not p.Enabled then
+			return false
+		end
+		p = p.Parent
+	end
+	return p == pgui
+end
+local function hitStrip(b: GuiButton, name: string): TextButton
+	local found = b:FindFirstChild(name)
+	if found and found:IsA("TextButton") then
+		return found
+	end
+	local strip = Instance.new("TextButton")
+	strip.Name = name
+	strip.Text = ""
+	strip.AutoButtonColor = false
+	strip.BackgroundTransparency = 1
+	strip.BorderSizePixel = 0
+	strip.ZIndex = b.ZIndex + 20
+	strip.Visible = false
+	strip.Activated:Connect(function()
+		local f = hitActs[b]
+		if f then
+			f()
+		end
+	end)
+	strip.Parent = b
+	return strip
+end
+local function hitLayout(b: GuiButton, rects: { [GuiButton]: { number } })
+	local p, s = b.AbsolutePosition, b.AbsoluteSize
+	local w, h = s.X, s.Y
+	local r = { p.X, p.Y, p.X + w, p.Y + h }
+	local L = math.max(0, (MIN_HIT - w) / 2)
+	local T = math.max(0, (MIN_HIT - h) / 2)
+	local R, B = L, T
+	local mx, my = (r[1] + r[3]) / 2, (r[2] + r[4]) / 2
+	-- прямоугольники четырёх полос при толщинах L, T, R, B (сверху и снизу полосы идут на всю ширину вместе с углами)
+	local function stripRects(l: number, t: number, rr: number, bb: number): { { number } }
+		return {
+			{ r[1] - l, r[2] - t, r[3] + rr, r[2] },
+			{ r[1] - l, r[4], r[3] + rr, r[4] + bb },
+			{ r[1] - l, r[2], r[1], r[4] },
+			{ r[3], r[2], r[3] + rr, r[4] },
+		}
+	end
+	local function touches(ro: { number }, l: number, t: number, rr: number, bb: number): boolean
+		for _, st in stripRects(l, t, rr, bb) do
+			if st[3] - st[1] > 0.5 and st[4] - st[2] > 0.5 and ro[1] < st[3] and ro[3] > st[1] and ro[2] < st[4] and ro[4] > st[2] then
+				return true
+			end
+		end
+		return false
+	end
+	local function options(cur: number, gap: number): { number }
+		local t = { cur, 0 }
+		if gap >= 0 and gap / 2 < cur - 1e-6 then
+			table.insert(t, gap / 2) -- до середины зазора с соседом
+		end
+		return t
+	end
+	for o, ro in rects do
+		if o ~= b and not o:IsDescendantOf(b) and not b:IsDescendantOf(o) then
+			-- кнопка, под которой или над которой лежит эта (контейнер), соседом не считается
+			local ocx, ocy = (ro[1] + ro[3]) / 2, (ro[2] + ro[4]) / 2
+			local contains = (ro[1] <= mx and ro[3] >= mx and ro[2] <= my and ro[4] >= my) or (r[1] <= ocx and r[3] >= ocx and r[2] <= ocy and r[4] >= ocy)
+			if not contains and touches(ro, L, T, R, B) then
+				-- перебираем варианты толщин (прежняя, 0, до середины зазора) и берём тот, где полосы соседа не задевают,
+				-- а зона нажатия самая большая: сначала ближе к MIN_HIT по обеим осям, потом по площади
+				local bestL, bestT, bestR, bestB, bestScore, bestArea = 0, 0, 0, 0, -1, -1
+				for _, l in options(L, r[1] - ro[3]) do
+					for _, rr in options(R, ro[1] - r[3]) do
+						for _, t in options(T, r[2] - ro[4]) do
+							for _, bb in options(B, ro[2] - r[4]) do
+								if not touches(ro, l, t, rr, bb) then
+									local ew, eh = w + l + rr, h + t + bb
+									local score = math.min(ew, MIN_HIT) + math.min(eh, MIN_HIT)
+									local area = ew * eh
+									if score > bestScore + 1e-6 or (math.abs(score - bestScore) <= 1e-6 and area > bestArea) then
+										bestL, bestT, bestR, bestB, bestScore, bestArea = l, t, rr, bb, score, area
+									end
+								end
+							end
+						end
+					end
+				end
+				L, T, R, B = bestL, bestT, bestR, bestB
+			end
+		end
+	end
+	local function put(name: string, x: number, y: number, sw: number, sh: number)
+		local strip = hitStrip(b, name)
+		if sw < 1 or sh < 1 then
+			strip.Visible = false
+			return
+		end
+		strip.Position = UDim2.fromScale(x / w, y / h)
+		strip.Size = UDim2.fromScale(sw / w, sh / h)
+		strip.Visible = true
+	end
+	put("HitAreaT", -L, -T, w + L + R, T) -- сверху, на всю ширину вместе с углами
+	put("HitAreaB", -L, h, w + L + R, B) -- снизу
+	put("HitAreaL", -L, 0, L, h) -- слева, только по высоте кнопки
+	put("HitAreaR", w, 0, R, h) -- справа
+end
+local function processHits()
+	local smalls: { GuiButton } = {}
+	local fresh = false
+	for b in hitActs do
+		if b.Parent and not b.ClipsDescendants and hitVisible(b) then
+			local s = b.AbsoluteSize
+			if s.X > 2 and s.Y > 2 and (s.X < MIN_HIT or s.Y < MIN_HIT) then
+				-- считаем, только когда размер кнопки не менялся с прошлого прохода (окно уже раскрылось до конца)
+				local prev = hitSeen[b]
+				hitSeen[b] = s
+				if prev and math.abs(prev.X - s.X) < 0.5 and math.abs(prev.Y - s.Y) < 0.5 then
+					table.insert(smalls, b)
+					if not hitDone[b] then
+						fresh = true
+					end
+				end
+			end
+		end
+	end
+	hitPass += 1
+	if not fresh and not (hitPass % 12 == 0 and #smalls > 0) then
+		return
+	end
+	-- соседи: все видимые активные кнопки экрана, в том числе созданные без UI.* (сами полосы не считаются)
+	local rects: { [GuiButton]: { number } } = {}
+	for _, o in pgui:GetDescendants() do
+		if (o:IsA("TextButton") or o:IsA("ImageButton")) and o.Active and not string.find(o.Name, "^HitArea") and hitVisible(o) then
+			local op, osz = o.AbsolutePosition, o.AbsoluteSize
+			if osz.X > 2 and osz.Y > 2 then
+				rects[o] = { op.X, op.Y, op.X + osz.X, op.Y + osz.Y }
+			end
+		end
+	end
+	for _, b in smalls do
+		hitLayout(b, rects)
+		hitDone[b] = true
+	end
+end
+do
+	local acc = 0
+	RunService.Heartbeat:Connect(function(dt)
+		acc += dt
+		if acc >= 0.35 then
+			acc = 0
+			if next(hitActs) ~= nil and phoneMode() then
+				local ok, err = pcall(processHits)
+				if not ok then
+					warn("[UIKit] hit areas: " .. tostring(err))
+				end
+			end
+		end
+	end)
+end
+
 function UI.scale(): number
 	return S
 end
@@ -813,7 +1004,7 @@ function UI.button(p: ButtonProps, onClick: (() -> ())?): Frame
 		b.Position = UDim2.fromOffset(0, 0)
 	end
 	b.MouseButton1Up:Connect(up)
-	b.Activated:Connect(function()
+	local function act()
 		up()
 		if not enabled then
 			Sfx.play("error")
@@ -838,7 +1029,9 @@ function UI.button(p: ButtonProps, onClick: (() -> ())?): Frame
 		if onClick then
 			task.spawn(onClick)
 		end
-	end)
+	end
+	b.Activated:Connect(act)
+	registerHit(b, act)
 	if p.Shine then
 		shiny[h] = true
 	end
@@ -1057,7 +1250,7 @@ function UI.artButton(key: string, p: { [string]: any }?, onClick: (() -> ())?):
 			UI.tween(sc, 0.08, { Scale = 0.92 })
 		end
 	end)
-	b.Activated:Connect(function()
+	local function act()
 		if not b:GetAttribute("Enabled") then
 			Sfx.play("error")
 			return
@@ -1074,7 +1267,9 @@ function UI.artButton(key: string, p: { [string]: any }?, onClick: (() -> ())?):
 		if onClick then
 			task.spawn(onClick)
 		end
-	end)
+	end
+	b.Activated:Connect(act)
+	registerHit(b, act)
 	b:GetAttributeChangedSignal("Enabled"):Connect(function()
 		b.ImageColor3 = if b:GetAttribute("Enabled") then (props.Color or Color3.new(1, 1, 1)) else Color3.fromRGB(130, 130, 136)
 	end)
@@ -1263,7 +1458,7 @@ function UI.closeWindow(silent: boolean?)
 		UI.tween(sc, 0.16, { Scale = 0.7 })
 	end
 	UI.tween(c.overlay, 0.18, { BackgroundTransparency = 1 })
-	if blur then
+	if blur and not phoneMode() then -- V89: на телефоне размытие за окном не включаем (полноэкранный проход слабому GPU дорог)
 		UI.tween(blur, 0.2, { Size = 0 })
 	end
 	task.delay(0.17, function()
@@ -1298,7 +1493,7 @@ function UI.window(id: string, title: string, size: Vector2, color: Color3?, onC
 	overlay.ZIndex = 1
 	overlay.Parent = UI.win
 	UI.tween(overlay, 0.2, { BackgroundTransparency = 0.45 })
-	if blur then
+	if blur and not phoneMode() then
 		UI.tween(blur, 0.25, { Size = 10 })
 	end
 	local win = UI.panel({ Color = Theme.C.panel, Size = UDim2.fromOffset(size.X, size.Y), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.53), Radius = 22, LineThick = 4, ZIndex = 2 })

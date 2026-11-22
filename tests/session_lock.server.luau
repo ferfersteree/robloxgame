@@ -49,7 +49,7 @@ T.setKick(function(_p, msg)
 	kicked = msg
 end)
 T.setStore(fake)
-T.setLockTimes(6, 5, 60) -- ttl 6 s, wait 5 s, refresh 60 s
+T.setLockTimes(20, 5, 60) -- ttl 20 s, wait 5 s, refresh 60 s (ttl must outlast the wait plus one 2 s poll: with ttl 6 the lock expired before B gave up and 6 checks failed)
 local key = "u_" .. player.UserId
 local function rec()
 	return data[key] and HttpService:JSONDecode(data[key]) or nil
@@ -96,7 +96,7 @@ check("no kick on a clean load", kicked == nil)
 
 -- E: a stale lock (server crashed, nobody refreshed it for longer than the ttl) is taken over
 local r = rec()
-r.lock = { id = "A", t = os.time() - 20 }
+r.lock = { id = "A", t = os.time() - 40 } -- older than the ttl
 data[key] = HttpService:JSONEncode(r)
 T.setJobId("C")
 T.loadProfile(player)

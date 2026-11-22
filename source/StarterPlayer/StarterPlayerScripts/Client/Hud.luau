@@ -437,7 +437,7 @@ end
 ---------------------------------------------------------------------
 local QW = compactMenu and 260 or 330 -- ширина правой колонки (V72: шире, как на концепте)
 local QIN = QW - 52 -- ширина содержимого панели заданий
-local QROW, QGAP = 54, compactMenu and 6 or 8 -- высота строки задания и зазор
+local QROW, QGAP = compactMenu and 78 or 54, compactMenu and 6 or 8 -- высота строки задания и зазор (V89: на телефоне строка выше: две строки названия)
 local right = Instance.new("Frame")
 right.Name = "RightPanel"
 right.BackgroundTransparency = 1
@@ -539,17 +539,23 @@ local function refreshQuests(d: any)
 		f.LayoutOrder = i
 		f.ZIndex = 4
 		-- V72: название задания в две строки, не мельче 13 (длинные раньше ужимались до нечитаемых)
-		local ql = UI.label({ Text = e.q.text, TextSize = 18, Size = UDim2.new(1, if done then -112 else -70, 0, 34), XAlign = Enum.TextXAlignment.Left, ZIndex = 4, Stroke = 2, Scaled = true, MaxSize = 18, Parent = f })
+		-- V89: на телефоне название задания на всю ширину панели (в две строки), счётчик справа от полоски: раньше название
+		-- ужималось в 78 пикселей и было видно только «Catch an». У шрифта большой межстрочный интервал (около 1,6), поэтому
+		-- две строки по 17 единиц требуют высоты около 56
+		local titleW = if compactMenu then 0 else (if done then -112 else -70)
+		local titleH = if compactMenu then 58 else 34
+		local ql = UI.label({ Text = e.q.text, TextSize = 18, Size = UDim2.new(1, titleW, 0, titleH), XAlign = Enum.TextXAlignment.Left, YAlign = if compactMenu then Enum.TextYAlignment.Bottom else Enum.TextYAlignment.Center, ZIndex = 4, Stroke = 2, Scaled = true, MaxSize = if compactMenu then 17 else 18, Parent = f })
 		local qc = ql:FindFirstChildOfClass("UITextSizeConstraint")
 		if qc then
-			qc.MinTextSize = 13
+			qc.MinTextSize = if compactMenu then 11 else 13
 		end
+		local countW = if done then 108 else 66
 		UI.label({
 			Text = if done then "DONE! Claim" else (Num.short(e.st.p) .. "/" .. Num.short(e.q.goal)), TextSize = 17,
-			Color = if done then C.gold else C.text, Size = UDim2.fromOffset(if done then 108 else 66, 34), AnchorPoint = Vector2.new(1, 0),
-			Position = UDim2.new(1, 0, 0, 0), XAlign = Enum.TextXAlignment.Right, ZIndex = 4, Stroke = 2, Parent = f,
+			Color = if done then C.gold else C.text, Size = UDim2.fromOffset(countW, if compactMenu then 18 else 34), AnchorPoint = Vector2.new(1, 0),
+			Position = if compactMenu then UDim2.fromOffset(QIN, titleH + 1) else UDim2.new(1, 0, 0, 0), XAlign = Enum.TextXAlignment.Right, ZIndex = 4, Stroke = 2, Parent = f,
 		})
-		local bar = artBar({ W = QIN, H = 16, Position = UDim2.fromOffset(0, 36), ZIndex = 4, Fill = if done then "btn_yellow" else QFILL[(i - 1) % #QFILL + 1], TextSize = 10, Parent = f })
+		local bar = artBar({ W = if compactMenu then QIN - countW - 4 else QIN, H = 16, Position = UDim2.fromOffset(0, if compactMenu then titleH + 2 else 36), ZIndex = 4, Fill = if done then "btn_yellow" else QFILL[(i - 1) % #QFILL + 1], TextSize = 10, Parent = f })
 		bar.set(if done then 1 else e.st.p / e.q.goal)
 		if done then
 			ready += 1

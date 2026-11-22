@@ -184,6 +184,7 @@ local function applySettings(s: any)
 	Sfx.enabled = s.sfx ~= false
 	Sfx.setMusic(s.music ~= false)
 	Fx.lowFx = s.lowFx == true
+	Fx.setPostEffects(s.lowFx == true)
 	game:GetService("Players").LocalPlayer:SetAttribute("LowFx", s.lowFx == true) -- V46: V15SpearPresentation/LiveSpearV15 reads it on landing
 end
 
@@ -194,6 +195,17 @@ Backend.onChange(function(d)
 	applySettings(d.settings)
 	sendLook(d)
 end)
+
+-- V89: телефон. Дальний свет, частицы и таблички отключаются, а если кадры всё равно медленные, «Reduced Effects» включаются сами
+if Fx.isPhone() then
+	Fx.startPhoneCulling(function()
+		local d = Backend.data
+		if d and d.settings and d.settings.lowFx ~= true then
+			Backend.call("Settings", { lowFx = true })
+			UI.toast("Reduced Effects turned on to keep the game smooth. You can change it in Settings.", "info")
+		end
+	end)
+end
 
 ---------------------------------------------------------------------
 -- События бэкенда

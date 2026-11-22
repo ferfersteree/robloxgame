@@ -932,4 +932,205 @@ function Fx.aura(feet: Vector3): any
 	return self
 end
 
+---------------------------------------------------------------------
+-- V89: телефон. В статической карте (workspace.Map) около 576 источников света, 110 излучателей частиц и 220 вывесок SurfaceGui.
+-- На слабом телефоне они разом тянут кадр, хотя вблизи видна малая часть. Свет и излучатели дальше своего радиуса от камеры
+-- выключаются (с запасом, вблизи ничего не меняется), у вывесок SurfaceGui ставится MaxDistance, у света выключаются тени.
+-- Трогаем только то, что стояло в карте при старте: эффекты, подписи над головой и все GUI, которые создают другие скрипты
+-- (Fx.text, Guide, Reveal, метки игроков), не затронуты. Свет и частицы собираемых светлячков и яиц переключает
+-- Activities.refreshCollected, их тоже не трогаем. Если телефон всё равно не тянет (медиана кадра дольше 28 мс две проверки
+-- подряд), «Reduced Effects» включаются сами один раз за заход (в настройках можно вернуть).
+-- Проверка на ПК: ReplicatedStorage.ForceMobileUI = true.
+---------------------------------------------------------------------
+local UserInputService = game:GetService("UserInputService")
+local RSvc = game:GetService("ReplicatedStorage")
+
+function Fx.isPhone(): boolean
+	return (UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled) or RSvc:GetAttribute("ForceMobileUI") == true
+end
+
+-- V89: «Reduced Effects» отключает и дорогие полноэкранные эффекты Lighting (Bloom, SunRays); яркость по зонам (ZoneFx)
+-- меняет Intensity, а не Enabled, поэтому не мешает. При выключении включаются только те, что мы сами отключили.
+local postOff: { [Instance]: boolean } = {}
+function Fx.setPostEffects(low: boolean)
+	local Lighting = game:GetService("Lighting")
+	if low then
+		for _, e in Lighting:GetChildren() do
+			if (e:IsA("BloomEffect") or e:IsA("SunRaysEffect")) and e.Enabled then
+				postOff[e] = true
+				e.Enabled = false
+			end
+		end
+	else
+		for e in postOff do
+			if e.Parent then
+				(e :: any).Enabled = true
+			end
+		end
+		table.clear(postOff)
+	end
+end
+
+-- счётчики для проверки в Studio
+Fx.phoneCull = { lights = 0, emitters = 0, guis = 0, watched = 0, enabled = function(): number return 0 end }
+
+local cullStarted = false
+function Fx.startPhoneCulling(onSlow: (() -> ())?)
+	if cullStarted then
+		return
+	end
+	cullStarted = true
+	local LIGHT_R, EMIT_R, GUI_R, HYST = 120, 170, 150, 1.15
+	type Item = { inst: Instance, pos: Vector3, r: number, on: boolean, kind: string }
+	local items: { Item } = {}
+	local stats = Fx.phoneCull
+	-- сколько из отслеживаемых сейчас включено (для проверки в Studio)
+	stats.enabled = function(): number
+		local n = 0
+		for _, it in items do
+			if it.on then
+				n += 1
+			end
+		end
+		return n
+	end
+
+	local function anchorPos(inst: Instance): Vector3?
+		local par = inst.Parent
+		if par and par:IsA("Attachment") then
+			local bp = par.Parent
+			if bp and bp:IsA("BasePart") and bp.Anchored then
+				return par.WorldPosition
+			end
+			return nil
+		end
+		if par and par:IsA("BasePart") and par.Anchored then
+			return par.Position
+		end
+		return nil
+	end
+	local map = workspace:FindFirstChild("Map")
+	-- свет и частицы собираемых предметов переключает Activities.refreshCollected (деталь с атрибутом Collectible)
+	local function managedByOthers(o: Instance): boolean
+		local a = o.Parent
+		while a and a ~= map do
+			if a:GetAttribute("Collectible") ~= nil then
+				return true
+			end
+			a = a.Parent
+		end
+		return false
+	end
+	local function consider(o: Instance)
+		if o:IsA("Light") then
+			if o.Shadows then
+				o.Shadows = false
+			end
+			if o.Enabled and not managedByOthers(o) then
+				local pos = anchorPos(o)
+				if pos then
+					table.insert(items, { inst = o, pos = pos, r = LIGHT_R, on = true, kind = "light" })
+					stats.lights += 1
+				end
+			end
+		elseif o:IsA("ParticleEmitter") then
+			if o.Enabled and not managedByOthers(o) then
+				local pos = anchorPos(o)
+				if pos then
+					table.insert(items, { inst = o, pos = pos, r = EMIT_R, on = true, kind = "emitter" })
+					stats.emitters += 1
+				end
+			end
+		elseif o:IsA("SurfaceGui") then
+			-- вывески хижин и стоек: дальше GUI_R студов их не рисуем
+			if o.MaxDistance <= 0 then
+				o.MaxDistance = GUI_R
+				stats.guis += 1
+			end
+		end
+	end
+	task.spawn(function()
+		if not map then
+			return
+		end
+		-- карта большая (около 100 тысяч деталей): просматриваем кусками, чтобы не вешать кадр
+		local list = map:GetDescendants()
+		for i, o in list do
+			consider(o)
+			if i % 3000 == 0 then
+				task.wait()
+			end
+		end
+		stats.watched = #items
+	end)
+
+	local cursor = 1
+	RunService.Heartbeat:Connect(function()
+		local cam = workspace.CurrentCamera
+		local n = #items
+		if not cam or n == 0 then
+			return
+		end
+		local cp = cam.CFrame.Position
+		for _ = 1, math.min(n, 160) do
+			if cursor > n then
+				cursor = 1
+			end
+			local it = items[cursor]
+			local inst = it.inst :: any
+			if inst.Parent == nil or inst.Enabled ~= it.on then
+				-- удалён или его включил/выключил другой скрипт: больше не трогаем
+				items[cursor] = items[n]
+				items[n] = nil
+				n -= 1
+				if n == 0 then
+					break
+				end
+			else
+				cursor += 1
+				local dist = (it.pos - cp).Magnitude
+				local want = it.on
+				if it.on then
+					if dist > it.r * HYST then
+						want = false
+					end
+				elseif dist < it.r then
+					want = true
+				end
+				if want ~= it.on then
+					inst.Enabled = want
+					it.on = want
+				end
+			end
+		end
+	end)
+
+	if onSlow then
+		task.spawn(function()
+			task.wait(25) -- загрузку и первые броски не считаем
+			local window: { number } = {}
+			local acc, slowRuns = 0, 0
+			local conn: RBXScriptConnection
+			conn = RunService.Heartbeat:Connect(function(dt)
+				table.insert(window, dt)
+				acc += dt
+				if acc >= 12 then
+					table.sort(window)
+					local med = window[math.ceil(#window / 2)]
+					window, acc = {}, 0
+					if med > 1 / 36 then
+						slowRuns += 1
+						if slowRuns >= 2 then
+							conn:Disconnect()
+							onSlow()
+						end
+					else
+						slowRuns = 0
+					end
+				end
+			end)
+		end)
+	end
+end
+
 return Fx
