@@ -959,7 +959,7 @@ end
 
 -- V86: дальность по Силе — таблица точек (Сила -> дальность без копья), между точками геометрическая интерполяция.
 -- Точка зоны z: Сила входа в зону (start + perLevel*levelsPerZone*(z-1)); первое копьё этой зоны при полном заряде
--- долетает до середины зоны. Сила дальше своего копья не уводит: см. Config.spearReach.
+-- долетает до середины зоны. С V88 потолка копья нет: Сила 1260 с копьём дальности 1 уносит бросок за ~3650, лучшее копьё — дальше.
 local rangePts: { { number } }? = nil
 local function buildRangePts(): { { number } }
 	local S = Config.STRENGTH
@@ -1001,9 +1001,9 @@ function Config.range(power: number): number
 	return math.min(pts[#pts][2], Config.THROW.maxRange)
 end
 
--- V86: потолок копья — самая дальняя зона, где оно ещё берёт обычного (Common) зверя: обычно на 1-2 зоны дальше
--- своей зоны (Config.SPEARS[i].zone). Сила ведёт бросок до этого края; дальше нужен лучший наконечник, иначе бросок
--- уходил туда, где не взять никого. Кузница и зелье дальности помогают долететь до края с меньшей Силой, но не дальше.
+-- V86: самая дальняя зона, где копьё ещё берёт обычного (Common) зверя: обычно на 1-2 зоны дальше своей зоны
+-- (Config.SPEARS[i].zone). С V88 это справка, а не потолок полёта: дальше этой зоны зверь уходит («Hide is too tough»),
+-- и подсказки в охоте и у Трекера говорят, что нужно копьё получше.
 local maxZoneCache: { [string]: number } = {}
 function Config.spearMaxZone(spearId: string): number
 	local s = Config.SPEAR_BY_ID[spearId] or Config.SPEARS[1]
@@ -1021,13 +1021,15 @@ function Config.spearMaxZone(spearId: string): number
 	return best
 end
 
-function Config.spearReach(spearId: string): number
-	local z = Config.ZONES[Config.spearMaxZone(spearId)]
-	return math.min(z.to - 0.01, Config.MAX_THROW_DISTANCE or Config.THROW.maxRange)
+-- V88: потолка копья больше нет. Сила (и копьё, ковка, зелья) уносят бросок как в V85: до края мира. Раньше бросок упирался в
+-- край зоны копья (зона 6-7 даже при Силе 1260), хотя дальше летит и берёт зверей лучшее копьё. Если зверь слишком крепкий
+-- для копья, он уходит («Hide is too tough»), как и до V86. Config.spearMaxZone остаётся справочной (balance_v86.py).
+function Config.spearReach(_spearId: string?): number
+	return math.min(Config.ZONES[#Config.ZONES].to - 0.01, Config.MAX_THROW_DISTANCE or Config.THROW.maxRange)
 end
 
--- V86: одна формула дальности броска для сервера, окна охоты и диалогов. Потолок копья ограничивает полный бросок,
--- а заряд (distFrac) действует уже после него: даже с лишней Силой бросок ×1 короче, чем ×100, и не все в одну точку
+-- V86: одна формула дальности броска для сервера, окна охоты и диалогов. Полный бросок (Сила × копьё × ковка × зелья)
+-- не дальше края мира, а заряд (distFrac) действует после него: бросок ×1 короче, чем ×100, и не все в одну точку
 function Config.throwDist(power: number, st: any, rangeBoost: number, m: number): number
 	local full = math.min(Config.range(power) * st.range * (rangeBoost or 1), Config.spearReach(st.id))
 	return math.min(full * Config.distFrac(m), Config.MAX_THROW_DISTANCE or Config.THROW.maxRange)

@@ -518,16 +518,18 @@ function HuntCtl.updateChances(m: number)
 		return
 	end
 	local st = Config.spearStats(d.spear, d.spears[d.spear])
-	local dist = Config.throwDist(d.power, st, Backend.boostMult("range"), m) -- V86: как в DemoServer, с потолком копья
+	local dist = Config.throwDist(d.power, st, Backend.boostMult("range"), m) -- как в DemoServer (V88: до края мира)
 	local zone = Config.zoneFor(dist)
 	local luck = m * Config.distLuck(dist) * Config.powerLuck(d.power) * st.luck * Backend.boostMult("luck") * Backend.demoLuck()
 	local list = Roll.tierChances(zone, luck, Backend.capMul(luck))
 	local best = list[#list]
 	local zc = Config.ZONES[zone]
 	local txt = zc.icon .. " " .. zc.name .. " · " .. math.floor(dist) .. " m"
-	-- V86: Сила уже несёт бросок дальше, чем берёт копьё: подсказываем, что пора новое копьё
-	if Config.range(d.power) * st.range * Backend.boostMult("range") >= Config.spearReach(d.spear) then
-		txt ..= "  ·  <font color=\"#ffb03a\">spear limit</font>"
+	-- V88: бросок может уйти дальше, чем берёт копьё: зверь там уйдёт. Подсказываем, пока игрок держит заряд
+	if zone > Config.spearMaxZone(d.spear) then
+		txt ..= "  ·  <font color=\"#ff6a5a\">spear too weak here</font>"
+	elseif Config.range(d.power) * st.range * Backend.boostMult("range") >= Config.spearReach(d.spear) then
+		txt ..= "  ·  <font color=\"#ffb03a\">max range</font>"
 	end
 	if best and best.rarity > 1 then
 		local rr = Config.RARITIES[best.rarity]

@@ -102,7 +102,7 @@ end
 
 local HINTS: { [string]: (d: any) -> string? } = {
 	tracker = function(d)
-		-- как в DemoServer: Сила × дальность копья в руках (с ковкой), не дальше края зоны копья; зелья и питомцы не учитываем
+		-- как в DemoServer: Сила × дальность копья в руках (с ковкой), не дальше края мира (V88); зелья и питомцы не учитываем
 		local lvl = type(d.spears) == "table" and tonumber(d.spears[d.spear]) or 0
 		local spearRange = Config.spearStats(d.spear, lvl).range
 		local cap = Config.spearReach(d.spear)
@@ -114,14 +114,21 @@ local HINTS: { [string]: (d: any) -> string? } = {
 		if not zone then
 			return nil
 		end
-		if raw >= cap - 0.5 then
-			if nxt and nxt.from < Config.THROW.maxRange then
-				return "You are strong enough: this spear already flies to the end of the " .. zone.name .. ". Buy a better spear to reach the " .. nxt.name .. "."
-			end
+		-- V88: потолка полёта нет, но копьё берёт зверей только до своей зоны (Config.spearMaxZone): дальше они уходят
+		local catchZ = Config.spearMaxZone(d.spear)
+		if z > catchZ then
+			local takes = Config.ZONES[catchZ]
+			return "With this spear, a full throw reaches about the " .. zone.name .. ", but it only takes animals up to the " .. takes.name .. ". Farther out they get away: buy a better spear."
+		end
+		if not nxt then
 			return "With this spear, a full throw reaches the " .. zone.name .. ". There is nothing beyond it but the volcano."
 		end
-		-- V86: сколько Силы нужно, чтобы долететь до следующей зоны (или до края зоны копья)
-		local target = if nxt then math.min(nxt.from, cap) else cap
+		-- сколько Силы нужно, чтобы долететь до следующей зоны, а если копьё дальше не берёт, то до края своей зоны
+		local atEdge = z >= catchZ
+		local target = if atEdge then zone.to - 0.01 else nxt.from
+		if raw >= target then
+			return "You are strong enough: this spear takes animals up to the " .. zone.name .. ". Buy a better spear to hunt in the " .. nxt.name .. "."
+		end
 		local L = tonumber(d.strLvl) or 1
 		local guard = 0
 		while Config.range(Config.strengthOf(L)) * spearRange < target and guard < 5000 do
@@ -129,7 +136,11 @@ local HINTS: { [string]: (d: any) -> string? } = {
 			guard += 1
 		end
 		local need = Config.strengthOf(L)
-		if nxt and target >= nxt.from then
+		-- со слабым копьём даже максимальная Сила не долетает до цели
+		if Config.range(need) * spearRange < target - 0.5 then
+			return "With this spear, a full throw reaches about the " .. zone.name .. ". Even maximum Strength will not carry it further: buy a better spear."
+		end
+		if not atEdge then
 			return "With this spear, a full throw reaches about the " .. zone.name .. ". Around " .. Num.short(need) .. " Strength will carry it into the " .. nxt.name .. "."
 		end
 		return "With this spear, a full throw reaches about the " .. zone.name .. ". Around " .. Num.short(need) .. " Strength will carry it to the far end of this zone."

@@ -281,7 +281,7 @@ H.Throw = function(args: any)
 	local m = math.max(1, chargedM * (crashed and Config.TENSION.crashLuck or 1))
 	local st = Config.spearStats(d.spear, d.spears[d.spear])
 	-- Slipping lowers luck, while the spear still travels the charged trajectory.
-	local dist = Config.throwDist(d.power, st, boostMult("range"), chargedM) -- V86: с потолком копья (Config.spearReach)
+	local dist = Config.throwDist(d.power, st, boostMult("range"), chargedM) -- V88: без потолка копья, до края мира (Config.spearReach)
 	local zone = Config.zoneFor(dist)
 	local tier = Config.tierIndex(m)
 	d.stats.throws += 1
