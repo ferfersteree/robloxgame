@@ -16,10 +16,11 @@ local EXTRA = 70 -- запас радиуса перед удалением
 -- радиусы по классам: 1 дерево, 2 камень/кристалл, 3 трава и кусты, 4 здание зоны, 5 ориентир.
 -- Те же числа в tools/html_world_build.py (там по ним считается нагрузка).
 local RADIUS = { 260, 200, 100, 420, 600 }
-local CAP_DESKTOP, CAP_MOBILE = 24000, 11000 -- сколько деталей держим одновременно (дальние куски не строим сверх этого)
+local CAP_DESKTOP, CAP_MOBILE = 16000, 8000 -- V86: было 24000 / 11000 (меньше деталей в кадре — выше FPS) -- сколько деталей держим одновременно (дальние куски не строим сверх этого)
 local STEP_TIME = 0.25
 local NEAR = 0.55 -- доля радиуса, внутри которой строим всегда, даже сверх лимита
-local FAST_SPEED = 500 -- студов/с: пока камера летит быстрее (бросок на далёкую зону), новое не строим
+local FAST_SPEED = 35 -- студов/с: пока камера летит быстрее (за копьём), ничего не строим и не убираем (V86: было 500; герой ходит 20 студов/с; в полёте
+-- на 3000 студов кадр подвисал на 50-70 мс от стройки и удаления кусков)
 
 local started = false
 local root: Instance? = nil
@@ -43,6 +44,7 @@ local maxPumpMs, maxStepMs = 0, 0
 local lastCamPos: Vector3? = nil
 local lastCamT = 0
 local colors: { [number]: Color3 } = {}
+local cameraFast = false -- V86: камера летит; pump ждёт
 
 local function colorOf(rgb: number): Color3
 	local c = colors[rgb]
@@ -253,6 +255,9 @@ local function pump()
 	if not lastEnabled then
 		return
 	end
+	if cameraFast then
+		return
+	end
 	local t0 = os.clock()
 	reap(t0 + reapBudget)
 	local deadline = os.clock() + frameBudget
@@ -323,6 +328,7 @@ local function step()
 		fast = (Vector3.new(camX - lastCamPos.X, 0, camZ - lastCamPos.Z)).Magnitude / (now - lastCamT) > FAST_SPEED
 	end
 	lastCamPos, lastCamT = pos, now
+	cameraFast = fast
 	if pos.Y > 300 then
 		fast = true -- камера высоко (комната раскрытия яйца и т. п.): мир внизу не нужен
 	end
@@ -339,7 +345,7 @@ local function step()
 			end
 		end
 	end
-	if nextZone then
+	if nextZone and not fast then
 		loadZone(nextZone)
 	end
 	-- какие куски нужны
@@ -449,7 +455,7 @@ function HtmlWorld.init()
 	local mobile = UIS.TouchEnabled and not UIS.KeyboardEnabled
 	scale = mobile and 0.65 or 1
 	cap = mobile and CAP_MOBILE or CAP_DESKTOP
-	frameBudget = mobile and 0.003 or 0.004
+	frameBudget = mobile and 0.002 or 0.003 -- V86: было 0.003 / 0.004
 	reapBudget = mobile and 0.001 or 0.0015
 	folderLive = Instance.new("Folder")
 	folderLive.Name = "HtmlWorldLive"

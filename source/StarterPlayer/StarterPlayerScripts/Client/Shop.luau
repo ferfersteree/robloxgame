@@ -18,6 +18,7 @@ local Hud = require(script.Parent.Hud)
 local Backend = require(script.Parent.Backend)
 local Perks = require(script.Parent.Perks)
 local Card = require(script.Parent.Card)
+local SpearFactory = require(RS:WaitForChild("V15SpearPresentation"):WaitForChild("SpearFactoryV15"))
 
 local Shop = {}
 Shop.onHpassChange = nil :: any -- Hunter Pass: Menus вешает перерисовку окна, пока оно открыто
@@ -674,6 +675,16 @@ end
 
 -- Ставит иконку товара в parent. Копья и звери берутся из самой игры.
 local function icon(parent: Instance, kind: string, spin: number?)
+	-- V87: копьё всегда новая 3D-модель (раньше плоская картинка art_spear была важнее)
+	if kind:sub(1, 6) == "spear:" and SpearFactory.HasV87(kind:sub(7)) then
+		local okSp = pcall(function()
+			local Menus = require(script.Parent.Menus) :: any
+			Menus.spearView(kind:sub(7), parent, spin or 0)
+		end)
+		if okSp then
+			return
+		end
+	end
 	-- V34: яйца из пака рисуются своей 3D-моделью (блочное яйцо во ViewportFrame)
 	local eggDef = Config.EGGS[kind]
 	local eggSrc = eggDef and packSource(eggDef.model)
@@ -1363,7 +1374,9 @@ local function flySpear(parent: Instance, o: Open): Frame
 		corner(2).Parent = l
 		l.Parent = j
 	end
-	local flat = artImage(j, "flyspear")
+	-- V87: летящее копьё баннера - новая модель (плоская картинка только если новой модели нет)
+	local newSpear = SpearFactory.HasV87(SHOP.STARTER.spear)
+	local flat = if newSpear then nil else artImage(j, "flyspear")
 	if flat then
 		flat.Size = UDim2.fromScale(1, 0.5)
 		flat.Position = UDim2.fromScale(0, 0.25)
@@ -1379,7 +1392,7 @@ local function flySpear(parent: Instance, o: Open): Frame
 		end
 		local holder = Instance.new("Model")
 		holder.WorldPivot = CFrame.new()
-		local s = tpl:Clone()
+		local s = SpearFactory.Create(SHOP.STARTER.spear) or tpl:Clone()
 		s:PivotTo(CFrame.Angles(0, 0, math.rad(90)))
 		s.Parent = holder
 		local vp = UI.viewport(holder, nil, 0, 0)

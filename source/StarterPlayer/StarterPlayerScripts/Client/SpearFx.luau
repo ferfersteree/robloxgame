@@ -46,6 +46,8 @@ export type Flight = {
 	legacy: boolean?, -- PerfLegacy на момент броска: true — старые пути посадки (замер A/B)
 	baseParts: { BasePart }?, -- кэш деталей модели (считаем при броске, не в кадре посадки)
 	emitters: { ParticleEmitter }?,
+	offsets: { CFrame }?, -- V86: положение каждой детали относительно опоры модели (для BulkMoveTo в полёте)
+	cfs: { CFrame }?,
 }
 
 local IS_STUDIO = RunService:IsStudio()
@@ -562,7 +564,27 @@ RunService.RenderStepped:Connect(function(dt)
 				local roll = f.tier >= 3 and f.t * (6 + f.tier) or 0
 				cf = Animator.spearCF(p - dir * 1.5, dir) * CFrame.Angles(0, roll, 0)
 			end
-			m:PivotTo(cf)
+			-- V86: одна BulkMoveTo вместо PivotTo по ~474 деталям копья (замер в Studio: ~2 мс кадра в полёте)
+			local bp = f.baseParts
+			if bp and #bp > 0 then
+				local offs = f.offsets
+				if not offs then
+					local piv = m:GetPivot()
+					offs = table.create(#bp)
+					for i, part in bp do
+						offs[i] = piv:ToObjectSpace(part.CFrame)
+					end
+					f.offsets = offs
+					f.cfs = table.create(#bp)
+				end
+				local cfs = f.cfs
+				for i = 1, #bp do
+					cfs[i] = cf * offs[i]
+				end
+				workspace:BulkMoveTo(bp, cfs, Enum.BulkMoveMode.FireCFrameChanged)
+			else
+				m:PivotTo(cf)
+			end
 			-- радужный след легенды
 			if f.tier >= 6 and #f.trails > 0 then
 				local c = Theme.rainbow(f.t * 2)

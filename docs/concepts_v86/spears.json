@@ -1,0 +1,2719 @@
+{
+ "units": "1 Blender unit = 1 stud",
+ "spears": [
+  {
+   "n": 1,
+   "id": "stick",
+   "collection": "SP_01_stick",
+   "glb": "sp_01_stick.glb",
+   "tail_space": {
+    "Grip": [
+     0,
+     2.5,
+     0
+    ],
+    "Tip": [
+     0.0,
+     9.25,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     5.2,
+     0
+    ],
+    "note": "Roblox/GLB axes (Y up), tail at 0 - same frame as SpearFactoryV15 grip={0,2.5,0}"
+   },
+   "glb_origin_space": {
+    "Grip": [
+     0,
+     0,
+     0
+    ],
+    "Tip": [
+     0.0,
+     6.75,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     2.7,
+     0
+    ],
+    "note": "relative to the GLB origin (= grip)"
+   },
+   "length": 9.231,
+   "bbox": [
+    1.24,
+    0.57,
+    9.23
+   ],
+   "elements": 34,
+   "tris": 4218,
+   "glb_tris": 4218,
+   "grip_check": {
+    "max_radius": 0.152,
+    "by": "SP01_shaft_lo",
+    "objects": [
+     "SP01_shaft_lo"
+    ],
+    "ok": true
+   }
+  },
+  {
+   "n": 2,
+   "id": "bone",
+   "collection": "SP_02_bone",
+   "glb": "sp_02_bone.glb",
+   "tail_space": {
+    "Grip": [
+     0,
+     2.5,
+     0
+    ],
+    "Tip": [
+     0.0,
+     9.2,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     5.2,
+     0
+    ],
+    "note": "Roblox/GLB axes (Y up), tail at 0 - same frame as SpearFactoryV15 grip={0,2.5,0}"
+   },
+   "glb_origin_space": {
+    "Grip": [
+     0,
+     0,
+     0
+    ],
+    "Tip": [
+     0.0,
+     6.7,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     2.7,
+     0
+    ],
+    "note": "relative to the GLB origin (= grip)"
+   },
+   "length": 9.185,
+   "bbox": [
+    1.89,
+    0.87,
+    9.18
+   ],
+   "elements": 38,
+   "tris": 4036,
+   "glb_tris": 4036,
+   "grip_check": {
+    "max_radius": 0.153,
+    "by": "SP02_shaft_lo",
+    "objects": [
+     "SP02_shaft_lo"
+    ],
+    "ok": true
+   }
+  },
+  {
+   "n": 3,
+   "id": "bronze",
+   "collection": "SP_03_bronze",
+   "glb": "sp_03_bronze.glb",
+   "tail_space": {
+    "Grip": [
+     0,
+     2.5,
+     0
+    ],
+    "Tip": [
+     0.0,
+     9.3,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     5.2,
+     0
+    ],
+    "note": "Roblox/GLB axes (Y up), tail at 0 - same frame as SpearFactoryV15 grip={0,2.5,0}"
+   },
+   "glb_origin_space": {
+    "Grip": [
+     0,
+     0,
+     0
+    ],
+    "Tip": [
+     0.0,
+     6.8,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     2.7,
+     0
+    ],
+    "note": "relative to the GLB origin (= grip)"
+   },
+   "length": 9.29,
+   "bbox": [
+    1.42,
+    0.78,
+    9.29
+   ],
+   "elements": 37,
+   "tris": 3508,
+   "glb_tris": 3508,
+   "grip_check": {
+    "max_radius": 0.153,
+    "by": "SP03_shaft_lo",
+    "objects": [
+     "SP03_shaft_lo"
+    ],
+    "ok": true
+   }
+  },
+  {
+   "n": 4,
+   "id": "feather",
+   "collection": "SP_04_feather",
+   "glb": "sp_04_feather.glb",
+   "tail_space": {
+    "Grip": [
+     0,
+     2.5,
+     0
+    ],
+    "Tip": [
+     0.0,
+     9.2,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     5.2,
+     0
+    ],
+    "note": "Roblox/GLB axes (Y up), tail at 0 - same frame as SpearFactoryV15 grip={0,2.5,0}"
+   },
+   "glb_origin_space": {
+    "Grip": [
+     0,
+     0,
+     0
+    ],
+    "Tip": [
+     0.0,
+     6.7,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     2.7,
+     0
+    ],
+    "note": "relative to the GLB origin (= grip)"
+   },
+   "length": 9.2,
+   "bbox": [
+    2.28,
+    2.17,
+    9.2
+   ],
+   "elements": 50,
+   "tris": 3508,
+   "glb_tris": 3508,
+   "grip_check": {
+    "max_radius": 0.153,
+    "by": "SP04_shaft_lo",
+    "objects": [
+     "SP04_shaft_lo"
+    ],
+    "ok": true
+   }
+  },
+  {
+   "n": 5,
+   "id": "iron",
+   "collection": "SP_05_iron",
+   "glb": "sp_05_iron.glb",
+   "tail_space": {
+    "Grip": [
+     0,
+     2.5,
+     0
+    ],
+    "Tip": [
+     0.0,
+     9.1,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     5.2,
+     0
+    ],
+    "note": "Roblox/GLB axes (Y up), tail at 0 - same frame as SpearFactoryV15 grip={0,2.5,0}"
+   },
+   "glb_origin_space": {
+    "Grip": [
+     0,
+     0,
+     0
+    ],
+    "Tip": [
+     0.0,
+     6.6,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     2.7,
+     0
+    ],
+    "note": "relative to the GLB origin (= grip)"
+   },
+   "length": 9.1,
+   "bbox": [
+    2.4,
+    0.64,
+    9.1
+   ],
+   "elements": 37,
+   "tris": 3204,
+   "glb_tris": 3204,
+   "grip_check": {
+    "max_radius": 0.153,
+    "by": "SP05_shaft_lo",
+    "objects": [
+     "SP05_shaft_lo"
+    ],
+    "ok": true
+   }
+  },
+  {
+   "n": 6,
+   "id": "obsidian",
+   "collection": "SP_06_obsidian",
+   "glb": "sp_06_obsidian.glb",
+   "tail_space": {
+    "Grip": [
+     0,
+     2.5,
+     0
+    ],
+    "Tip": [
+     0.0,
+     9.3,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     5.2,
+     0
+    ],
+    "note": "Roblox/GLB axes (Y up), tail at 0 - same frame as SpearFactoryV15 grip={0,2.5,0}"
+   },
+   "glb_origin_space": {
+    "Grip": [
+     0,
+     0,
+     0
+    ],
+    "Tip": [
+     0.0,
+     6.8,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     2.7,
+     0
+    ],
+    "note": "relative to the GLB origin (= grip)"
+   },
+   "length": 9.28,
+   "bbox": [
+    1.66,
+    0.66,
+    9.28
+   ],
+   "elements": 34,
+   "tris": 3032,
+   "glb_tris": 3032,
+   "grip_check": {
+    "max_radius": 0.153,
+    "by": "SP06_shaft_lo",
+    "objects": [
+     "SP06_shaft_lo"
+    ],
+    "ok": true
+   }
+  },
+  {
+   "n": 7,
+   "id": "crystal",
+   "collection": "SP_07_crystal",
+   "glb": "sp_07_crystal.glb",
+   "tail_space": {
+    "Grip": [
+     0,
+     2.5,
+     0
+    ],
+    "Tip": [
+     0.0,
+     9.3,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     5.2,
+     0
+    ],
+    "note": "Roblox/GLB axes (Y up), tail at 0 - same frame as SpearFactoryV15 grip={0,2.5,0}"
+   },
+   "glb_origin_space": {
+    "Grip": [
+     0,
+     0,
+     0
+    ],
+    "Tip": [
+     0.0,
+     6.8,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     2.7,
+     0
+    ],
+    "note": "relative to the GLB origin (= grip)"
+   },
+   "length": 9.28,
+   "bbox": [
+    1.6,
+    1.47,
+    9.28
+   ],
+   "elements": 36,
+   "tris": 3014,
+   "glb_tris": 3014,
+   "grip_check": {
+    "max_radius": 0.153,
+    "by": "SP07_shaft_lo",
+    "objects": [
+     "SP07_shaft_lo"
+    ],
+    "ok": true
+   }
+  },
+  {
+   "n": 8,
+   "id": "fire",
+   "collection": "SP_08_fire",
+   "glb": "sp_08_fire.glb",
+   "tail_space": {
+    "Grip": [
+     0,
+     2.5,
+     0
+    ],
+    "Tip": [
+     0.0,
+     9.2,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     5.2,
+     0
+    ],
+    "note": "Roblox/GLB axes (Y up), tail at 0 - same frame as SpearFactoryV15 grip={0,2.5,0}"
+   },
+   "glb_origin_space": {
+    "Grip": [
+     0,
+     0,
+     0
+    ],
+    "Tip": [
+     0.0,
+     6.7,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     2.7,
+     0
+    ],
+    "note": "relative to the GLB origin (= grip)"
+   },
+   "length": 9.18,
+   "bbox": [
+    1.84,
+    0.68,
+    9.18
+   ],
+   "elements": 32,
+   "tris": 3370,
+   "glb_tris": 3370,
+   "grip_check": {
+    "max_radius": 0.153,
+    "by": "SP08_shaft_lo",
+    "objects": [
+     "SP08_shaft_lo"
+    ],
+    "ok": true
+   }
+  },
+  {
+   "n": 9,
+   "id": "ice",
+   "collection": "SP_09_ice",
+   "glb": "sp_09_ice.glb",
+   "tail_space": {
+    "Grip": [
+     0,
+     2.5,
+     0
+    ],
+    "Tip": [
+     0.0,
+     9.4,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     5.2,
+     0
+    ],
+    "note": "Roblox/GLB axes (Y up), tail at 0 - same frame as SpearFactoryV15 grip={0,2.5,0}"
+   },
+   "glb_origin_space": {
+    "Grip": [
+     0,
+     0,
+     0
+    ],
+    "Tip": [
+     0.0,
+     6.9,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     2.7,
+     0
+    ],
+    "note": "relative to the GLB origin (= grip)"
+   },
+   "length": 9.4,
+   "bbox": [
+    1.83,
+    1.32,
+    9.4
+   ],
+   "elements": 45,
+   "tris": 2508,
+   "glb_tris": 2508,
+   "grip_check": {
+    "max_radius": 0.153,
+    "by": "SP09_shaft_lo",
+    "objects": [
+     "SP09_shaft_lo"
+    ],
+    "ok": true
+   }
+  },
+  {
+   "n": 10,
+   "id": "star",
+   "collection": "SP_10_star",
+   "glb": "sp_10_star.glb",
+   "tail_space": {
+    "Grip": [
+     0,
+     2.5,
+     0
+    ],
+    "Tip": [
+     0.0,
+     9.3,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     5.2,
+     0
+    ],
+    "note": "Roblox/GLB axes (Y up), tail at 0 - same frame as SpearFactoryV15 grip={0,2.5,0}"
+   },
+   "glb_origin_space": {
+    "Grip": [
+     0,
+     0,
+     0
+    ],
+    "Tip": [
+     0.0,
+     6.8,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     2.7,
+     0
+    ],
+    "note": "relative to the GLB origin (= grip)"
+   },
+   "length": 9.181,
+   "bbox": [
+    1.86,
+    0.64,
+    9.18
+   ],
+   "elements": 35,
+   "tris": 2460,
+   "glb_tris": 2460,
+   "grip_check": {
+    "max_radius": 0.153,
+    "by": "SP10_shaft_lo",
+    "objects": [
+     "SP10_shaft_lo"
+    ],
+    "ok": true
+   }
+  },
+  {
+   "n": 11,
+   "id": "amber_sting",
+   "collection": "SP_11_amber_sting",
+   "glb": "sp_11_amber_sting.glb",
+   "tail_space": {
+    "Grip": [
+     0,
+     2.5,
+     0
+    ],
+    "Tip": [
+     0.0,
+     9.3,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     5.2,
+     0
+    ],
+    "note": "Roblox/GLB axes (Y up), tail at 0 - same frame as SpearFactoryV15 grip={0,2.5,0}"
+   },
+   "glb_origin_space": {
+    "Grip": [
+     0,
+     0,
+     0
+    ],
+    "Tip": [
+     0.0,
+     6.8,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     2.7,
+     0
+    ],
+    "note": "relative to the GLB origin (= grip)"
+   },
+   "length": 9.275,
+   "bbox": [
+    1.68,
+    0.71,
+    9.28
+   ],
+   "elements": 37,
+   "tris": 3178,
+   "glb_tris": 3178,
+   "grip_check": {
+    "max_radius": 0.153,
+    "by": "SP11_shaft_lo",
+    "objects": [
+     "SP11_shaft_lo"
+    ],
+    "ok": true
+   }
+  },
+  {
+   "n": 12,
+   "id": "solar_trident",
+   "collection": "SP_12_solar_trident",
+   "glb": "sp_12_solar_trident.glb",
+   "tail_space": {
+    "Grip": [
+     0,
+     2.5,
+     0
+    ],
+    "Tip": [
+     0.0,
+     9.3,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     5.2,
+     0
+    ],
+    "note": "Roblox/GLB axes (Y up), tail at 0 - same frame as SpearFactoryV15 grip={0,2.5,0}"
+   },
+   "glb_origin_space": {
+    "Grip": [
+     0,
+     0,
+     0
+    ],
+    "Tip": [
+     0.0,
+     6.8,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     2.7,
+     0
+    ],
+    "note": "relative to the GLB origin (= grip)"
+   },
+   "length": 9.29,
+   "bbox": [
+    2.46,
+    0.68,
+    9.29
+   ],
+   "elements": 44,
+   "tris": 3832,
+   "glb_tris": 3832,
+   "grip_check": {
+    "max_radius": 0.153,
+    "by": "SP12_shaft_lo",
+    "objects": [
+     "SP12_shaft_lo"
+    ],
+    "ok": true
+   }
+  },
+  {
+   "n": 13,
+   "id": "canyon_hook",
+   "collection": "SP_13_canyon_hook",
+   "glb": "sp_13_canyon_hook.glb",
+   "tail_space": {
+    "Grip": [
+     0,
+     2.5,
+     0
+    ],
+    "Tip": [
+     0.0,
+     9.35,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     5.2,
+     0
+    ],
+    "note": "Roblox/GLB axes (Y up), tail at 0 - same frame as SpearFactoryV15 grip={0,2.5,0}"
+   },
+   "glb_origin_space": {
+    "Grip": [
+     0,
+     0,
+     0
+    ],
+    "Tip": [
+     0.0,
+     6.85,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     2.7,
+     0
+    ],
+    "note": "relative to the GLB origin (= grip)"
+   },
+   "length": 9.35,
+   "bbox": [
+    2.34,
+    0.67,
+    9.35
+   ],
+   "elements": 36,
+   "tris": 3642,
+   "glb_tris": 3642,
+   "grip_check": {
+    "max_radius": 0.152,
+    "by": "SP13_shaft_lo",
+    "objects": [
+     "SP13_shaft_lo"
+    ],
+    "ok": true
+   }
+  },
+  {
+   "n": 14,
+   "id": "condor_quill",
+   "collection": "SP_14_condor_quill",
+   "glb": "sp_14_condor_quill.glb",
+   "tail_space": {
+    "Grip": [
+     0,
+     2.5,
+     0
+    ],
+    "Tip": [
+     0.0,
+     9.3,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     5.2,
+     0
+    ],
+    "note": "Roblox/GLB axes (Y up), tail at 0 - same frame as SpearFactoryV15 grip={0,2.5,0}"
+   },
+   "glb_origin_space": {
+    "Grip": [
+     0,
+     0,
+     0
+    ],
+    "Tip": [
+     0.0,
+     6.8,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     2.7,
+     0
+    ],
+    "note": "relative to the GLB origin (= grip)"
+   },
+   "length": 9.3,
+   "bbox": [
+    1.53,
+    1.47,
+    9.3
+   ],
+   "elements": 41,
+   "tris": 3306,
+   "glb_tris": 3306,
+   "grip_check": {
+    "max_radius": 0.152,
+    "by": "SP14_shaft_lo",
+    "objects": [
+     "SP14_shaft_lo"
+    ],
+    "ok": true
+   }
+  },
+  {
+   "n": 15,
+   "id": "mirage_lance",
+   "collection": "SP_15_mirage_lance",
+   "glb": "sp_15_mirage_lance.glb",
+   "tail_space": {
+    "Grip": [
+     0,
+     2.5,
+     0
+    ],
+    "Tip": [
+     0.0,
+     9.4,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     5.2,
+     0
+    ],
+    "note": "Roblox/GLB axes (Y up), tail at 0 - same frame as SpearFactoryV15 grip={0,2.5,0}"
+   },
+   "glb_origin_space": {
+    "Grip": [
+     0,
+     0,
+     0
+    ],
+    "Tip": [
+     0.0,
+     6.9,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     2.7,
+     0
+    ],
+    "note": "relative to the GLB origin (= grip)"
+   },
+   "length": 9.4,
+   "bbox": [
+    2.25,
+    1.58,
+    9.4
+   ],
+   "elements": 41,
+   "tris": 3366,
+   "glb_tris": 3366,
+   "grip_check": {
+    "max_radius": 0.153,
+    "by": "SP15_shaft_lo",
+    "objects": [
+     "SP15_shaft_lo"
+    ],
+    "ok": true
+   }
+  },
+  {
+   "n": 16,
+   "id": "scorpion_sting",
+   "collection": "SP_16_scorpion_sting",
+   "glb": "sp_16_scorpion_sting.glb",
+   "tail_space": {
+    "Grip": [
+     0,
+     2.5,
+     0
+    ],
+    "Tip": [
+     0.06,
+     9.3,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     5.2,
+     0
+    ],
+    "note": "Roblox/GLB axes (Y up), tail at 0 - same frame as SpearFactoryV15 grip={0,2.5,0}"
+   },
+   "glb_origin_space": {
+    "Grip": [
+     0,
+     0,
+     0
+    ],
+    "Tip": [
+     0.06,
+     6.8,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     2.7,
+     0
+    ],
+    "note": "relative to the GLB origin (= grip)"
+   },
+   "length": 9.299,
+   "bbox": [
+    2.32,
+    0.7,
+    9.3
+   ],
+   "elements": 46,
+   "tris": 2950,
+   "glb_tris": 2950,
+   "grip_check": {
+    "max_radius": 0.152,
+    "by": "SP16_shaft_lo",
+    "objects": [
+     "SP16_shaft_lo"
+    ],
+    "ok": true
+   }
+  },
+  {
+   "n": 17,
+   "id": "emerald_vine",
+   "collection": "SP_17_emerald_vine",
+   "glb": "sp_17_emerald_vine.glb",
+   "tail_space": {
+    "Grip": [
+     0,
+     2.5,
+     0
+    ],
+    "Tip": [
+     0.0,
+     9.35,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     5.2,
+     0
+    ],
+    "note": "Roblox/GLB axes (Y up), tail at 0 - same frame as SpearFactoryV15 grip={0,2.5,0}"
+   },
+   "glb_origin_space": {
+    "Grip": [
+     0,
+     0,
+     0
+    ],
+    "Tip": [
+     0.0,
+     6.85,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     2.7,
+     0
+    ],
+    "note": "relative to the GLB origin (= grip)"
+   },
+   "length": 9.35,
+   "bbox": [
+    1.87,
+    1.16,
+    9.35
+   ],
+   "elements": 40,
+   "tris": 3556,
+   "glb_tris": 3556,
+   "grip_check": {
+    "max_radius": 0.153,
+    "by": "SP17_shaft_lo",
+    "objects": [
+     "SP17_shaft_lo"
+    ],
+    "ok": true
+   }
+  },
+  {
+   "n": 18,
+   "id": "temple_guard",
+   "collection": "SP_18_temple_guard",
+   "glb": "sp_18_temple_guard.glb",
+   "tail_space": {
+    "Grip": [
+     0,
+     2.5,
+     0
+    ],
+    "Tip": [
+     0.0,
+     9.4,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     5.2,
+     0
+    ],
+    "note": "Roblox/GLB axes (Y up), tail at 0 - same frame as SpearFactoryV15 grip={0,2.5,0}"
+   },
+   "glb_origin_space": {
+    "Grip": [
+     0,
+     0,
+     0
+    ],
+    "Tip": [
+     0.0,
+     6.9,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     2.7,
+     0
+    ],
+    "note": "relative to the GLB origin (= grip)"
+   },
+   "length": 9.38,
+   "bbox": [
+    2.5,
+    0.8,
+    9.38
+   ],
+   "elements": 40,
+   "tris": 3602,
+   "glb_tris": 3602,
+   "grip_check": {
+    "max_radius": 0.152,
+    "by": "SP18_shaft_lo",
+    "objects": [
+     "SP18_shaft_lo"
+    ],
+    "ok": true
+   }
+  },
+  {
+   "n": 19,
+   "id": "mangrove_root",
+   "collection": "SP_19_mangrove_root",
+   "glb": "sp_19_mangrove_root.glb",
+   "tail_space": {
+    "Grip": [
+     0,
+     2.5,
+     0
+    ],
+    "Tip": [
+     0.0,
+     9.4,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     5.2,
+     0
+    ],
+    "note": "Roblox/GLB axes (Y up), tail at 0 - same frame as SpearFactoryV15 grip={0,2.5,0}"
+   },
+   "glb_origin_space": {
+    "Grip": [
+     0,
+     0,
+     0
+    ],
+    "Tip": [
+     0.0,
+     6.9,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     2.7,
+     0
+    ],
+    "note": "relative to the GLB origin (= grip)"
+   },
+   "length": 9.37,
+   "bbox": [
+    2.04,
+    1.46,
+    9.37
+   ],
+   "elements": 44,
+   "tris": 3092,
+   "glb_tris": 3092,
+   "grip_check": {
+    "max_radius": 0.153,
+    "by": "SP19_shaft_lo",
+    "objects": [
+     "SP19_shaft_lo"
+    ],
+    "ok": true
+   }
+  },
+  {
+   "n": 20,
+   "id": "hydra_fangs",
+   "collection": "SP_20_hydra_fangs",
+   "glb": "sp_20_hydra_fangs.glb",
+   "tail_space": {
+    "Grip": [
+     0,
+     2.5,
+     0
+    ],
+    "Tip": [
+     -0.08,
+     9.35,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     5.2,
+     0
+    ],
+    "note": "Roblox/GLB axes (Y up), tail at 0 - same frame as SpearFactoryV15 grip={0,2.5,0}"
+   },
+   "glb_origin_space": {
+    "Grip": [
+     0,
+     0,
+     0
+    ],
+    "Tip": [
+     -0.08,
+     6.85,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     2.7,
+     0
+    ],
+    "note": "relative to the GLB origin (= grip)"
+   },
+   "length": 9.35,
+   "bbox": [
+    1.79,
+    1.15,
+    9.35
+   ],
+   "elements": 46,
+   "tris": 3808,
+   "glb_tris": 3808,
+   "grip_check": {
+    "max_radius": 0.153,
+    "by": "SP20_shaft_lo",
+    "objects": [
+     "SP20_shaft_lo"
+    ],
+    "ok": true
+   }
+  },
+  {
+   "n": 21,
+   "id": "storm_trident",
+   "collection": "SP_21_storm_trident",
+   "glb": "sp_21_storm_trident.glb",
+   "tail_space": {
+    "Grip": [
+     0,
+     2.5,
+     0
+    ],
+    "Tip": [
+     0.12,
+     9.4,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     5.2,
+     0
+    ],
+    "note": "Roblox/GLB axes (Y up), tail at 0 - same frame as SpearFactoryV15 grip={0,2.5,0}"
+   },
+   "glb_origin_space": {
+    "Grip": [
+     0,
+     0,
+     0
+    ],
+    "Tip": [
+     0.12,
+     6.9,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     2.7,
+     0
+    ],
+    "note": "relative to the GLB origin (= grip)"
+   },
+   "length": 9.4,
+   "bbox": [
+    1.28,
+    0.93,
+    9.4
+   ],
+   "elements": 36,
+   "tris": 3734,
+   "glb_tris": 3734,
+   "grip_check": {
+    "max_radius": 0.152,
+    "by": "SP21_shaft_lo",
+    "objects": [
+     "SP21_shaft_lo"
+    ],
+    "ok": true
+   }
+  },
+  {
+   "n": 22,
+   "id": "thunder_split",
+   "collection": "SP_22_thunder_split",
+   "glb": "sp_22_thunder_split.glb",
+   "tail_space": {
+    "Grip": [
+     0,
+     2.5,
+     0
+    ],
+    "Tip": [
+     0.017,
+     9.396,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     5.2,
+     0
+    ],
+    "note": "Roblox/GLB axes (Y up), tail at 0 - same frame as SpearFactoryV15 grip={0,2.5,0}"
+   },
+   "glb_origin_space": {
+    "Grip": [
+     0,
+     0,
+     0
+    ],
+    "Tip": [
+     0.017,
+     6.896,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     2.7,
+     0
+    ],
+    "note": "relative to the GLB origin (= grip)"
+   },
+   "length": 9.383,
+   "bbox": [
+    2.19,
+    0.67,
+    9.38
+   ],
+   "elements": 38,
+   "tris": 3668,
+   "glb_tris": 3668,
+   "grip_check": {
+    "max_radius": 0.153,
+    "by": "SP22_shaft_lo",
+    "objects": [
+     "SP22_shaft_lo"
+    ],
+    "ok": true
+   }
+  },
+  {
+   "n": 23,
+   "id": "coral_branch",
+   "collection": "SP_23_coral_branch",
+   "glb": "sp_23_coral_branch.glb",
+   "tail_space": {
+    "Grip": [
+     0,
+     2.5,
+     0
+    ],
+    "Tip": [
+     0.019,
+     9.35,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     5.2,
+     0
+    ],
+    "note": "Roblox/GLB axes (Y up), tail at 0 - same frame as SpearFactoryV15 grip={0,2.5,0}"
+   },
+   "glb_origin_space": {
+    "Grip": [
+     0,
+     0,
+     0
+    ],
+    "Tip": [
+     0.019,
+     6.85,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     2.7,
+     0
+    ],
+    "note": "relative to the GLB origin (= grip)"
+   },
+   "length": 9.35,
+   "bbox": [
+    2.48,
+    1.65,
+    9.35
+   ],
+   "elements": 54,
+   "tris": 4560,
+   "glb_tris": 4560,
+   "grip_check": {
+    "max_radius": 0.153,
+    "by": "SP23_shaft_lo",
+    "objects": [
+     "SP23_shaft_lo"
+    ],
+    "ok": true
+   }
+  },
+  {
+   "n": 24,
+   "id": "tide_crest",
+   "collection": "SP_24_tide_crest",
+   "glb": "sp_24_tide_crest.glb",
+   "tail_space": {
+    "Grip": [
+     0,
+     2.5,
+     0
+    ],
+    "Tip": [
+     0.4,
+     9.32,
+     -0.02
+    ],
+    "TrailRoot": [
+     0,
+     5.2,
+     0
+    ],
+    "note": "Roblox/GLB axes (Y up), tail at 0 - same frame as SpearFactoryV15 grip={0,2.5,0}"
+   },
+   "glb_origin_space": {
+    "Grip": [
+     0,
+     0,
+     0
+    ],
+    "Tip": [
+     0.4,
+     6.82,
+     -0.02
+    ],
+    "TrailRoot": [
+     0,
+     2.7,
+     0
+    ],
+    "note": "relative to the GLB origin (= grip)"
+   },
+   "length": 9.263,
+   "bbox": [
+    2.13,
+    0.76,
+    9.26
+   ],
+   "elements": 43,
+   "tris": 3918,
+   "glb_tris": 3918,
+   "grip_check": {
+    "max_radius": 0.153,
+    "by": "SP24_shaft_lo",
+    "objects": [
+     "SP24_shaft_lo"
+    ],
+    "ok": true
+   }
+  },
+  {
+   "n": 25,
+   "id": "abyss_anchor",
+   "collection": "SP_25_abyss_anchor",
+   "glb": "sp_25_abyss_anchor.glb",
+   "tail_space": {
+    "Grip": [
+     0,
+     2.5,
+     0
+    ],
+    "Tip": [
+     0.0,
+     9.3,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     5.2,
+     0
+    ],
+    "note": "Roblox/GLB axes (Y up), tail at 0 - same frame as SpearFactoryV15 grip={0,2.5,0}"
+   },
+   "glb_origin_space": {
+    "Grip": [
+     0,
+     0,
+     0
+    ],
+    "Tip": [
+     0.0,
+     6.8,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     2.7,
+     0
+    ],
+    "note": "relative to the GLB origin (= grip)"
+   },
+   "length": 9.211,
+   "bbox": [
+    3.24,
+    0.72,
+    9.21
+   ],
+   "elements": 43,
+   "tris": 4450,
+   "glb_tris": 4450,
+   "grip_check": {
+    "max_radius": 0.153,
+    "by": "SP25_shaft_lo",
+    "objects": [
+     "SP25_shaft_lo"
+    ],
+    "ok": true
+   }
+  },
+  {
+   "n": 26,
+   "id": "leviathan_fang",
+   "collection": "SP_26_leviathan_fang",
+   "glb": "sp_26_leviathan_fang.glb",
+   "tail_space": {
+    "Grip": [
+     0,
+     2.5,
+     0
+    ],
+    "Tip": [
+     -0.3,
+     9.4,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     5.2,
+     0
+    ],
+    "note": "Roblox/GLB axes (Y up), tail at 0 - same frame as SpearFactoryV15 grip={0,2.5,0}"
+   },
+   "glb_origin_space": {
+    "Grip": [
+     0,
+     0,
+     0
+    ],
+    "Tip": [
+     -0.3,
+     6.9,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     2.7,
+     0
+    ],
+    "note": "relative to the GLB origin (= grip)"
+   },
+   "length": 9.4,
+   "bbox": [
+    2.46,
+    1.17,
+    9.4
+   ],
+   "elements": 49,
+   "tris": 3884,
+   "glb_tris": 3884,
+   "grip_check": {
+    "max_radius": 0.153,
+    "by": "SP26_shaft_lo",
+    "objects": [
+     "SP26_shaft_lo"
+    ],
+    "ok": true
+   }
+  },
+  {
+   "n": 27,
+   "id": "ash_saw",
+   "collection": "SP_27_ash_saw",
+   "glb": "sp_27_ash_saw.glb",
+   "tail_space": {
+    "Grip": [
+     0,
+     2.5,
+     0
+    ],
+    "Tip": [
+     0.0,
+     9.4,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     5.2,
+     0
+    ],
+    "note": "Roblox/GLB axes (Y up), tail at 0 - same frame as SpearFactoryV15 grip={0,2.5,0}"
+   },
+   "glb_origin_space": {
+    "Grip": [
+     0,
+     0,
+     0
+    ],
+    "Tip": [
+     0.0,
+     6.9,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     2.7,
+     0
+    ],
+    "note": "relative to the GLB origin (= grip)"
+   },
+   "length": 9.4,
+   "bbox": [
+    2.2,
+    0.79,
+    9.4
+   ],
+   "elements": 39,
+   "tris": 3084,
+   "glb_tris": 3084,
+   "grip_check": {
+    "max_radius": 0.153,
+    "by": "SP27_shaft_lo",
+    "objects": [
+     "SP27_shaft_lo"
+    ],
+    "ok": true
+   }
+  },
+  {
+   "n": 28,
+   "id": "golem_heart",
+   "collection": "SP_28_golem_heart",
+   "glb": "sp_28_golem_heart.glb",
+   "tail_space": {
+    "Grip": [
+     0,
+     2.5,
+     0
+    ],
+    "Tip": [
+     0.0,
+     9.4,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     5.2,
+     0
+    ],
+    "note": "Roblox/GLB axes (Y up), tail at 0 - same frame as SpearFactoryV15 grip={0,2.5,0}"
+   },
+   "glb_origin_space": {
+    "Grip": [
+     0,
+     0,
+     0
+    ],
+    "Tip": [
+     0.0,
+     6.9,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     2.7,
+     0
+    ],
+    "note": "relative to the GLB origin (= grip)"
+   },
+   "length": 9.4,
+   "bbox": [
+    1.9,
+    1.87,
+    9.4
+   ],
+   "elements": 57,
+   "tris": 4216,
+   "glb_tris": 4216,
+   "grip_check": {
+    "max_radius": 0.153,
+    "by": "SP28_shaft_lo",
+    "objects": [
+     "SP28_shaft_lo"
+    ],
+    "ok": true
+   }
+  },
+  {
+   "n": 29,
+   "id": "magma_tongue",
+   "collection": "SP_29_magma_tongue",
+   "glb": "sp_29_magma_tongue.glb",
+   "tail_space": {
+    "Grip": [
+     0,
+     2.5,
+     0
+    ],
+    "Tip": [
+     0.0,
+     9.4,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     5.2,
+     0
+    ],
+    "note": "Roblox/GLB axes (Y up), tail at 0 - same frame as SpearFactoryV15 grip={0,2.5,0}"
+   },
+   "glb_origin_space": {
+    "Grip": [
+     0,
+     0,
+     0
+    ],
+    "Tip": [
+     0.0,
+     6.9,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     2.7,
+     0
+    ],
+    "note": "relative to the GLB origin (= grip)"
+   },
+   "length": 9.4,
+   "bbox": [
+    2.16,
+    1.13,
+    9.4
+   ],
+   "elements": 39,
+   "tris": 3890,
+   "glb_tris": 3890,
+   "grip_check": {
+    "max_radius": 0.153,
+    "by": "SP29_shaft_lo",
+    "objects": [
+     "SP29_shaft_lo"
+    ],
+    "ok": true
+   }
+  },
+  {
+   "n": 30,
+   "id": "phoenix_wing",
+   "collection": "SP_30_phoenix_wing",
+   "glb": "sp_30_phoenix_wing.glb",
+   "tail_space": {
+    "Grip": [
+     0,
+     2.5,
+     0
+    ],
+    "Tip": [
+     0.0,
+     9.4,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     5.2,
+     0
+    ],
+    "note": "Roblox/GLB axes (Y up), tail at 0 - same frame as SpearFactoryV15 grip={0,2.5,0}"
+   },
+   "glb_origin_space": {
+    "Grip": [
+     0,
+     0,
+     0
+    ],
+    "Tip": [
+     0.0,
+     6.9,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     2.7,
+     0
+    ],
+    "note": "relative to the GLB origin (= grip)"
+   },
+   "length": 9.25,
+   "bbox": [
+    3.66,
+    1.57,
+    9.25
+   ],
+   "elements": 56,
+   "tris": 3578,
+   "glb_tris": 3578,
+   "grip_check": {
+    "max_radius": 0.153,
+    "by": "SP30_shaft_lo",
+    "objects": [
+     "SP30_shaft_lo"
+    ],
+    "ok": true
+   }
+  },
+  {
+   "n": 31,
+   "id": "amethyst_geode",
+   "collection": "SP_31_amethyst_geode",
+   "glb": "sp_31_amethyst_geode.glb",
+   "tail_space": {
+    "Grip": [
+     0,
+     2.5,
+     0
+    ],
+    "Tip": [
+     0.0,
+     9.4,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     5.2,
+     0
+    ],
+    "note": "Roblox/GLB axes (Y up), tail at 0 - same frame as SpearFactoryV15 grip={0,2.5,0}"
+   },
+   "glb_origin_space": {
+    "Grip": [
+     0,
+     0,
+     0
+    ],
+    "Tip": [
+     0.0,
+     6.9,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     2.7,
+     0
+    ],
+    "note": "relative to the GLB origin (= grip)"
+   },
+   "length": 9.258,
+   "bbox": [
+    1.9,
+    1.85,
+    9.26
+   ],
+   "elements": 53,
+   "tris": 3306,
+   "glb_tris": 3306,
+   "grip_check": {
+    "max_radius": 0.153,
+    "by": "SP31_shaft_lo",
+    "objects": [
+     "SP31_shaft_lo"
+    ],
+    "ok": true
+   }
+  },
+  {
+   "n": 32,
+   "id": "quartz_needle",
+   "collection": "SP_32_quartz_needle",
+   "glb": "sp_32_quartz_needle.glb",
+   "tail_space": {
+    "Grip": [
+     0,
+     2.5,
+     0
+    ],
+    "Tip": [
+     0.0,
+     9.45,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     5.2,
+     0
+    ],
+    "note": "Roblox/GLB axes (Y up), tail at 0 - same frame as SpearFactoryV15 grip={0,2.5,0}"
+   },
+   "glb_origin_space": {
+    "Grip": [
+     0,
+     0,
+     0
+    ],
+    "Tip": [
+     0.0,
+     6.95,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     2.7,
+     0
+    ],
+    "note": "relative to the GLB origin (= grip)"
+   },
+   "length": 9.45,
+   "bbox": [
+    1.35,
+    1.25,
+    9.45
+   ],
+   "elements": 44,
+   "tris": 3754,
+   "glb_tris": 3754,
+   "grip_check": {
+    "max_radius": 0.149,
+    "by": "SP32_shaft_lo",
+    "objects": [
+     "SP32_shaft_lo"
+    ],
+    "ok": true
+   }
+  },
+  {
+   "n": 33,
+   "id": "lunar_crescent",
+   "collection": "SP_33_lunar_crescent",
+   "glb": "sp_33_lunar_crescent.glb",
+   "tail_space": {
+    "Grip": [
+     0,
+     2.5,
+     0
+    ],
+    "Tip": [
+     0.0,
+     9.4,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     5.2,
+     0
+    ],
+    "note": "Roblox/GLB axes (Y up), tail at 0 - same frame as SpearFactoryV15 grip={0,2.5,0}"
+   },
+   "glb_origin_space": {
+    "Grip": [
+     0,
+     0,
+     0
+    ],
+    "Tip": [
+     0.0,
+     6.9,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     2.7,
+     0
+    ],
+    "note": "relative to the GLB origin (= grip)"
+   },
+   "length": 9.37,
+   "bbox": [
+    3.63,
+    0.96,
+    9.37
+   ],
+   "elements": 48,
+   "tris": 4022,
+   "glb_tris": 4022,
+   "grip_check": {
+    "max_radius": 0.153,
+    "by": "SP33_shaft_lo",
+    "objects": [
+     "SP33_shaft_lo"
+    ],
+    "ok": true
+   }
+  },
+  {
+   "n": 34,
+   "id": "aurora_weave",
+   "collection": "SP_34_aurora_weave",
+   "glb": "sp_34_aurora_weave.glb",
+   "tail_space": {
+    "Grip": [
+     0,
+     2.5,
+     0
+    ],
+    "Tip": [
+     0.0,
+     9.4,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     5.2,
+     0
+    ],
+    "note": "Roblox/GLB axes (Y up), tail at 0 - same frame as SpearFactoryV15 grip={0,2.5,0}"
+   },
+   "glb_origin_space": {
+    "Grip": [
+     0,
+     0,
+     0
+    ],
+    "Tip": [
+     0.0,
+     6.9,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     2.7,
+     0
+    ],
+    "note": "relative to the GLB origin (= grip)"
+   },
+   "length": 9.218,
+   "bbox": [
+    1.9,
+    1.97,
+    9.22
+   ],
+   "elements": 42,
+   "tris": 4504,
+   "glb_tris": 4504,
+   "grip_check": {
+    "max_radius": 0.153,
+    "by": "SP34_shaft_lo",
+    "objects": [
+     "SP34_shaft_lo"
+    ],
+    "ok": true
+   }
+  },
+  {
+   "n": 35,
+   "id": "cloud_feather",
+   "collection": "SP_35_cloud_feather",
+   "glb": "sp_35_cloud_feather.glb",
+   "tail_space": {
+    "Grip": [
+     0,
+     2.5,
+     0
+    ],
+    "Tip": [
+     0.0,
+     9.45,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     5.2,
+     0
+    ],
+    "note": "Roblox/GLB axes (Y up), tail at 0 - same frame as SpearFactoryV15 grip={0,2.5,0}"
+   },
+   "glb_origin_space": {
+    "Grip": [
+     0,
+     0,
+     0
+    ],
+    "Tip": [
+     0.0,
+     6.95,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     2.7,
+     0
+    ],
+    "note": "relative to the GLB origin (= grip)"
+   },
+   "length": 9.47,
+   "bbox": [
+    2.43,
+    1.28,
+    9.47
+   ],
+   "elements": 44,
+   "tris": 3682,
+   "glb_tris": 3682,
+   "grip_check": {
+    "max_radius": 0.152,
+    "by": "SP35_shaft_lo",
+    "objects": [
+     "SP35_shaft_lo"
+    ],
+    "ok": true
+   }
+  },
+  {
+   "n": 36,
+   "id": "sky_harpoon",
+   "collection": "SP_36_sky_harpoon",
+   "glb": "sp_36_sky_harpoon.glb",
+   "tail_space": {
+    "Grip": [
+     0,
+     2.5,
+     0
+    ],
+    "Tip": [
+     0.6,
+     9.62,
+     0.6
+    ],
+    "TrailRoot": [
+     0,
+     5.2,
+     0
+    ],
+    "note": "Roblox/GLB axes (Y up), tail at 0 - same frame as SpearFactoryV15 grip={0,2.5,0}"
+   },
+   "glb_origin_space": {
+    "Grip": [
+     0,
+     0,
+     0
+    ],
+    "Tip": [
+     0.6,
+     7.12,
+     0.6
+    ],
+    "TrailRoot": [
+     0,
+     2.7,
+     0
+    ],
+    "note": "relative to the GLB origin (= grip)"
+   },
+   "length": 9.653,
+   "bbox": [
+    2.37,
+    1.51,
+    9.65
+   ],
+   "elements": 43,
+   "tris": 4458,
+   "glb_tris": 4458,
+   "grip_check": {
+    "max_radius": 0.152,
+    "by": "SP36_shaft_lo",
+    "objects": [
+     "SP36_shaft_lo"
+    ],
+    "ok": true
+   }
+  },
+  {
+   "n": 37,
+   "id": "rift_shards",
+   "collection": "SP_37_rift_shards",
+   "glb": "sp_37_rift_shards.glb",
+   "tail_space": {
+    "Grip": [
+     0,
+     2.5,
+     0
+    ],
+    "Tip": [
+     0.0,
+     9.4,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     5.2,
+     0
+    ],
+    "note": "Roblox/GLB axes (Y up), tail at 0 - same frame as SpearFactoryV15 grip={0,2.5,0}"
+   },
+   "glb_origin_space": {
+    "Grip": [
+     0,
+     0,
+     0
+    ],
+    "Tip": [
+     0.0,
+     6.9,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     2.7,
+     0
+    ],
+    "note": "relative to the GLB origin (= grip)"
+   },
+   "length": 9.35,
+   "bbox": [
+    2.48,
+    2.63,
+    9.35
+   ],
+   "elements": 45,
+   "tris": 2914,
+   "glb_tris": 2914,
+   "grip_check": {
+    "max_radius": 0.152,
+    "by": "SP37_shaft_lo",
+    "objects": [
+     "SP37_shaft_lo"
+    ],
+    "ok": true
+   }
+  },
+  {
+   "n": 38,
+   "id": "void_scissors",
+   "collection": "SP_38_void_scissors",
+   "glb": "sp_38_void_scissors.glb",
+   "tail_space": {
+    "Grip": [
+     0,
+     2.5,
+     0
+    ],
+    "Tip": [
+     0.822,
+     9.193,
+     -0.05
+    ],
+    "TrailRoot": [
+     0,
+     5.2,
+     0
+    ],
+    "note": "Roblox/GLB axes (Y up), tail at 0 - same frame as SpearFactoryV15 grip={0,2.5,0}"
+   },
+   "glb_origin_space": {
+    "Grip": [
+     0,
+     0,
+     0
+    ],
+    "Tip": [
+     0.822,
+     6.693,
+     -0.05
+    ],
+    "TrailRoot": [
+     0,
+     2.7,
+     0
+    ],
+    "note": "relative to the GLB origin (= grip)"
+   },
+   "length": 9.193,
+   "bbox": [
+    2.07,
+    1.97,
+    9.19
+   ],
+   "elements": 42,
+   "tris": 3756,
+   "glb_tris": 3756,
+   "grip_check": {
+    "max_radius": 0.152,
+    "by": "SP38_shaft_lo",
+    "objects": [
+     "SP38_shaft_lo"
+    ],
+    "ok": true
+   }
+  },
+  {
+   "n": 39,
+   "id": "astral_armillary",
+   "collection": "SP_39_astral_armillary",
+   "glb": "sp_39_astral_armillary.glb",
+   "tail_space": {
+    "Grip": [
+     0,
+     2.5,
+     0
+    ],
+    "Tip": [
+     0.0,
+     9.4,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     5.2,
+     0
+    ],
+    "note": "Roblox/GLB axes (Y up), tail at 0 - same frame as SpearFactoryV15 grip={0,2.5,0}"
+   },
+   "glb_origin_space": {
+    "Grip": [
+     0,
+     0,
+     0
+    ],
+    "Tip": [
+     0.0,
+     6.9,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     2.7,
+     0
+    ],
+    "note": "relative to the GLB origin (= grip)"
+   },
+   "length": 9.419,
+   "bbox": [
+    2.41,
+    2.39,
+    9.42
+   ],
+   "elements": 45,
+   "tris": 4166,
+   "glb_tris": 4166,
+   "grip_check": {
+    "max_radius": 0.152,
+    "by": "SP39_shaft_lo",
+    "objects": [
+     "SP39_shaft_lo"
+    ],
+    "ok": true
+   }
+  },
+  {
+   "n": 40,
+   "id": "singularity_spire",
+   "collection": "SP_40_singularity_spire",
+   "glb": "sp_40_singularity_spire.glb",
+   "tail_space": {
+    "Grip": [
+     0,
+     2.5,
+     0
+    ],
+    "Tip": [
+     0.0,
+     9.35,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     5.2,
+     0
+    ],
+    "note": "Roblox/GLB axes (Y up), tail at 0 - same frame as SpearFactoryV15 grip={0,2.5,0}"
+   },
+   "glb_origin_space": {
+    "Grip": [
+     0,
+     0,
+     0
+    ],
+    "Tip": [
+     0.0,
+     6.85,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     2.7,
+     0
+    ],
+    "note": "relative to the GLB origin (= grip)"
+   },
+   "length": 9.35,
+   "bbox": [
+    2.68,
+    2.6,
+    9.35
+   ],
+   "elements": 46,
+   "tris": 4310,
+   "glb_tris": 4310,
+   "grip_check": {
+    "max_radius": 0.153,
+    "by": "SP40_shaft_lo",
+    "objects": [
+     "SP40_shaft_lo"
+    ],
+    "ok": true
+   }
+  },
+  {
+   "n": 41,
+   "id": "gear_pike",
+   "collection": "SP_41_gear_pike",
+   "glb": "sp_41_gear_pike.glb",
+   "tail_space": {
+    "Grip": [
+     0,
+     2.5,
+     0
+    ],
+    "Tip": [
+     0.0,
+     9.4,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     5.2,
+     0
+    ],
+    "note": "Roblox/GLB axes (Y up), tail at 0 - same frame as SpearFactoryV15 grip={0,2.5,0}"
+   },
+   "glb_origin_space": {
+    "Grip": [
+     0,
+     0,
+     0
+    ],
+    "Tip": [
+     0.0,
+     6.9,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     2.7,
+     0
+    ],
+    "note": "relative to the GLB origin (= grip)"
+   },
+   "length": 9.313,
+   "bbox": [
+    2.91,
+    1.7,
+    9.31
+   ],
+   "elements": 45,
+   "tris": 4042,
+   "glb_tris": 4042,
+   "grip_check": {
+    "max_radius": 0.152,
+    "by": "SP41_shaft_lo",
+    "objects": [
+     "SP41_shaft_lo"
+    ],
+    "ok": true
+   }
+  },
+  {
+   "n": 42,
+   "id": "spore_halberd",
+   "collection": "SP_42_spore_halberd",
+   "glb": "sp_42_spore_halberd.glb",
+   "tail_space": {
+    "Grip": [
+     0,
+     2.5,
+     0
+    ],
+    "Tip": [
+     0.0,
+     9.3,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     5.2,
+     0
+    ],
+    "note": "Roblox/GLB axes (Y up), tail at 0 - same frame as SpearFactoryV15 grip={0,2.5,0}"
+   },
+   "glb_origin_space": {
+    "Grip": [
+     0,
+     0,
+     0
+    ],
+    "Tip": [
+     0.0,
+     6.8,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     2.7,
+     0
+    ],
+    "note": "relative to the GLB origin (= grip)"
+   },
+   "length": 9.3,
+   "bbox": [
+    2.65,
+    2.05,
+    9.3
+   ],
+   "elements": 46,
+   "tris": 3898,
+   "glb_tris": 3898,
+   "grip_check": {
+    "max_radius": 0.152,
+    "by": "SP42_shaft_lo",
+    "objects": [
+     "SP42_shaft_lo"
+    ],
+    "ok": true
+   }
+  },
+  {
+   "n": 43,
+   "id": "bone_glaive",
+   "collection": "SP_43_bone_glaive",
+   "glb": "sp_43_bone_glaive.glb",
+   "tail_space": {
+    "Grip": [
+     0,
+     2.5,
+     0
+    ],
+    "Tip": [
+     -1.142,
+     9.522,
+     -0.2
+    ],
+    "TrailRoot": [
+     0,
+     5.2,
+     0
+    ],
+    "note": "Roblox/GLB axes (Y up), tail at 0 - same frame as SpearFactoryV15 grip={0,2.5,0}"
+   },
+   "glb_origin_space": {
+    "Grip": [
+     0,
+     0,
+     0
+    ],
+    "Tip": [
+     -1.142,
+     7.022,
+     -0.2
+    ],
+    "TrailRoot": [
+     0,
+     2.7,
+     0
+    ],
+    "note": "relative to the GLB origin (= grip)"
+   },
+   "length": 9.522,
+   "bbox": [
+    3.32,
+    1.04,
+    9.52
+   ],
+   "elements": 48,
+   "tris": 3698,
+   "glb_tris": 3698,
+   "grip_check": {
+    "max_radius": 0.152,
+    "by": "SP43_shaft_lo",
+    "objects": [
+     "SP43_shaft_lo"
+    ],
+    "ok": true
+   }
+  },
+  {
+   "n": 44,
+   "id": "pearl_lance",
+   "collection": "SP_44_pearl_lance",
+   "glb": "sp_44_pearl_lance.glb",
+   "tail_space": {
+    "Grip": [
+     0,
+     2.5,
+     0
+    ],
+    "Tip": [
+     0.0,
+     9.45,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     5.2,
+     0
+    ],
+    "note": "Roblox/GLB axes (Y up), tail at 0 - same frame as SpearFactoryV15 grip={0,2.5,0}"
+   },
+   "glb_origin_space": {
+    "Grip": [
+     0,
+     0,
+     0
+    ],
+    "Tip": [
+     0.0,
+     6.95,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     2.7,
+     0
+    ],
+    "note": "relative to the GLB origin (= grip)"
+   },
+   "length": 9.48,
+   "bbox": [
+    2.4,
+    1.95,
+    9.48
+   ],
+   "elements": 53,
+   "tris": 4260,
+   "glb_tris": 4260,
+   "grip_check": {
+    "max_radius": 0.152,
+    "by": "SP44_shaft_lo",
+    "objects": [
+     "SP44_shaft_lo"
+    ],
+    "ok": true
+   }
+  },
+  {
+   "n": 45,
+   "id": "rift_conductor",
+   "collection": "SP_45_rift_conductor",
+   "glb": "sp_45_rift_conductor.glb",
+   "tail_space": {
+    "Grip": [
+     0,
+     2.5,
+     0
+    ],
+    "Tip": [
+     0.0,
+     9.45,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     5.2,
+     0
+    ],
+    "note": "Roblox/GLB axes (Y up), tail at 0 - same frame as SpearFactoryV15 grip={0,2.5,0}"
+   },
+   "glb_origin_space": {
+    "Grip": [
+     0,
+     0,
+     0
+    ],
+    "Tip": [
+     0.0,
+     6.95,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     2.7,
+     0
+    ],
+    "note": "relative to the GLB origin (= grip)"
+   },
+   "length": 9.45,
+   "bbox": [
+    2.53,
+    1.86,
+    9.45
+   ],
+   "elements": 48,
+   "tris": 4550,
+   "glb_tris": 4550,
+   "grip_check": {
+    "max_radius": 0.153,
+    "by": "SP45_shaft_lo",
+    "objects": [
+     "SP45_shaft_lo"
+    ],
+    "ok": true
+   }
+  },
+  {
+   "n": 46,
+   "id": "primal_fang",
+   "collection": "SP_46_primal_fang",
+   "glb": "sp_46_primal_fang.glb",
+   "tail_space": {
+    "Grip": [
+     0,
+     2.5,
+     0
+    ],
+    "Tip": [
+     -0.08,
+     9.45,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     5.2,
+     0
+    ],
+    "note": "Roblox/GLB axes (Y up), tail at 0 - same frame as SpearFactoryV15 grip={0,2.5,0}"
+   },
+   "glb_origin_space": {
+    "Grip": [
+     0,
+     0,
+     0
+    ],
+    "Tip": [
+     -0.08,
+     6.95,
+     -0.0
+    ],
+    "TrailRoot": [
+     0,
+     2.7,
+     0
+    ],
+    "note": "relative to the GLB origin (= grip)"
+   },
+   "length": 9.45,
+   "bbox": [
+    1.98,
+    1.3,
+    9.45
+   ],
+   "elements": 55,
+   "tris": 4864,
+   "glb_tris": 4864,
+   "grip_check": {
+    "max_radius": 0.153,
+    "by": "SP46_shaft_lo",
+    "objects": [
+     "SP46_shaft_lo"
+    ],
+    "ok": true
+   }
+  }
+ ]
+}

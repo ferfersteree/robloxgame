@@ -2,3 +2,6 @@ __pycache__/
 out/
 *.rbxl.lock
 *.blend1
+# V87: исходники Blender от Claude Design (до 200 МБ, больше лимита GitHub) остаются только локально
+docs/concepts_v86/*.blend
+docs/concepts_v87/biomes/*.blend

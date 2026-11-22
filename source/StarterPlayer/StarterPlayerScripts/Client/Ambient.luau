@@ -54,9 +54,15 @@ local function zoneRange(z: number): (number, number)
  return origin-zone.from-2,origin-zone.to+2
 end
 
+local lastStreamPos: Vector3? = nil
 local function streamAnimals()
  local camera=workspace.CurrentCamera
  if not population or not camera then return end
+ -- V86: камера летит за копьём (больше ~16 студов за полсекунды, быстрее шага героя): зверей не создаём, иначе в полёте подвисает кадр
+ local camPos=camera.CFrame.Position
+ local moved=if lastStreamPos then (camPos-lastStreamPos).Magnitude else 0
+ lastStreamPos=camPos
+ local flying=moved>16
  local distanceLimit=if Fx.lowFx then 170 else 260
  local maximum=if Fx.lowFx then 8 else 14
  local candidates={}
@@ -83,7 +89,7 @@ local function streamAnimals()
   local species=anchor:GetAttribute("SpeciesId")
   local old=walkers[anchor]
   if old and old.species~=species then old.rig:destroy();walkers[anchor]=nil;old=nil end
-  if not old and type(species)=="string" and spawned<(if Fx.lowFx then 1 else 2) then
+  if not old and not flying and type(species)=="string" and spawned<(if Fx.lowFx then 1 else 2) then
    local rig=AnimalRig.spawn(species,anchor.CFrame,folder,nil,Fauna150.WorldScale(species)) -- V61: настоящий размер рядом с игроком
    spawned+=1
    if rig then walkers[anchor]={rig=rig,anchor=anchor,species=species,flee=0} end
@@ -156,9 +162,16 @@ local function firefly(base: Vector3, color: Color3, kind: string)
 	table.insert(motes, { part = p, base = base, ph = rng:NextNumber(0, 10), sp = rng:NextNumber(0.2, 0.6), r = rng:NextNumber(2, 5), kind = kind })
 end
 
+local MOTE_NEAR = 260 * 260 -- V86: огоньки и бабочки дальше 260 студов от камеры не двигаем (их всё равно не видно)
 local function stepMotes(_dt: number)
 	local t = os.clock()
+	local cam = workspace.CurrentCamera
+	local cp = cam and cam.CFrame.Position or Vector3.zero
 	for _, m in motes do
+		local dv = m.base - cp
+		if dv.X * dv.X + dv.Z * dv.Z > MOTE_NEAR then
+			continue
+		end
 		local k = t * m.sp + m.ph
 		local pos = m.base + Vector3.new(math.noise(k, 0, m.ph) * m.r * 2, math.noise(0, k, m.ph) * 1.5, math.noise(m.ph, 0, k) * m.r * 2)
 		if m.kind == "butterfly" then

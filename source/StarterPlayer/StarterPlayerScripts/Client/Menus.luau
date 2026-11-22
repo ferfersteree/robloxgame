@@ -1650,11 +1650,11 @@ local function renderDemo(body: Frame, _st: { [string]: any })
 		{ "💰 +1B Coins", C.gold, function()
 			call("Demo", "coins", 1e9)
 		end },
-		{ "💪 +500 Strength", C.orange, function()
-			call("Demo", "power", 500)
+		{ "💪 +10 Strength levels", C.orange, function()
+			call("Demo", "power", 10 * Config.STRENGTH.perLevel)
 		end },
-		{ "💪 +50K Strength", C.orange, function()
-			call("Demo", "power", 50000)
+		{ "💪 Max Strength", C.orange, function()
+			call("Demo", "power", Config.STRENGTH.maxLevel * Config.STRENGTH.perLevel)
 		end },
 		{ "🍀 Luck ×1" .. (luck == 1 and " ✓" or ""), C.green, function()
 			call("Demo", "luck", 1)

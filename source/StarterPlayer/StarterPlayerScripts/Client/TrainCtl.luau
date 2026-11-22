@@ -69,11 +69,14 @@ end
 ---------------------------------------------------------------------
 -- Шкала
 ---------------------------------------------------------------------
+local barLevel = 1 -- V86: уровень Силы, подпись шкалы
 local function setBar(cur: number, bar: number, anim: boolean?)
 	local clip, lbl = barClip, barLabel
 	if not clip or not lbl then
 		return
 	end
+	local dl = Backend.data -- V86: уровень всегда из данных (уровни приходят и из пропуска, и из демо-панели)
+	barLevel = dl and tonumber(dl.strLvl) or barLevel
 	local k = if bar > 0 then math.clamp(cur / bar, 0, 1) else 0
 	local target = UDim2.fromOffset(math.floor(barIW * k), barIH)
 	if anim then
@@ -82,14 +85,16 @@ local function setBar(cur: number, bar: number, anim: boolean?)
 		clip.Size = target
 	end
 	clip.Visible = k > 0.001
-	lbl.Text = Num.short(math.floor(cur)) .. " / " .. Num.short(bar)
+	lbl.Text = "Lv " .. tostring(barLevel) .. "  ·  " .. Num.short(math.floor(cur)) .. " / " .. Num.short(bar)
 end
 
 local function syncBar(anim: boolean?)
 	local d = Backend.data
-	local info = d and Config.DUMBBELL[d.dumbbell]
-	if d and info then
-		setBar(tonumber(d.trainPts) or 0, info.bar, anim)
+	if d then
+		-- V86: шкала уровня Силы, не гантелей
+		local lvl = tonumber(d.strLvl) or 1
+		barLevel = lvl
+		setBar(tonumber(d.strXp) or 0, Config.strengthXp(lvl), anim)
 	end
 end
 
@@ -145,7 +150,7 @@ local function celebrate(res: any)
 	UI.punch(holder, 0.08)
 	Sfx.play("level", 1, 0.5)
 	UI.confetti(Fx.lowFx and 10 or 26, { GOLD, C.green, C.orange })
-	local f = UI.label({ Text = "+" .. Num.short(math.floor((tonumber(res.power) or 0) + 0.5)) .. " Strength", TextSize = UI.mobile and 34 or 44, Color = GOLD, Size = UDim2.fromOffset(420, 54), AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 0, -8), ZIndex = 50, Stroke = 3, Parent = holder })
+	local f = UI.label({ Text = "+" .. Num.short(math.floor((tonumber(res.power) or 0) + 0.5)) .. " Strength · Lv " .. tostring(barLevel), TextSize = UI.mobile and 34 or 44, Color = GOLD, Size = UDim2.fromOffset(420, 54), AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 0, -8), ZIndex = 50, Stroke = 3, Parent = holder })
 	local sc = Instance.new("UIScale")
 	sc.Scale = 0.4
 	sc.Parent = f
@@ -564,7 +569,7 @@ local function upgrade()
 	end
 	Sfx.play("level")
 	UI.confetti(50, { look and look.color or C.gold, C.gold, C.green })
-	Hud.banner("NEW DUMBBELLS!", C.green, info.name .. " · +" .. Num.short(info.gain) .. " Strength per rep", 2.2)
+	Hud.banner("NEW DUMBBELLS!", C.green, info.name .. " · +" .. Num.short(info.gain) .. " XP per rep", 2.2)
 	upKey = "" -- перерисовать кнопку; вид стенда и гантелей в руках обновит Equip (Main.sendLook)
 end
 

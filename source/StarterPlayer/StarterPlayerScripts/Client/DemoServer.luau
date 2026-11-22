@@ -40,7 +40,8 @@ local function defaults()
 		bagLvl = 1,
 		bagCap = Config.BAG[1].cap,
 		dumbbell = Config.START.dumbbell,
-		trainPts = 0, -- V82: очки шкалы тренировки
+		strLvl = 1, -- V86: уровень Силы (Сила = Config.strengthOf(strLvl))
+		strXp = 0, -- V86: опыт на шкале текущего уровня Силы
 		spear = Config.START.spear,
 		spears = { [Config.START.spear] = 0 },
 		items = {},
@@ -280,9 +281,7 @@ H.Throw = function(args: any)
 	local m = math.max(1, chargedM * (crashed and Config.TENSION.crashLuck or 1))
 	local st = Config.spearStats(d.spear, d.spears[d.spear])
 	-- Slipping lowers luck, while the spear still travels the charged trajectory.
-	local frac = Config.distFrac(chargedM)
-	local dist = Config.range(d.power) * st.range * boostMult("range") * frac
-	dist = math.min(dist, Config.MAX_THROW_DISTANCE or Config.THROW.maxRange)
+	local dist = Config.throwDist(d.power, st, boostMult("range"), chargedM) -- V86: с потолком копья (Config.spearReach)
 	local zone = Config.zoneFor(dist)
 	local tier = Config.tierIndex(m)
 	d.stats.throws += 1
@@ -421,7 +420,19 @@ H.TrainBuff = function()
 	return true
 end
 
--- Подъём: очки в шкалу; полная шкала даёт Силу = bar * 1.1 (остаток переносится)
+-- V86: уровни Силы растут независимо от гантелей. Подъём даёт опыт = gain гантелей; на каждый новый уровень +perLevel Силы.
+local function addStrengthLevels(n: number): number
+	local cur = tonumber(d.strLvl) or 1
+	local add = math.min(math.max(0, math.floor(n)), Config.STRENGTH.maxLevel - cur)
+	if add <= 0 then
+		return 0
+	end
+	d.strLvl = cur + add
+	d.power = Config.strengthOf(d.strLvl)
+	return add
+end
+
+-- Подъём: опыт в шкалу уровня Силы; переполнение переносится на следующий уровень
 H.Rep = function()
 	local now = os.clock()
 	if now - lastRep < Config.REP_COOLDOWN * 0.8 then
@@ -429,23 +440,33 @@ H.Rep = function()
 	end
 	lastRep = now
 	local info = Config.DUMBBELL[d.dumbbell] or Config.DUMBBELL[1]
-	local bar = info.bar
 	-- V83: авто-подъём идёт раз в 1.1 с, а бафф длится 1 с: если в окно не попал ни один подъём,
 	-- удваиваем первый подъём после него (не позже 0.7 с), чтобы удачная подсказка не пропадала зря
 	local buffed = now < buffUntil or (buffOwed and now < buffUntil + 0.7)
 	buffOwed = false
 	local added = info.gain * Perks.repMult() * (buffed and 2 or 1)
-	local pts = (tonumber(d.trainPts) or 0) + added
-	local fills = math.floor(pts / bar)
-	local power = 0
-	if fills > 0 then
-		pts -= fills * bar
-		power = fills * bar * Config.TRAIN_FILL_BONUS
-		d.power += power
+	local xp = (tonumber(d.strXp) or 0) + added
+	local lvl = tonumber(d.strLvl) or 1
+	local levels = 0
+	local need = Config.strengthXp(lvl)
+	while xp >= need and levels < 1000 and lvl < Config.STRENGTH.maxLevel do
+		xp -= need
+		lvl += 1
+		levels += 1
+		need = Config.strengthXp(lvl)
 	end
-	d.trainPts = pts
+	if lvl >= Config.STRENGTH.maxLevel then
+		xp = math.min(xp, need) -- на потолке шкала стоит полной
+	end
+	local power = 0
+	if levels > 0 then
+		local before = d.power
+		addStrengthLevels(levels)
+		power = d.power - before
+	end
+	d.strXp = xp
 	progress("train", nil, 1)
-	return true, { pts = added, fills = fills, power = power, bar = bar, cur = pts }
+	return true, { pts = added, fills = levels, power = power, bar = need, cur = xp, level = d.strLvl }
 end
 
 H.UpgradeDumbbell = function()
@@ -629,7 +650,7 @@ H.Demo = function(cmd: any, arg: any)
 	if cmd == "coins" then
 		addCoins(tonumber(arg) or 1e6)
 	elseif cmd == "power" then
-		d.power += tonumber(arg) or 500
+		addStrengthLevels((tonumber(arg) or 500) / Config.STRENGTH.perLevel)
 	elseif cmd == "luck" then
 		demoLuck = tonumber(arg) or 1
 		notify("Demo luck ×" .. tostring(demoLuck), "rare")
@@ -789,7 +810,8 @@ H.HpassClaim = function(tier: any, lane: any)
 		addCoins(coins)
 	end
 	if power > 0 then
-		d.power += power
+		-- V86: награда «+N Силы» — это N / perLevel уровней Силы
+		power = addStrengthLevels(power / Config.STRENGTH.perLevel) * Config.STRENGTH.perLevel
 	end
 	return true, { coins = coins, power = power, potions = #potions }
 end
@@ -914,14 +936,30 @@ function Demo.load(saved: any): boolean
 		db = 1 -- V83: NaN или мусор в сохранении не должны ронять загрузку
 	end
 	base.dumbbell = math.clamp(math.floor(db), 1, #Config.DUMBBELL)
-	local tp = tonumber(base.trainPts)
-	if tp == nil or tp ~= tp or tp < 0 or tp == math.huge then
-		tp = 0
+	-- V86: Сила — это уровень. Старое сохранение (без strLvl): уровень, на котором базовая дальность не больше
+	-- прежней 8·√Сила, чтобы бросок не стал дальше, чем был
+	local lv = tonumber(saved.strLvl)
+	if lv == nil or lv ~= lv or lv == math.huge or lv < 1 then
+		local oldPower = tonumber(saved.power) or Config.START.power
+		if oldPower ~= oldPower or oldPower == math.huge then
+			oldPower = Config.START.power
+		end
+		local oldReach = 8 * math.sqrt(math.max(oldPower, 1))
+		lv = 1
+		while lv < Config.STRENGTH.maxLevel and Config.range(Config.strengthOf(lv + 1)) <= oldReach do
+			lv += 1
+		end
+		base.strXp = 0
 	end
-	base.trainPts = math.min(tp, Config.DUMBBELL[base.dumbbell].bar * 0.999)
+	base.strLvl = math.clamp(math.floor(lv), 1, Config.STRENGTH.maxLevel)
+	local sx = tonumber(base.strXp)
+	if sx == nil or sx ~= sx or sx < 0 or sx == math.huge then
+		sx = 0
+	end
+	base.strXp = math.min(sx, Config.strengthXp(base.strLvl) - 1e-6)
+	base.power = Config.strengthOf(base.strLvl)
 	base.level = math.max(1, math.floor(base.level))
 	base.coins = math.max(0, base.coins)
-	base.power = math.max(Config.START.power, base.power)
 	d = base
 	nextId = maxId + 1
 	tension = nil

@@ -58,9 +58,10 @@ Config.TIERS = {
 }
 
 Config.THROW = {
-	rangeK = 8, -- дальность = rangeK·√Сила (в студах)
+	rangeK = 8, -- V86: не используется для дальности (см. Config.range); 8·√Сила осталась только как мерка удачи в powerLuck
 	maxRange = 12700,
 	maxFlightTime = 6.5,
+	flightSlow = 0.97, -- V86: множитель длительности полёта; было 1.45, игрок попросил в 1.5 раза быстрее (1.45 / 1.5); 1 — как в V85
 	minFrac = 0.3, -- при ×1 летит на 30% дальности, при ×100 — на 100%
 	flightBase = 0.7,
 	flightPerStud = 1 / 75,
@@ -342,43 +343,45 @@ Config.FORGE = {
 	costMul = 0.3, -- цена уровня = max(40, price·costMul)·(lvl+1)^1.7
 }
 
--- V82: 15 уровней гантелей. Уровни 1..7 не менялись. gain = очки за подъём, bar = очков до заполнения шкалы
--- (при заполнении игрок получает bar * 1.1 Силы). reps = bar / gain (подъёмов на шкалу), растёт 12 -> 40.
--- Лимит дальности 8*sqrt(Сила) = 12700 -> нужно ~2.5M Силы; монеты (цена) держат темп, а не gain.
---  lvl  cost        gain   reps  bar
---   1   0           1      12    12
---   2   40          2      14    28
---   3   250         4      16    64
---   4   1 500       8      18    144
---   5   8 000       15     20    300
---   6   40 000      30     22    660
---   7   150 000     60     24    1 440
---   8   600 000     115    26    2 990
---   9   1 800 000   225    28    6 300
---  10   5 000 000   430    30    12 900
---  11   13 000 000  800    32    25 600
---  12   32 000 000  1 500  34    51 000
---  13   60 000 000  2 800  36    100 800
---  14   100 000 000 5 200  38    197 600
---  15   180 000 000 9 500  40    380 000  (как самые дорогие копья)
-Config.DUMBBELL = {
-	{ cost = 0, gain = 1, name = "Wooden", bar = 12 },
-	{ cost = 40, gain = 2, name = "Stone", bar = 28 },
-	{ cost = 250, gain = 4, name = "Bronze", bar = 64 },
-	{ cost = 1500, gain = 8, name = "Iron", bar = 144 },
-	{ cost = 8000, gain = 15, name = "Granite", bar = 300 },
-	{ cost = 40000, gain = 30, name = "Golden", bar = 660 },
-	{ cost = 150000, gain = 60, name = "Mammoth", bar = 1440 },
-	{ cost = 600000, gain = 115, name = "Crystal", bar = 2990 },
-	{ cost = 1800000, gain = 225, name = "Obsidian", bar = 6300 },
-	{ cost = 5000000, gain = 430, name = "Frost", bar = 12900 },
-	{ cost = 13000000, gain = 800, name = "Magma", bar = 25600 },
-	{ cost = 32000000, gain = 1500, name = "Storm", bar = 51000 },
-	{ cost = 60000000, gain = 2800, name = "Jade", bar = 100800 },
-	{ cost = 100000000, gain = 5200, name = "Celestial", bar = 197600 },
-	{ cost = 180000000, gain = 9500, name = "Primal", bar = 380000 },
+-- V86: Сила растёт уровнями. Шкала тренировки — это шкала уровня Силы, она не зависит от гантелей:
+-- каждый уровень даёт одинаково +STRENGTH.perLevel Силы, опыта до следующего уровня нужно strengthXp(L).
+-- Гантели дают gain опыта за подъём: лучше гантели — быстрее растут уровни. Цены гантелей идут вдоль лестницы копий,
+-- поэтому сила и копья растут вместе (таблица: docs/balance_v86.md, генератор tools/balance_v86.py).
+Config.STRENGTH = {
+	start = 10, -- Сила на 1-м уровне
+	perLevel = 5, -- +Сила за каждый уровень
+	xpBase = 18, -- опыта с 1-го на 2-й уровень (больше — дольше качать Силу; все гантели масштабируются вместе)
+	xpGrowth = 1.042, -- каждый следующий уровень требует на 4.2% больше опыта
+	levelsPerZone = 10, -- ~10 уровней Силы на зону леса
+	maxLevel = 251, -- потолок: на 251-м уровне (Сила 1260) дальность уже максимальная, дальше уровни ничего не дают
 }
-Config.TRAIN_FILL_BONUS = 1.1 -- Сила за полную шкалу = bar * 1.1
+Config.DUMBBELL = {
+	{ cost = 0, gain = 1, name = "Wooden" },
+	{ cost = 420, gain = 2, name = "Stone" },
+	{ cost = 4000, gain = 3, name = "Bronze" },
+	{ cost = 120000, gain = 5, name = "Iron" },
+	{ cost = 550000, gain = 8, name = "Granite" },
+	{ cost = 2800000, gain = 18, name = "Golden" },
+	{ cost = 6800000, gain = 26, name = "Mammoth" },
+	{ cost = 32000000, gain = 60, name = "Crystal" },
+	{ cost = 140000000, gain = 140, name = "Obsidian" },
+	{ cost = 310000000, gain = 210, name = "Frost" },
+	{ cost = 1200000000, gain = 470, name = "Magma" },
+	{ cost = 2700000000, gain = 710, name = "Storm" },
+	{ cost = 11000000000, gain = 1600, name = "Jade" },
+	{ cost = 82000000000, gain = 5600, name = "Celestial" },
+	{ cost = 590000000000, gain = 19000, name = "Primal" },
+}
+-- Сила на уровне L
+function Config.strengthOf(level: number): number
+	local S = Config.STRENGTH
+	return S.start + S.perLevel * (math.clamp(math.floor(level), 1, S.maxLevel) - 1)
+end
+-- Опыт, нужный чтобы с уровня L перейти на L+1
+function Config.strengthXp(level: number): number
+	local S = Config.STRENGTH
+	return math.max(1, math.floor(S.xpBase * S.xpGrowth ^ (math.clamp(math.floor(level), 1, S.maxLevel) - 1) + 0.5))
+end
 -- V82: 15 гантелей и 15 стадий стойки. Данные дизайнера (Opus): docs/concepts_v82/dumbbells_v82.lua, превью там же
 -- (dumbbells_sheet.png, stands_sheet.png). Формат и правила: docs/concepts_v82/training_contract.md.
 do
@@ -954,8 +957,80 @@ for i, q in Config.QUESTS do
 	Config.QUEST_BY_ID[q.id] = q
 end
 
+-- V86: дальность по Силе — таблица точек (Сила -> дальность без копья), между точками геометрическая интерполяция.
+-- Точка зоны z: Сила входа в зону (start + perLevel*levelsPerZone*(z-1)); первое копьё этой зоны при полном заряде
+-- долетает до середины зоны. Сила дальше своего копья не уводит: см. Config.spearReach.
+local rangePts: { { number } }? = nil
+local function buildRangePts(): { { number } }
+	local S = Config.STRENGTH
+	local step = S.perLevel * S.levelsPerZone
+	local firstRange: { [number]: number } = {}
+	for _, sp in Config.SPEARS do
+		if firstRange[sp.zone] == nil then
+			firstRange[sp.zone] = sp.range
+		end
+	end
+	local pts = { { S.start, 25 } }
+	for z = 2, #Config.ZONES do
+		local zn = Config.ZONES[z]
+		table.insert(pts, { S.start + step * (z - 1), (zn.from + zn.to) * 0.5 / (firstRange[z] or 1) })
+	end
+	local last = Config.ZONES[#Config.ZONES]
+	local best = Config.SPEARS[#Config.SPEARS].range
+	table.insert(pts, { S.start + step * #Config.ZONES, last.to / best })
+	return pts
+end
+
 function Config.range(power: number): number
-	return math.min(Config.THROW.maxRange, Config.THROW.rangeK * math.sqrt(math.max(power, 1)))
+	local pts = rangePts
+	if not pts then
+		pts = buildRangePts()
+		rangePts = pts
+	end
+	local p = math.max(tonumber(power) or 0, 1)
+	if p <= pts[1][1] then
+		return pts[1][2] * math.sqrt(p / pts[1][1])
+	end
+	for i = 2, #pts do
+		local a, b = pts[i - 1], pts[i]
+		if p <= b[1] then
+			local t = (p - a[1]) / (b[1] - a[1])
+			return a[2] * (b[2] / a[2]) ^ t
+		end
+	end
+	return math.min(pts[#pts][2], Config.THROW.maxRange)
+end
+
+-- V86: потолок копья — самая дальняя зона, где оно ещё берёт обычного (Common) зверя: обычно на 1-2 зоны дальше
+-- своей зоны (Config.SPEARS[i].zone). Сила ведёт бросок до этого края; дальше нужен лучший наконечник, иначе бросок
+-- уходил туда, где не взять никого. Кузница и зелье дальности помогают долететь до края с меньшей Силой, но не дальше.
+local maxZoneCache: { [string]: number } = {}
+function Config.spearMaxZone(spearId: string): number
+	local s = Config.SPEAR_BY_ID[spearId] or Config.SPEARS[1]
+	local cached = maxZoneCache[s.id]
+	if cached then
+		return cached
+	end
+	local best = math.clamp(s.zone or 1, 1, #Config.ZONES)
+	for _, sp in Config.SPECIES do
+		if sp.rarity == 1 and sp.zone > best and sp.zone <= #Config.ZONES and sp.sharp <= s.sharp and sp.weight <= s.heavy then
+			best = sp.zone
+		end
+	end
+	maxZoneCache[s.id] = best
+	return best
+end
+
+function Config.spearReach(spearId: string): number
+	local z = Config.ZONES[Config.spearMaxZone(spearId)]
+	return math.min(z.to - 0.01, Config.MAX_THROW_DISTANCE or Config.THROW.maxRange)
+end
+
+-- V86: одна формула дальности броска для сервера, окна охоты и диалогов. Потолок копья ограничивает полный бросок,
+-- а заряд (distFrac) действует уже после него: даже с лишней Силой бросок ×1 короче, чем ×100, и не все в одну точку
+function Config.throwDist(power: number, st: any, rangeBoost: number, m: number): number
+	local full = math.min(Config.range(power) * st.range * (rangeBoost or 1), Config.spearReach(st.id))
+	return math.min(full * Config.distFrac(m), Config.MAX_THROW_DISTANCE or Config.THROW.maxRange)
 end
 
 -- m(t) = e^(r·t), не больше капа
@@ -988,8 +1063,10 @@ function Config.distLuck(d: number): number
 	return 1 + d / Config.THROW.distLuckDiv
 end
 
+-- V86: удача от Силы считается от дальности, как раньше при 8·√Сила: та же дальность — та же удача
 function Config.powerLuck(power: number): number
-	return 1 + 0.5 * math.log10(math.max(power, 10) / 10)
+	local eq = (Config.range(power) / 8) ^ 2
+	return 1 + 0.5 * math.log10(math.max(eq, 10) / 10)
 end
 
 function Config.flightTime(d: number): number
@@ -997,7 +1074,7 @@ function Config.flightTime(d: number): number
 	local familiar = math.min(distance, 230)
 	local travel = Config.THROW.flightBase + familiar * Config.THROW.flightPerStud
 	if distance > 230 then travel += math.log(1 + (distance - 230) / 230) * 0.85 end
-	return math.min(Config.THROW.maxFlightTime, travel)
+	return math.min(Config.THROW.maxFlightTime, travel) * (Config.THROW.flightSlow or 1)
 end
 
 function Config.zoneFor(d: number): number
@@ -1020,6 +1097,7 @@ function Config.spearStats(id: string, lvl: number?): any
 	return {
 		id = s.id,
 		name = s.name,
+		zone = s.zone,
 		sharp = s.sharp,
 		heavy = s.heavy,
 		luck = s.luck * (1 + Config.FORGE.luckPer * l),

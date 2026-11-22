@@ -3,6 +3,8 @@
 local HttpService=game:GetService("HttpService")
 local Factory=require(script.Parent.SpearFactoryV15)
 local Presentation=require(script.Parent.SpearPresentationV15)
+-- V87: эффекты новых копий (полёт и удар), ленты и лучи им запрещены
+local Fx87=require(script.Parent.Parent:WaitForChild("Art87"):WaitForChild("SpearFx87"))
 local profiles=Presentation.Profiles
 local Adapter={}
 local Handle={};Handle.__index=Handle
@@ -19,18 +21,20 @@ function Adapter.Attach(model: Model,id: string,tier: number): any
 	local tip=primary:FindFirstChild("TipAtt")::Attachment
 	local tail=primary:FindFirstChild("TrailRoot")::Attachment
 	local trails={};local anchors={}
-	for i=1,profile.ribbonCount do
+	-- V87: у новых копий нет лент (Trail) и старой россыпи частиц: свои эффекты полёта ставит SpearFx87
+	local authored=model:GetAttribute("V87Spear")==true
+	for i=1,(if authored then 0 else profile.ribbonCount) do
 		local a=Instance.new("Attachment");a.Position=tail.Position+Vector3.xAxis*(i-2)*.08;a.Parent=primary
 		local b=Instance.new("Attachment");b.Position=a.Position+Vector3.zAxis*profile.ribbonWidth*2;b.Parent=primary
 		local tr=Instance.new("Trail");tr.Attachment0=a;tr.Attachment1=b;tr.FaceCamera=true;tr.MinLength=.04;tr.Lifetime=profile.trailLife;tr.Color=ColorSequence.new(c1,c2);tr.LightEmission=.8;tr.Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,.35),NumberSequenceKeypoint.new(.2,.1),NumberSequenceKeypoint.new(1,1)});tr.WidthScale=NumberSequence.new(1,0);tr.Parent=primary
 		table.insert(trails,tr);table.insert(anchors,{A=a,B=b,Phase=i*math.pi*2/math.max(1,profile.ribbonCount)})
 	end
 	local emitter=nil
-	if not profile.ordinary then
+	if not profile.ordinary and not authored then
 		emitter=Instance.new("ParticleEmitter");emitter.Texture=TEXTURES[profile.particleMode%4+1];emitter.Color=ColorSequence.new(c1,c2);emitter.Rate=12+profile.index%14;emitter.Lifetime=NumberRange.new(.18,profile.trailLife);emitter.Speed=NumberRange.new(.1,.4+profile.waveAmplitude);emitter.Drag=.8+profile.index%5*.3;emitter.SpreadAngle=Vector2.new(14+profile.index%7*4,14+profile.index%9*3);emitter.Size=NumberSequence.new(.1+profile.index%5*.015,0);emitter.Transparency=NumberSequence.new(.15,1);emitter.LightEmission=.8;emitter.Rotation=NumberRange.new(0,360);emitter.Parent=tail
 	end
 	local initial=model:GetPivot()
-	local self:any=setmetatable({Model=model,Profile=profile,Trails=trails,Anchors=anchors,Emitter=emitter,Tail=tail,Tip=tip,InitialFrame=initial,InitialTip=initial:PointToWorldSpace(tip.Position),Power=math.clamp(.25+(tier-1)*.15,.25,1),Stopped=false},Handle)
+	local self:any=setmetatable({Model=model,Profile=profile,Trails=trails,Anchors=anchors,Emitter=emitter,Tail=tail,Tip=tip,InitialFrame=initial,InitialTip=initial:PointToWorldSpace(tip.Position),Power=math.clamp(.25+(tier-1)*.15,.25,1),Stopped=false,Authored=authored,Fx=if authored then Fx87.attachFlight(model,id) else nil},Handle)
 	return self
 end
 function Handle:Frame(position: Vector3,direction: Vector3,u: number,seconds: number): CFrame
@@ -63,6 +67,14 @@ function Handle:Land(position: Vector3,direction: Vector3)
 	self.Stopped=true
 	for _,trail in ipairs(self.Trails)do trail.Enabled=false end
 	if self.Emitter then self.Emitter.Enabled=false;self.Emitter:Clear()end
+	if self.Fx then self.Fx:stop() end
+	-- V87: свой удар новых копий вместо старого V15-удара (если для копья есть данные эффектов)
+	if self.Authored and Fx87.has(self.Profile.id) then
+		local flat=Vector3.new(direction.X,0,direction.Z)
+		local ground=if flat.Magnitude>.001 then CFrame.lookAt(position,position+flat.Unit) else CFrame.new(position)
+		Fx87.impact(self.Profile.id,ground)
+		return
+	end
 	local tipFrame=Factory.Frame(position,direction)
 	-- V46: Reduced Effects (player attribute LowFx, set by Main): fewer rays and spokes on landing (Quality .3 vmesto 1)
 	local lp=game:GetService("Players").LocalPlayer
@@ -73,5 +85,6 @@ function Handle:Stop()
 	self.Stopped=true
 	for _,trail in ipairs(self.Trails)do if trail.Parent then trail.Enabled=false end end
 	if self.Emitter and self.Emitter.Parent then self.Emitter.Enabled=false end
+	if self.Fx then self.Fx:stop() end
 end
 return Adapter

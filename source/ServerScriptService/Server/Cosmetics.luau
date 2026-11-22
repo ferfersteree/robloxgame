@@ -82,10 +82,21 @@ function Cosmetics.refreshTool(player: Player)
 			d.CanQuery = false
 			d.CanTouch = false
 			d.Massless = true
+			-- V86: копьё в руке у каждого игрока рисует клиент (Animator, новые модели); серверная блочная модель
+			-- только держит Tool и всегда невидима, иначе после покупки копья в руке висели два копья
+			d.Transparency = 1
+			d.CastShadow = false
 			local w = Instance.new("WeldConstraint")
 			w.Part0 = handle
 			w.Part1 = d
 			w.Parent = d
+		end
+	end
+	for _, d in m:GetDescendants() do
+		if d:IsA("Decal") then
+			d.Transparency = 1
+		elseif d:IsA("ParticleEmitter") or d:IsA("Light") or d:IsA("Beam") or d:IsA("Trail") then
+			d.Enabled = false
 		end
 	end
 	m.Parent = tool
@@ -115,7 +126,12 @@ local function refreshRack(plot: Model, owned: { string })
 		if slot and tpl then
 			local m = anchoredClone(tpl)
 			local len = (m:GetAttribute("Length") :: number?) or 7
-			m:PivotTo(CFrame.new(slot.Position + Vector3.new(0, len / 2 - 3.6, 0)) * CFrame.Angles(0, math.rad(90), math.rad(6)))
+			-- V87: у новых копий Claude Design опора в точке хвата (2.5 над хвостом), а не в центре
+			local up = len / 2 - 3.6
+			if m:GetAttribute("GripPivot") then
+				up -= len / 2 - 2.5
+			end
+			m:PivotTo(CFrame.new(slot.Position + Vector3.new(0, up, 0)) * CFrame.Angles(0, math.rad(90), math.rad(6)))
 			m.Parent = f
 		end
 	end

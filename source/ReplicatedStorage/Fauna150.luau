@@ -17,11 +17,72 @@ local Motion = require(library:WaitForChild("Motion")) :: any
 ---------------------------------------------------------------------
 local decoded: { [string]: any } = {}
 
-function Fauna.Has(id: string): boolean
-	return Profiles[id] ~= nil and renderData:FindFirstChild(id) ~= nil
+-- V87: новые звери Claude Design (Art87.Lib). Lib подключается лениво и под pcall: нет мешей/данных — старый путь.
+local LibMod: any = nil
+local libTried = false
+local function art(): any?
+	if not libTried then
+		libTried = true
+		local folder = RS:FindFirstChild("Art87")
+		local mod = folder and folder:FindFirstChild("Lib")
+		if mod and folder and folder:FindFirstChild("Data") then
+			local ok, res = pcall(require, mod)
+			if ok then
+				LibMod = res
+			else
+				warn("[Fauna150] Art87.Lib: " .. tostring(res))
+			end
+		end
+	end
+	return LibMod
 end
 
-function Fauna.Get(id: string): any?
+local newHas: { [string]: boolean } = {}
+local function hasNew(id: string): boolean
+	local c = newHas[id]
+	if c == nil then
+		local L = art()
+		local ok, has = false, false
+		if L then
+			ok, has = pcall(L.hasAnimal, id)
+		end
+		c = ok and has == true
+		newHas[id] = c
+	end
+	return c
+end
+
+-- V87: размеры нового зверя в формате старых данных (h/w/len/bounds), нужны Attr, WorldScale и Reveal через Factory.Get
+local newData: { [string]: any } = {}
+local function getNew(id: string): any?
+	local c = newData[id]
+	if c ~= nil then
+		return c or nil
+	end
+	if not hasNew(id) then
+		return nil
+	end
+	local L = art()
+	local ok, ad = pcall(L.animalData, id)
+	if not ok or not ad then
+		newHas[id] = false
+		return nil
+	end
+	local w, h, len = ad.width or 1, ad.height or 1, ad.length or 1
+	local d = {
+		art87 = true, h = h, w = w, len = len, hover = ad.hover or 0, rig = "art87",
+		bounds = { { -w / 2, 0, -len / 2 }, { w / 2, h, len / 2 } },
+		animation = { profile = "art87" },
+	}
+	newData[id] = d
+	return d
+end
+
+function Fauna.Has(id: string): boolean
+	return hasNew(id) or (Profiles[id] ~= nil and renderData:FindFirstChild(id) ~= nil)
+end
+
+local function getOld(id: string): any?
 	local cached = decoded[id]
 	if cached ~= nil then
 		return cached or nil
@@ -43,6 +104,11 @@ function Fauna.Get(id: string): any?
 	data.animation = { profile = profile.gait }
 	decoded[id] = data
 	return data
+end
+
+-- V87: сначала новый зверь (если есть меши), иначе прежние данные коллекции
+function Fauna.Get(id: string): any?
+	return getNew(id) or getOld(id)
 end
 
 -- Размеры и смещения, которые раньше лежали атрибутами на ReplicatedStorage.Animals.<id>
@@ -298,7 +364,16 @@ local function joint(child: BasePart, parent: BasePart)
 end
 
 function Fauna.Create(id: string): Model?
-	local data = Fauna.Get(id)
+	-- V87: новая модель Claude Design; не собралась — прежний кубический зверь
+	if hasNew(id) then
+		local ok, model = pcall(art().animal, id)
+		if ok and model then
+			return model
+		end
+		newHas[id] = false
+		newData[id] = nil
+	end
+	local data = getOld(id)
 	if not data then
 		return nil
 	end
@@ -432,7 +507,115 @@ local function staticAdapter(): any
 	return { play = function() end, step = function() end, destroy = function() end }
 end
 
+---------------------------------------------------------------------
+-- V87: адаптер для зверей Art87: клипы Idle/Reveal из Lib, ходьба = Idle быстрее + процедурное подпрыгивание корня
+---------------------------------------------------------------------
+-- f: циклов фазы в секунду, a: подъём корня в долях роста, roll/pitch: наклоны (рад), hop: прыжок (парабола), wave: плавное качание
+local BOB: { [string]: any } = {
+	walk = { f = 2.6, a = 0.035, roll = 0.035, pitch = 0 },
+	run = { f = 4.2, a = 0.05, roll = 0.04, pitch = 0.03 },
+	flee = { f = 4.5, a = 0.05, roll = 0.04, pitch = 0.03 },
+	hop = { f = 3.0, a = 0.16, roll = 0, pitch = 0.1, hop = true },
+	crawl = { f = 2.0, a = 0.012, roll = 0.03, pitch = 0 },
+	swim = { f = 1.2, a = 0.03, roll = 0.05, pitch = 0.02, wave = true },
+	fly = { f = 1.6, a = 0.04, roll = 0.05, pitch = 0.03, wave = true },
+}
+local MOVE_RATE: { [string]: number } = { walk = 1.4, crawl = 1.4, swim = 1.4, hop = 1.6, fly = 1.6, run = 1.8, flee = 1.8 }
+
+local function bindNew(model: Model): any
+	local rig: any = art().bind(model)
+	if not rig then
+		return { play = function() end, step = function() end, destroy = function() end }
+	end
+	local height = (model:GetAttribute("Height") :: number?) or 2
+	local adapter: any = { rig = rig, state = "idle", rate = 1, bob = nil, ph = math.random(), revealing = false, dirty = false }
+
+	-- idle/look/stand/sleep/happy — Idle; движение — Idle быстрее + подпрыгивание в step
+	function adapter:play(state: string)
+		if state == self.state then
+			return
+		end
+		self.state = state
+		self.rate = MOVE_RATE[state] or 1
+		self.bob = BOB[state]
+		if not self.revealing and rig.clip ~= "Idle" then
+			rig:play("Idle", true)
+		end
+	end
+
+	function adapter:step(dt: number, speed: number?)
+		local sp = math.clamp(speed or 1, 0.5, 1.6)
+		local b = self.bob
+		if self.revealing or not b then
+			rig.rate = 1
+		else
+			rig.rate = self.rate * sp
+		end
+		rig:step(dt)
+		local rm: Motor6D? = rig.rootMotor
+		if not rm or self.revealing then
+			return
+		end
+		if not b then
+			if self.dirty and rig.clip == nil then
+				rm.Transform = CFrame.identity
+				self.dirty = false
+			end
+			return
+		end
+		-- V87: Motor6D.Transform не масштабируется ScaleTo, поэтому рост берём в мировых единицах
+		local ph = (self.ph + dt * b.f * sp) % 1
+		self.ph = ph
+		local off, pitch
+		if b.hop then
+			off = math.sin(ph * math.pi)
+			pitch = math.sin(ph * math.pi * 2) * b.pitch
+		elseif b.wave then
+			off = math.sin(ph * math.pi * 2)
+			pitch = off * b.pitch
+		else
+			off = math.abs(math.sin(ph * math.pi))
+			pitch = b.pitch * off
+		end
+		local roll = math.sin(ph * math.pi * 2) * b.roll
+		local base = rm.Transform
+		if rig.clip == nil then
+			base = CFrame.identity
+			self.dirty = true
+		end
+		rm.Transform = base * CFrame.new(0, off * b.a * height * model:GetScale(), 0) * CFrame.Angles(pitch, 0, roll)
+	end
+
+	-- Появление: клип Reveal один раз, потом снова Idle/текущее состояние
+	function adapter:reveal(onDone: (() -> ())?)
+		self.revealing = true
+		rig.rate = 1
+		rig:play("Reveal", false, function()
+			self.revealing = false
+			if rig.dead then
+				return
+			end
+			rig:play("Idle", true)
+			if onDone then
+				onDone()
+			end
+		end)
+	end
+
+	function adapter:destroy()
+		rig:destroy()
+	end
+
+	-- стартовая фаза Idle случайная: звери рядом не качаются в унисон
+	rig:play("Idle", true)
+	rig.frame = 1 + math.random() * math.max(rig:length("Idle") - 1, 1)
+	return adapter
+end
+
 function Fauna.Bind(model: Model): any
+	if model:GetAttribute("Art87") == true and art() then
+		return bindNew(model)
+	end
 	local id = model:GetAttribute("SpeciesId") or model.Name
 	local base = Profiles[id]
 	if not base then

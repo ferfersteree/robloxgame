@@ -102,21 +102,37 @@ end
 
 local HINTS: { [string]: (d: any) -> string? } = {
 	tracker = function(d)
-		-- как в DemoServer: Сила × дальность копья в руках (с ковкой); зелья и питомцы не учитываем, поэтому «about»
+		-- как в DemoServer: Сила × дальность копья в руках (с ковкой), не дальше края зоны копья; зелья и питомцы не учитываем
 		local lvl = type(d.spears) == "table" and tonumber(d.spears[d.spear]) or 0
 		local spearRange = Config.spearStats(d.spear, lvl).range
-		local reach = math.min(Config.range(tonumber(d.power) or 1) * spearRange, Config.THROW.maxRange)
+		local cap = Config.spearReach(d.spear)
+		local raw = Config.range(tonumber(d.power) or 1) * spearRange
+		local reach = math.min(raw, cap)
 		local z = Config.zoneFor(reach)
 		local zone = Config.ZONES[z]
 		local nxt = Config.ZONES[z + 1]
 		if not zone then
 			return nil
 		end
-		if nxt and nxt.from < Config.THROW.maxRange then
-			local need = math.ceil((nxt.from / (Config.THROW.rangeK * spearRange)) ^ 2)
+		if raw >= cap - 0.5 then
+			if nxt and nxt.from < Config.THROW.maxRange then
+				return "You are strong enough: this spear already flies to the end of the " .. zone.name .. ". Buy a better spear to reach the " .. nxt.name .. "."
+			end
+			return "With this spear, a full throw reaches the " .. zone.name .. ". There is nothing beyond it but the volcano."
+		end
+		-- V86: сколько Силы нужно, чтобы долететь до следующей зоны (или до края зоны копья)
+		local target = if nxt then math.min(nxt.from, cap) else cap
+		local L = tonumber(d.strLvl) or 1
+		local guard = 0
+		while Config.range(Config.strengthOf(L)) * spearRange < target and guard < 5000 do
+			L += 1
+			guard += 1
+		end
+		local need = Config.strengthOf(L)
+		if nxt and target >= nxt.from then
 			return "With this spear, a full throw reaches about the " .. zone.name .. ". Around " .. Num.short(need) .. " Strength will carry it into the " .. nxt.name .. "."
 		end
-		return "With this spear, a full throw reaches the " .. zone.name .. ". There is nothing beyond it but the volcano."
+		return "With this spear, a full throw reaches about the " .. zone.name .. ". Around " .. Num.short(need) .. " Strength will carry it to the far end of this zone."
 	end,
 	armorer = function(d)
 		local coins = tonumber(d.coins) or 0

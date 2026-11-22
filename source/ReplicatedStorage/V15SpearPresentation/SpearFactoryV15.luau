@@ -40,7 +40,77 @@ local function extraSpec(id: string): any?
 	return {parts=parts,grip={0,2.5,0},tip=e.tip,attachments={TrailRoot={0,5.2,0}}}
 end
 
+-- V87: новые модели копий Claude Design: ReplicatedStorage.Art87.Spears.sp_NN_<id> (Model, начало = хват, древко вдоль +Y, хвост y=-2.5).
+-- Кончик острия (относительно хвата) из docs/concepts_v86/spears.json; TrailRoot у всех на 2.7 над хватом.
+local V87_TIP={
+	stick={0,6.75,0}, bone={0,6.7,0}, bronze={0,6.8,0}, feather={0,6.7,0}, iron={0,6.6,0}, obsidian={0,6.8,0}, crystal={0,6.8,0}, fire={0,6.7,0},
+	ice={0,6.9,0}, star={0,6.8,0}, amber_sting={0,6.8,0}, solar_trident={0,6.8,0}, canyon_hook={0,6.85,0}, condor_quill={0,6.8,0},
+	mirage_lance={0,6.9,0}, scorpion_sting={0.06,6.8,0}, emerald_vine={0,6.85,0}, temple_guard={0,6.9,0}, mangrove_root={0,6.9,0},
+	hydra_fangs={-0.08,6.85,0}, storm_trident={0.12,6.9,0}, thunder_split={0.017,6.896,0}, coral_branch={0.019,6.85,0}, tide_crest={0.4,6.82,-0.02},
+	abyss_anchor={0,6.8,0}, leviathan_fang={-0.3,6.9,0}, ash_saw={0,6.9,0}, golem_heart={0,6.9,0}, magma_tongue={0,6.9,0}, phoenix_wing={0,6.9,0},
+	amethyst_geode={0,6.9,0}, quartz_needle={0,6.95,0}, lunar_crescent={0,6.9,0}, aurora_weave={0,6.9,0}, cloud_feather={0,6.95,0},
+	sky_harpoon={0.6,7.12,0.6}, rift_shards={0,6.9,0}, void_scissors={0.822,6.693,-0.05}, astral_armillary={0,6.9,0}, singularity_spire={0,6.85,0},
+	gear_pike={0,6.9,0}, spore_halberd={0,6.8,0}, bone_glaive={-1.142,7.022,-0.2}, pearl_lance={0,6.95,0}, rift_conductor={0,6.95,0},
+	primal_fang={-0.08,6.95,0},
+}
+local V87_TAIL=-2.5 -- хвост ниже хвата
+local V87_GRIP_RISE=1.5 -- RuntimePivot над хватом: как у старой модели (хват на 2.5 от хвоста, опора на 4.0)
+local v87Index:{[string]:Instance}={}
+local v87Count=-1
+
+-- Ищет шаблон по id: имена sp_NN_<id>; индекс пересобирается, если папка изменилась
+local function v87Template(id: string): Model?
+	local art=game:GetService("ReplicatedStorage"):FindFirstChild("Art87")
+	local folder=art and art:FindFirstChild("Spears")
+	if not folder then return nil end
+	local kids=folder:GetChildren()
+	if #kids~=v87Count then
+		v87Count=#kids;table.clear(v87Index)
+		for _,k in ipairs(kids) do
+			local key=string.match(k.Name,"^sp_%d+_(.+)$")
+			if key then v87Index[key]=k end
+		end
+	end
+	local m=v87Index[id]
+	return if m and m:IsA("Model") then m else nil
+end
+
+-- Новая модель в старом контракте: RuntimePivot = PrimaryPart, вложения Grip/Tip/TipAtt/GlowAtt/TrailRoot/TailAtt
+local function buildV87(id: string): Model?
+	local tpl=v87Template(id)
+	if not tpl then return nil end
+	local m=tpl:Clone()
+	m.Name=id
+	local gripCF=m:GetPivot()
+	for _,d in ipairs(m:GetDescendants()) do
+		if d:IsA("BasePart") then
+			d.Anchored=true;d.CanCollide=false;d.CanTouch=false;d.CanQuery=false;d.CastShadow=false
+		elseif d:IsA("LuaSourceContainer") or d:IsA("Beam") or d:IsA("Trail") then
+			d:Destroy() -- дизайнер запретил ленты и лучи
+		end
+	end
+	m:SetAttribute("V15Spear",true);m:SetAttribute("SpearId",id);m:SetAttribute("V87Spear",true)
+	local pivot=Instance.new("Part");pivot.Name="RuntimePivot";pivot.Size=Vector3.one*.02;pivot.CFrame=gripCF*CFrame.new(0,V87_GRIP_RISE,0)
+	pivot.Transparency=1;pivot.Anchored=true;pivot.CanCollide=false;pivot.CanTouch=false;pivot.CanQuery=false;pivot.CastShadow=false;pivot.Parent=m
+	m.PrimaryPart=pivot
+	local tip=V87_TIP[id]
+	local tipV=if tip then Vector3.new(tip[1],tip[2],tip[3]) else Vector3.new(0,m:GetExtentsSize().Y-2.5,0)
+	local function attachment(name: string,point: Vector3)
+		local a=Instance.new("Attachment");a.Name=name;a.Position=point-Vector3.new(0,V87_GRIP_RISE,0);a.Parent=pivot
+	end
+	attachment("Grip",Vector3.zero);attachment("Tip",tipV);attachment("TipAtt",tipV);attachment("GlowAtt",tipV)
+	attachment("TrailRoot",Vector3.new(0,2.7,0));attachment("TailAtt",Vector3.new(0,V87_TAIL,0))
+	return m
+end
+
+-- Есть ли новая модель копья (для витрин и магазина)
+function Factory.HasV87(id: string): boolean
+	return v87Template(id)~=nil
+end
+
 local function build(id: string): Model?
+	local authored=buildV87(id)
+	if authored then return authored end
 	local module=data:FindFirstChild(id)
 	local spec: any
 	if module and module:IsA("ModuleScript") then

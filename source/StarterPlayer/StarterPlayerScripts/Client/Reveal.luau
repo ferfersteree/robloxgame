@@ -5,6 +5,8 @@
 -- V61: зверь настоящего размера рядом с игроком (Fauna150.WorldScale), тяжёлая особь крупнее обычной (до x1,7, «GIANT»);
 -- куст свой у каждого биома и растёт вместе со зверем; перед выходом секунда затишья и испуг («!», толчок камеры);
 -- выход и фирменный жест у каждого вида свои (Stage.Emerge, таблица REVEAL в V15Covers/Stage).
+-- V87: если у биома и зверя есть куст и анимации Claude Design (Art87/Reveal87), показ идёт по ним: интрига куста по
+-- редкости, Open куста + Reveal зверя со своими эффектами, потом Idle; иначе прежний путь.
 local RS = game:GetService("ReplicatedStorage")
 local Fauna150 = require(game:GetService("ReplicatedStorage"):WaitForChild("Fauna150"))
 local Players = game:GetService("Players")
@@ -28,6 +30,8 @@ local CoverFactoryV15 = require(CoverLibraryV15:WaitForChild("Factory"))
 local CoverMotionV15 = require(CoverLibraryV15:WaitForChild("Motion"))
 local CoverStageV15 = require(CoverLibraryV15:WaitForChild("Stage"))
 local FaunaFactoryV15 = require(RS:WaitForChild("V16Fauna"):WaitForChild("Factory"))
+local Reveal87 = require(RS:WaitForChild("Art87"):WaitForChild("Reveal87"))
+local activeScene87: any = nil -- V87: сцена с новым кустом и зверем; при ошибке в раскрытии её убирает Reveal.play
 local activeCoverCleanup: (() -> ())? = nil
 local activeSkipCleanup: (() -> ())? = nil -- кнопка «Skip» и её клавиши: убираются и при ошибке в сцене
 
@@ -437,6 +441,13 @@ local function derive(res: any, pos: Vector3, from: Vector3): any
 	local h = sp and Fauna150.Attr(sp.id, "Height") or 2
 	h = (h or 2) * worldScale
 	local zoneId = res.zone or (sp and sp.zone) or 1
+	-- V87: новый куст биома и появление зверя от Claude Design (у сбежавшего интрига слабее, как раньше: не выше 3)
+	if Reveal87.supports(res.sp, zoneId) then
+		local plan = Reveal87.plan(res.sp, zoneId, pos, from, worldScale)
+		local rarity = sp and sp.rarity or 1
+		local args = { sp = res.sp, zone = zoneId, rarity = if res.escaped == true then math.min(rarity, 3) else rarity, ws = worldScale, mut = res.item and res.item.mut or nil, plan = plan, parent = Fx.folder }
+		return { sp = sp, rar = rar, sz = sz, worldScale = worldScale, h = plan.h, zoneId = zoneId, visualAnimal = plan, coverScale = plan.CoverScale, plan = plan, use87 = true, args87 = args }
+	end
 	local coverSpec = assert(CoverFactoryV15.Get(string.format("spawn_cover_%02d",math.clamp(zoneId,1,25))))
 	local visualAnimal = CoverStageV15.ScaleAnimal(FaunaFactoryV15.Get(res.sp), worldScale)
 	if visualAnimal then h=visualAnimal.h end
@@ -462,6 +473,10 @@ local function releasePrep(pr: any)
 	if pr.animal then
 		pr.animal:Destroy()
 		pr.animal = nil
+	end
+	if pr.s87 then
+		pr.s87:destroy() -- V87: недособранные куст и зверь нового раскрытия
+		pr.s87 = nil
 	end
 	if pr.occ then
 		Occlusion.discard(pr.occ)
@@ -496,6 +511,18 @@ function Reveal.prepare(res: any, pos: Vector3, o: RevealOpts?)
 				return
 			end
 			-- Yield: фабрика сама отдаёт кадр каждые 192 клетки
+			if d.use87 then
+				-- V87: куст и зверь Claude Design по очереди в разных кадрах; сцена у заготовки, пока play её не забрал
+				local scene = Reveal87.new(d.args87)
+				pr.s87 = scene
+				scene:ensureBush()
+				task.wait()
+				if pr.claimed then
+					return
+				end
+				scene:ensureAnimal()
+				return
+			end
 			local cover = CoverFactoryV15.CreateCover(d.zoneId, d.plan.Frame, nil, { Scale = d.plan.CoverScale, Yield = true })
 			if pr.claimed then
 				if cover then
@@ -588,15 +615,42 @@ local function playScene(res: any, pos: Vector3, o: RevealOpts?, prep: any?)
 	local spec = CoverStageV15.Spec(res.sp)
 	local effectPos = plan.Center
 	local bush, shake, openCover, cleanupCover, coverColor, coverColor2
+	-- V87: сцена нового куста и зверя (заготовка из prepare или новая)
+	local scene87: any = nil
+	if d.use87 then
+		scene87 = if prep and prep.s87 then prep.s87 else Reveal87.new(d.args87)
+		if prep then
+			prep.s87 = nil
+		end
+		scene87.isFast = function()
+			return fast or skipFlag
+		end
+		activeScene87 = scene87
+	end
+	local prebuilt87 = scene87 ~= nil and scene87.bush ~= nil
 	local function buildBush()
 		local tb = os.clock()
 		debug.profilebegin("Reveal.bush")
-		bush, shake, openCover, cleanupCover, coverColor, coverColor2 = makeBush(plan, zoneId, if prep then prep.cover else nil)
+		if scene87 then
+			scene87:place()
+			bush = scene87.bush
+			shake = function(_amplitude: number) end
+			openCover = function(_duration: number?) end
+			-- V87: после появления зверя куст остаётся до конца сцены; убираем его здесь только при ошибке до этого
+			cleanupCover = function()
+				if not scene87.revealed then
+					scene87:destroy()
+				end
+			end
+			coverColor, coverColor2 = CoverFactoryV15.BiomeColors(zoneId)
+		else
+			bush, shake, openCover, cleanupCover, coverColor, coverColor2 = makeBush(plan, zoneId, if prep then prep.cover else nil)
+		end
 		debug.profileend()
 		buildMs = (os.clock() - tb) * 1000
 	end
 	-- готовый куст ставим в мир до Occlusion.begin: иначе begin слушает DescendantAdded и ловит каждую клетку куста
-	local usedCover = prep ~= nil and prep.cover ~= nil
+	local usedCover = prep ~= nil and (prep.cover ~= nil or prebuilt87)
 	if usedCover then
 		buildBush()
 		prep.cover = nil
@@ -641,72 +695,119 @@ local function playScene(res: any, pos: Vector3, o: RevealOpts?, prep: any?)
 			skipConn = nil
 		end
 	end
-	local glowLight = Fx.light(effectPos + Vector3.new(0, 2, 0), Color3.new(1, 1, 1), 16, 0, 60)
-	local bb, q = questionMark(effectPos + Vector3.new(0, bushSize + 2.5, 0))
-	bb.Enabled = false
-	local amp = 0.4
+	local glowLight: any = nil
+	local bb: any = nil
 	local alive = true
-	shakeConn = RunService.RenderStepped:Connect(function()
-		if alive then
-			shake(amp)
-		end
-	end)
-	Sfx.at(effectPos, "rustle", 1, 0.9)
-	Fx.burst(effectPos + Vector3.new(0, bushSize * 0.6, 0), { tex = "square", color = coverColor, n = 10, speed = NumberRange.new(4, 9), size = 0.35, life = 1.2, rot = true, accel = Vector3.new(0, -14, 0), light = 0 })
-	wait(fast and 0.15 or 0.55)
-	-- «?» и рост редкости
-	bb.Enabled = true
-	Sfx.play("pop")
-	local qs = Instance.new("UIScale")
-	qs.Scale = 0.2
-	qs.Parent = q
-	UI.tween(qs, 0.25, { Scale = 1 }, Enum.EasingStyle.Back)
-	local steps = escaped and math.min(r, 3) or r
-	if not fast then
-		wait(0.25)
-		for i = 1, steps do
-			if skipFlag then
-				break
-			end
-			local rc = Config.RARITIES[i]
-			q.TextColor3 = rc.color
-			glowLight.Color = rc.color
-			glowLight.Brightness = 1 + i * 1.2
-			amp = 0.4 + i * 0.35
-			Sfx.rise(i, 0.6)
-			UI.punch(q, 0.25)
-			Fx.burst(effectPos + Vector3.new(0, bushSize, 0), { tex = "sparkle", color = rc.color, n = 6 + i * 3, speed = NumberRange.new(4, 10), size = 0.6 + i * 0.1, life = 0.8, accel = Vector3.new(0, 4, 0) })
-			if i >= 4 and i == 4 then
-				-- эпик+: небо темнеет, столб света, сердце
-				UI.tween(cc, 0.6, { Brightness = -0.32, Contrast = 0.25, Saturation = -0.25, TintColor = Theme.lerp(Color3.new(1, 1, 1), rar.color, 0.35) })
-				Fx.pillar(effectPos, rar.color, 160, 4.5, 2.4 + r * 0.6)
-				Sfx.play("thunder", 0.8, 0.7)
-				task.spawn(function()
-					for _ = 1, 4 do
-						if skipFlag or not alive then
-							break
-						end
-						Sfx.play("heart", 1, 0.9)
-						task.wait(0.5)
+	if scene87 then
+		-- V87: интрига куста биома по редкости (шорох, глаза, ядро света, тряска) со своими эффектами заменяет «?» и рост свечения
+		Sfx.at(effectPos, "rustle", 1, 0.9)
+		Fx.burst(effectPos + Vector3.new(0, bushSize * 0.6, 0), { tex = "square", color = coverColor, n = 10, speed = NumberRange.new(4, 9), size = 0.35, life = 1.2, rot = true, accel = Vector3.new(0, -14, 0), light = 0 })
+		if not fast then
+			-- звуки и свет нарастают по ступеням редкости вдоль всей интриги (2.5 / 3 / 3.5 с), как раньше при «?»
+			task.spawn(function()
+				local total = if r <= 2 then 2.5 elseif r <= 4 then 3 else 3.5
+				local steps = if escaped then math.min(r, 3) else r
+				for i = 1, steps do
+					wait(total / (steps + 1))
+					if skipFlag or not alive then
+						break
 					end
-				end)
-			end
-			if i >= 5 then
-				Fx.lightning(effectPos + Vector3.new(math.random(-8, 8), 80, math.random(-8, 8)), effectPos, rc.color, 10, 0.6)
-				Fx.shake(0.25, 0.4)
-			end
-			wait(i >= 4 and 0.62 or 0.38)
+					local rc = Config.RARITIES[i]
+					Sfx.rise(i, 0.6)
+					Fx.burst(effectPos + Vector3.new(0, bushSize, 0), { tex = "sparkle", color = rc.color, n = 6 + i * 3, speed = NumberRange.new(4, 10), size = 0.6 + i * 0.1, life = 0.8, accel = Vector3.new(0, 4, 0) })
+					if i == 4 then
+						-- эпик+: небо темнеет, столб света, сердце
+						UI.tween(cc, 0.6, { Brightness = -0.32, Contrast = 0.25, Saturation = -0.25, TintColor = Theme.lerp(Color3.new(1, 1, 1), rar.color, 0.35) })
+						Fx.pillar(effectPos, rar.color, 160, 4.5, 2.4 + r * 0.6)
+						Sfx.play("thunder", 0.8, 0.7)
+						task.spawn(function()
+							for _ = 1, 4 do
+								if skipFlag or not alive then
+									break
+								end
+								Sfx.play("heart", 1, 0.9)
+								task.wait(0.5)
+							end
+						end)
+					end
+					if i >= 5 then
+						Fx.lightning(effectPos + Vector3.new(math.random(-8, 8), 80, math.random(-8, 8)), effectPos, rc.color, 10, 0.6)
+						Fx.shake(0.25, 0.4)
+					end
+				end
+			end)
 		end
-		if r >= 4 and not escaped then
-			wait(0.5)
+		scene87:tease()
+	else
+		glowLight = Fx.light(effectPos + Vector3.new(0, 2, 0), Color3.new(1, 1, 1), 16, 0, 60)
+		local q: any
+		bb, q = questionMark(effectPos + Vector3.new(0, bushSize + 2.5, 0))
+		bb.Enabled = false
+		local amp = 0.4
+		shakeConn = RunService.RenderStepped:Connect(function()
+			if alive then
+				shake(amp)
+			end
+		end)
+		Sfx.at(effectPos, "rustle", 1, 0.9)
+		Fx.burst(effectPos + Vector3.new(0, bushSize * 0.6, 0), { tex = "square", color = coverColor, n = 10, speed = NumberRange.new(4, 9), size = 0.35, life = 1.2, rot = true, accel = Vector3.new(0, -14, 0), light = 0 })
+		wait(fast and 0.15 or 0.55)
+		-- «?» и рост редкости
+		bb.Enabled = true
+		Sfx.play("pop")
+		local qs = Instance.new("UIScale")
+		qs.Scale = 0.2
+		qs.Parent = q
+		UI.tween(qs, 0.25, { Scale = 1 }, Enum.EasingStyle.Back)
+		local steps = escaped and math.min(r, 3) or r
+		if not fast then
+			wait(0.25)
+			for i = 1, steps do
+				if skipFlag then
+					break
+				end
+				local rc = Config.RARITIES[i]
+				q.TextColor3 = rc.color
+				glowLight.Color = rc.color
+				glowLight.Brightness = 1 + i * 1.2
+				amp = 0.4 + i * 0.35
+				Sfx.rise(i, 0.6)
+				UI.punch(q, 0.25)
+				Fx.burst(effectPos + Vector3.new(0, bushSize, 0), { tex = "sparkle", color = rc.color, n = 6 + i * 3, speed = NumberRange.new(4, 10), size = 0.6 + i * 0.1, life = 0.8, accel = Vector3.new(0, 4, 0) })
+				if i >= 4 and i == 4 then
+					-- эпик+: небо темнеет, столб света, сердце
+					UI.tween(cc, 0.6, { Brightness = -0.32, Contrast = 0.25, Saturation = -0.25, TintColor = Theme.lerp(Color3.new(1, 1, 1), rar.color, 0.35) })
+					Fx.pillar(effectPos, rar.color, 160, 4.5, 2.4 + r * 0.6)
+					Sfx.play("thunder", 0.8, 0.7)
+					task.spawn(function()
+						for _ = 1, 4 do
+							if skipFlag or not alive then
+								break
+							end
+							Sfx.play("heart", 1, 0.9)
+							task.wait(0.5)
+						end
+					end)
+				end
+				if i >= 5 then
+					Fx.lightning(effectPos + Vector3.new(math.random(-8, 8), 80, math.random(-8, 8)), effectPos, rc.color, 10, 0.6)
+					Fx.shake(0.25, 0.4)
+				end
+				wait(i >= 4 and 0.62 or 0.38)
+			end
+			if r >= 4 and not escaped then
+				wait(0.5)
+			end
 		end
 	end
 	-- взрыв
 	alive = false
 	if shakeConn then shakeConn:Disconnect();shakeConn=nil end
-	bb:Destroy()
-	-- V61: затишье: куст замирает, свет гаснет, секунда тишины, и только потом испуг
-	if not (fast or skipFlag) then
+	if bb then
+		bb:Destroy()
+	end
+	-- V61: затишье: куст замирает, свет гаснет, секунда тишины, и только потом испуг (V87: пауза уже внутри интриги куста)
+	if not scene87 and not (fast or skipFlag) then
 		glowLight.Brightness = 0
 		wait(spec.hold)
 	end
@@ -717,7 +818,9 @@ local function playScene(res: any, pos: Vector3, o: RevealOpts?, prep: any?)
 	Fx.ring(effectPos + Vector3.new(0, 0.2, 0), col, 8 + r * 2, 0.6)
 	startle(spec.scare, effectPos + Vector3.new(0, bushSize + 1.5, 0))
 	openCover(spec.open)
-	glowLight.Brightness = 0
+	if glowLight then
+		glowLight.Brightness = 0
+	end
 	UI.flash(col, 0.35, r >= 4 and 0.15 or 0.45)
 	if r >= 3 and not escaped then
 		UI.confetti(30 + r * 15, { rar.color, Theme.C.gold, Color3.new(1, 1, 1) })
@@ -731,24 +834,34 @@ local function playScene(res: any, pos: Vector3, o: RevealOpts?, prep: any?)
 	-- anticipation, never the physical curtain clearance.
 	local openStarted=os.clock()
 	local lead = math.max(spec.lead, spec.open * 0.55)
-	while os.clock()-openStarted<lead and bush.Parent do RunService.RenderStepped:Wait() end
+	while not scene87 and os.clock()-openStarted<lead and bush.Parent do RunService.RenderStepped:Wait() end -- V87: у нового куста зверь стартует вместе с Open
 	local look = Vector3.new(from.X,pos.Y,from.Z)
 	if (look-pos).Magnitude<.1 then look=pos+Vector3.zAxis end
-	local usedAnimal = prep ~= nil and prep.animal ~= nil
+	local usedAnimal = prep ~= nil and (prep.animal ~= nil or (scene87 ~= nil and scene87.model ~= nil))
 	local prebuiltAnimal = if prep then prep.animal else nil
 	if prep then
 		prep.animal = nil
 	end
 	local tRig = os.clock()
 	debug.profilebegin("Reveal.rig")
-	local rig = AnimalRig.spawn(res.sp,animalFrame(plan),Fx.folder,res.item and res.item.mut or nil,worldScale,prebuiltAnimal)
+	local rig: any
+	if scene87 then
+		-- V87: Open куста и Reveal зверя идут вместе (3-5 с всего с интригой), дальше Idle до конца сцены
+		rig = scene87:reveal()
+		if not rig or not rig.model then
+			scene87:destroy()
+			rig = nil
+		end
+	else
+		rig = AnimalRig.spawn(res.sp,animalFrame(plan),Fx.folder,res.item and res.item.mut or nil,worldScale,prebuiltAnimal)
+	end
 	debug.profileend()
 	if IS_STUDIO then
 		local rigMs = (os.clock() - tRig) * 1000
 		print(string.format("[Perf] reveal prep=%.1f build=%.1f rig=%.1f total=%.1f ms used=%s", prepMs, buildMs, rigMs, prepMs + buildMs + rigMs, if prep then string.format("cover:%s,rig:%s,occ:%s", tostring(usedCover), tostring(usedAnimal), tostring(usedOcc)) else "none"))
 	end
 	emergingRig=rig
-	if rig then
+	if rig and not scene87 then
 		local hooks = {
 			fast = fast or skipFlag,
 			noFlourish = escaped,
@@ -831,7 +944,10 @@ local function playScene(res: any, pos: Vector3, o: RevealOpts?, prep: any?)
 	local panel, waitDone = resultPanel(res, sp, rar, fast or skipFlag, sz)
 	if escaped then
 		task.delay(0.9, function()
-			if rig and rig.model.Parent then
+			if scene87 and rig and rig.alive then
+				-- V87: убегает новая модель: быстрый Idle и бег прочь от игрока
+				rig:runAway((pos - look).Unit)
+			elseif rig and rig.model.Parent then
 				rig:play("flee", 1.4)
 				local start = rig.cf
 				local dir = (pos - look).Unit
@@ -878,6 +994,8 @@ local function playScene(res: any, pos: Vector3, o: RevealOpts?, prep: any?)
 			if m.Parent then
 				Fx.burst(rig.cf.Position + Vector3.new(0, h * 0.5, 0), { tex = "smoke", color = Color3.new(1, 1, 1), n = 10, speed = NumberRange.new(3, 7), size = 2, size2 = 3, life = 0.8, light = 0, accel = Vector3.zero, transp = 0.3 })
 				rig:destroy()
+			elseif scene87 then
+				rig:destroy() -- V87: модель уже ушла, но куст, эффекты и шаги клипов надо убрать
 			end
 		end)
 	end
@@ -897,6 +1015,12 @@ function Reveal.play(res: any, pos: Vector3, opts: RevealOpts?)
 	if activeCoverCleanup then local cleanup=activeCoverCleanup;activeCoverCleanup=nil;cleanup() end
 	if activeSkipCleanup then local cleanup=activeSkipCleanup;activeSkipCleanup=nil;cleanup() end
 	Occlusion.finish()
+	-- V87: при успехе зверя и куст нового раскрытия убирает отложенный таймер в конце playScene; при ошибке убираем сами
+	local scene87 = activeScene87
+	activeScene87 = nil
+	if not ok and scene87 then
+		scene87:destroy()
+	end
 	if not ok then
 		Backend.hold(false)
 		Reveal.active = false

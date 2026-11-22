@@ -15,6 +15,8 @@ local Net = require(RS.Shared.Net)
 local Animator = {}
 local NativeAssets = RS:WaitForChild("V15SpearPresentation")
 local NativeFactory = require(NativeAssets.SpearFactoryV15)
+-- V87: эффекты новых копий (в руке, в полёте, при ударе)
+local SpearFx87 = require(RS:WaitForChild("Art87"):WaitForChild("SpearFx87"))
 -- клипы бросков (копьё в руке держится по направлению броска, а не по кисти)
 local THROW = { Throw1 = true, Throw2 = true, Throw5 = true, Throw10 = true, Throw25 = true, Throw100 = true }
 -- V69: броски идут медленнее в столько раз, чтобы были видны замах и сам бросок (время выпуска и события клипа тоже)
@@ -46,6 +48,8 @@ type Rig = {
 	spear: Model?,
 	spearId: string?,
 	tool: Tool?,
+	toolVis: Instance?,
+	toolConn: RBXScriptConnection?,
 	lastSpearCF: CFrame?,
 	lastSpearT: number?,
 	chargeLift: number?,
@@ -211,24 +215,47 @@ local function findTool(char: Model): Tool?
 	return nil
 end
 
+local function showTool(tool: Instance, on: boolean)
+	for _, d in tool:GetDescendants() do
+		if d:IsA("BasePart") then
+			d.LocalTransparencyModifier = if on then 0 else 1
+		end
+	end
+end
+
+-- V86: сервер (Cosmetics.refreshTool) меняет модель Visual внутри того же Tool при смене копья:
+-- сравниваем и Tool, и Visual, иначе новая Visual (старая блочная модель) оставалась видимой рядом с копьём в руке
 local function setToolHidden(rig: Rig, hidden: boolean)
 	local tool = findTool(rig.char)
 	if hidden and tool then
-		if rig.tool ~= tool then
-			rig.tool = tool
-			for _, d in tool:GetDescendants() do
-				if d:IsA("BasePart") then
-					d.LocalTransparencyModifier = 1
-				end
+		local vis = tool:FindFirstChild("Visual")
+		if rig.tool ~= tool or rig.toolVis ~= vis then
+			if rig.tool and rig.tool ~= tool and rig.tool.Parent then
+				showTool(rig.tool, true)
 			end
+			if rig.tool ~= tool then
+				if rig.toolConn then
+					rig.toolConn:Disconnect()
+				end
+				-- детали новой Visual могут прийти с сервера на кадр позже: прячем их по мере появления
+				rig.toolConn = tool.DescendantAdded:Connect(function(d)
+					if rig.tool == tool and d:IsA("BasePart") then
+						d.LocalTransparencyModifier = 1
+					end
+				end)
+			end
+			rig.tool = tool
+			rig.toolVis = vis
+			showTool(tool, false)
 		end
 	elseif not hidden and rig.tool then
-		for _, d in rig.tool:GetDescendants() do
-			if d:IsA("BasePart") then
-				d.LocalTransparencyModifier = 0
-			end
+		showTool(rig.tool, true)
+		if rig.toolConn then
+			rig.toolConn:Disconnect()
+			rig.toolConn = nil
 		end
 		rig.tool = nil
+		rig.toolVis = nil
 	end
 end
 
@@ -307,6 +334,10 @@ local function register(char: Model)
 			local rig = rigs[char]
 			if rig then
 				dropSpear(rig)
+				if rig.toolConn then
+					rig.toolConn:Disconnect()
+					rig.toolConn = nil
+				end
 			end
 			rigs[char] = nil
 		end
@@ -420,6 +451,10 @@ RunService.PreRender:Connect(function()
 				rig.spearId = id :: string
 				if rig.spear then
 					rig.spear.Parent = spearsFolder
+					-- V87: эффект покоя новой модели в руке (частицы и свет на вложениях; уходит вместе с моделью)
+					if rig.spear:GetAttribute("V87Spear") then
+						SpearFx87.attachIdle(rig.spear, id :: string, char == player.Character)
+					end
 				end
 			end
 			local sp = rig.spear
