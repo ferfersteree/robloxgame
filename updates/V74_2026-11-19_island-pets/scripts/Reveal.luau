@@ -1,0 +1,939 @@
+-- StarterPlayerScripts/Client/Reveal.luau
+-- Гача-раскрытие добычи: куст шуршит → «?» → свечение растёт по цветам редкостей → (эпик+) темнеет небо,
+-- столб света, стук сердца → взрыв лучей и конфетти → зверь выпрыгивает и радуется → карточка с цифрами,
+-- штампы «НОВЫЙ ВИД!/РЕКОРД!» → карточка летит в сумку. Со 2-го раскрытия — «Пропустить».
+-- V61: зверь настоящего размера рядом с игроком (Fauna150.WorldScale), тяжёлая особь крупнее обычной (до x1,7, «GIANT»);
+-- куст свой у каждого биома и растёт вместе со зверем; перед выходом секунда затишья и испуг («!», толчок камеры);
+-- выход и фирменный жест у каждого вида свои (Stage.Emerge, таблица REVEAL в V15Covers/Stage).
+local RS = game:GetService("ReplicatedStorage")
+local Fauna150 = require(game:GetService("ReplicatedStorage"):WaitForChild("Fauna150"))
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Lighting = game:GetService("Lighting")
+
+local Config = require(RS.Shared.Config)
+local Num = require(RS.Shared.Num)
+local Net = require(RS.Shared.Net)
+local UI = require(script.Parent.UIKit)
+local Theme = require(script.Parent.Theme)
+local Sfx = require(script.Parent.Sfx)
+local Fx = require(script.Parent.WorldFx)
+local AnimalRig = require(script.Parent.AnimalRig)
+local Backend = require(script.Parent.Backend)
+local Hud = require(script.Parent.Hud)
+local Occlusion = require(script.Parent.RevealOcclusion)
+local CoverLibraryV15 = RS:WaitForChild("V15Covers")
+local CoverFactoryV15 = require(CoverLibraryV15:WaitForChild("Factory"))
+local CoverMotionV15 = require(CoverLibraryV15:WaitForChild("Motion"))
+local CoverStageV15 = require(CoverLibraryV15:WaitForChild("Stage"))
+local FaunaFactoryV15 = require(RS:WaitForChild("V16Fauna"):WaitForChild("Factory"))
+local activeCoverCleanup: (() -> ())? = nil
+local activeSkipCleanup: (() -> ())? = nil -- кнопка «Skip» и её клавиши: убираются и при ошибке в сцене
+
+local IS_STUDIO = RunService:IsStudio()
+
+local Reveal = {}
+Reveal.active = false
+Reveal.count = 0
+
+local camera = workspace.CurrentCamera
+local FxEv = Net.ev("Fx")
+
+-- отдельная цветокоррекция раскрытия (не мешает ZoneFx)
+local cc = Instance.new("ColorCorrectionEffect")
+cc.Name = "RevealCC"
+cc.Parent = Lighting
+
+local function rarityOf(spId: string): (any, any)
+	local sp = Config.SPECIES_BY_ID[spId]
+	return sp, Config.RARITIES[sp and sp.rarity or 1]
+end
+
+-- The filled centre belongs to two rigid halves; .5-stud cubes never scale.
+local function makeBush(plan: any, zoneId: number, prebuilt: Model?)
+	local model: Model
+	if prebuilt then
+		-- куст собран заранее (Reveal.prepare) на том же plan.Frame: остаётся поставить в мир
+		model = prebuilt
+		model.Parent = Fx.folder
+	else
+		model = assert(CoverFactoryV15.CreateCover(zoneId, plan.Frame, Fx.folder, { Scale = plan.CoverScale }))
+	end
+	model.Name = "RevealCoverV15"
+	model:SetAttribute("Stage", "anticipation")
+	local motion = CoverMotionV15.new(model, {ZoneId=zoneId, Spread=plan.Spread})
+	game:GetService("Debris"):AddItem(model,60)
+	local function shake(amplitude: number)
+		motion:Rustle(amplitude)
+	end
+	local function open(duration: number?)
+		model:SetAttribute("Stage", "opening")
+		motion:Open(duration or .7,plan.Spread)
+	end
+	local function cleanup()
+		motion:Destroy()
+		if model.Parent then model:Destroy() end
+	end
+	local color1,color2 = CoverFactoryV15.BiomeColors(zoneId)
+	return model,shake,open,cleanup,color1,color2
+end
+
+local function questionMark(pos: Vector3, symbol: string?): (BillboardGui, TextLabel)
+	local part = Fx.anchor(pos, 30)
+	local bb = Instance.new("BillboardGui")
+	bb.Size = UDim2.fromOffset(160, 160)
+	bb.AlwaysOnTop = true
+	bb.LightInfluence = 0
+	bb.Parent = part
+	local glow = Instance.new("ImageLabel")
+	glow.BackgroundTransparency = 1
+	glow.Image = UI.IMG.glow
+	glow.Size = UDim2.fromScale(1.6, 1.6)
+	glow.Position = UDim2.fromScale(-0.3, -0.3)
+	glow.ImageTransparency = 0.3
+	glow.Parent = bb
+	local l = Instance.new("TextLabel")
+	l.BackgroundTransparency = 1
+	l.Size = UDim2.fromScale(1, 1)
+	l.Font = Theme.FONT
+	l.Text = symbol or "?"
+	l.TextScaled = true
+	l.TextColor3 = Color3.new(1, 1, 1)
+	local s = Instance.new("UIStroke")
+	s.Thickness = 5
+	s.Parent = l
+	l.Parent = bb
+	return bb, l
+end
+
+-- V61: испуг в момент раскрытия: «!» над кустом, толчок камеры и рывок угла обзора
+local function startle(strength: number, at: Vector3)
+	local bang, lbl = questionMark(at, "!")
+	lbl.TextColor3 = Color3.fromRGB(255, 90, 70)
+	local sc = Instance.new("UIScale")
+	sc.Scale = 0.2
+	sc.Parent = lbl
+	UI.tween(sc, 0.12, { Scale = 1.3 }, Enum.EasingStyle.Back)
+	task.delay(0.6, function()
+		bang:Destroy()
+	end)
+	Fx.shake(0.32 * strength, 0.35)
+	local base = camera.FieldOfView
+	camera.FieldOfView = base + 9 * strength
+	UI.tween(camera, 0.5, { FieldOfView = base })
+	Sfx.play("pop", 1.25, 0.9)
+end
+
+-- V61: эффекты выхода зверя (пыль, брызги, толчки, рёв, вспышка) по событиям Stage.Emerge; масштаб по росту зверя
+-- NumberRange с max < min бросает ошибку: размах всегда не меньше начала
+local function range(lo: number, hi: number): NumberRange
+	return NumberRange.new(lo, math.max(lo, hi))
+end
+
+local function sceneFx(kind: string, at: Vector3, strength: number, h: number, c1: Color3, c2: Color3)
+	local k = math.clamp(strength, 0.45, 2.5)
+	local r = math.clamp(h * 0.5, 2.5, 16)
+	local ground = at + Vector3.new(0, 0.25, 0)
+	if kind == "splash" then
+		Fx.burst(ground + Vector3.new(0, 0.5, 0), { tex = "sparkle", color = Color3.fromRGB(150, 215, 255), n = 14, speed = range(5, 12 * k), size = 0.7, life = 0.9, accel = Vector3.new(0, -24, 0) })
+		Fx.ring(ground, Color3.fromRGB(190, 235, 255), r, 0.5)
+		Fx.shake(0.1 * k, 0.2)
+	elseif kind == "dust" or kind == "dig" or kind == "pop" then
+		Fx.burst(ground, { tex = "smoke", color = c1, n = 8, speed = range(2, 5 * k), size = 1.0, size2 = 2.0, life = 0.7, light = 0, accel = Vector3.new(0, 2, 0), transp = 0.35 })
+		if kind == "dig" then
+			Fx.burst(ground, { tex = "square", color = c2, n = 12, speed = NumberRange.new(5, 11), size = 0.4, life = 1.0, rot = true, accel = Vector3.new(0, -26, 0), light = 0 })
+		end
+		if kind == "pop" then
+			Fx.shake(0.08 * k, 0.15)
+		end
+	elseif kind == "land" or kind == "step" or kind == "skid" then
+		Fx.burst(ground, { tex = "smoke", color = c1, n = 10, speed = range(3, 7 * k), size = 1.4, size2 = 2.6, life = 0.8, light = 0, accel = Vector3.new(0, 2, 0), transp = 0.3 })
+		Fx.ring(ground, c1, r, 0.45)
+		Fx.shake((if kind == "step" then 0.12 else 0.2) * k, 0.25)
+	elseif kind == "roar" then
+		Fx.ring(at + Vector3.new(0, h * 0.5, 0), Color3.new(1, 1, 1), r * 1.4, 0.6)
+		Fx.shake(0.28 * k, 0.4)
+	elseif kind == "flare" or kind == "flash" then
+		Fx.sphere(at + Vector3.new(0, h * 0.5, 0), c2, 2 + h * 0.4, 0.4)
+		Fx.burst(at + Vector3.new(0, h * 0.5, 0), { tex = "star", color = c2, n = 10, speed = NumberRange.new(6, 14), size = 0.7, life = 0.9, rot = true, accel = Vector3.new(0, -4, 0) })
+	end
+end
+
+-- Ждать с возможностью «перемотки»
+local skipFlag = false
+local function wait(t: number)
+	local t0 = os.clock()
+	while os.clock() - t0 < t do
+		if skipFlag then
+			return
+		end
+		RunService.RenderStepped:Wait()
+	end
+end
+
+local function camShot(pos: Vector3, h: number, from: Vector3): CFrame
+	local back = Vector3.new(from.X - pos.X, 0, from.Z - pos.Z)
+	back = back.Magnitude > 1e-3 and back.Unit or Vector3.new(0, 0, 1)
+	local dist = 7 + h * 1.5
+	local eye = pos + back * dist + Vector3.new(0, 2.5 + h * 0.55, 0)
+	return CFrame.lookAt(eye, pos + Vector3.new(0, h * 0.45, 0))
+end
+
+local function moveCam(target: CFrame, dur: number)
+	camera.CameraType = Enum.CameraType.Scriptable
+	local start = camera.CFrame
+	local t0 = os.clock()
+	while true do
+		local k = math.min(1, (os.clock() - t0) / dur)
+		local e = 1 - (1 - k) ^ 3
+		camera.CFrame = start:Lerp(target, e)
+		if k >= 1 then
+			break
+		end
+		RunService.RenderStepped:Wait()
+	end
+end
+
+-- V65: зверь всегда в кадре. Карточка результата занимает низ экрана, поэтому камера ставит зверя в свободную
+-- верхнюю часть и подбирает расстояние по его размеру. Размер берётся из данных вида (рост, длина, ширина), а не из
+-- живой рамки модели: зверь в этот момент ещё доигрывает свой выход и может прыгать или крутиться.
+local CARD_TOP = 24 + 250 + 34 -- от низа экрана до верха карточки вместе с шапкой и штампами, в единицах холста
+local GROUND_NAMES = { Ground = true, FarGround = true, Field = true, Floor = true, Path = true, Terrain = true }
+
+-- высота земли под точкой (кроны, кусты и крыши пропускаются), nil если земли не нашлось
+local function groundY(p: Vector3): number?
+	local ignored: { Instance } = { Fx.folder }
+	local char = Players.LocalPlayer.Character
+	if char then
+		table.insert(ignored, char)
+	end
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	for _ = 1, 12 do
+		params.FilterDescendantsInstances = ignored
+		local r = workspace:Raycast(p + Vector3.new(0, 60, 0), Vector3.new(0, -260, 0), params)
+		if not r then
+			return nil
+		end
+		if r.Instance:IsA("Terrain") or GROUND_NAMES[r.Instance.Name] then
+			return r.Position.Y
+		end
+		table.insert(ignored, r.Instance)
+	end
+	return nil
+end
+
+local function framedShot(plan: any, animal: any?, h: number): CFrame
+	local fov = math.rad(math.clamp(camera.FieldOfView, 30, 100))
+	local tanV = math.tan(fov / 2)
+	local vp = camera.ViewportSize
+	local vpY = math.max(vp.Y, 1)
+	local aspect = math.max(vp.X, 1) / vpY
+	-- свободная полоса экрана: от верхней панели Roblox до верха карточки
+	local free0 = vpY * 0.08
+	local free1 = math.max(free0 + vpY * 0.22, vpY - CARD_TOP * UI.scale() - vpY * 0.02)
+	local cy = (free0 + free1) / 2
+	local ndcCenter = 1 - 2 * cy / vpY -- где на экране центр зверя: -1 низ, 1 верх
+	local ndcHalf = math.max(0.12, (free1 - free0) / vpY * 0.8) -- половина роста зверя на экране: 80% полосы
+	local len, wid = 2, 2
+	if animal then
+		wid = tonumber(animal.w) or wid
+		local b = animal.bounds
+		if type(b) == "table" and type(b[1]) == "table" and type(b[2]) == "table" then
+			len = math.abs((b[2][3] or 0) - (b[1][3] or 0))
+			wid = math.max(wid, math.abs((b[2][1] or 0) - (b[1][1] or 0)))
+		end
+	end
+	local halfV = math.max(h, 0.5) * 0.55
+	local halfH = math.max(len, wid, 0.5) * 0.55
+	local dist = math.max(halfV / (ndcHalf * tanV), halfH / (0.8 * tanV * aspect), 3.5) + len * 0.5
+	dist = math.min(dist, 160)
+	local dir = plan.Direction
+	local center = plan.Finish + Vector3.yAxis * (h * 0.5)
+	local elevation = math.rad(14)
+	local eye = center + dir * (dist * math.cos(elevation)) + Vector3.yAxis * (dist * math.sin(elevation))
+	-- камера не уходит под землю
+	local gy = groundY(eye)
+	if gy and eye.Y < gy + 1.2 then
+		eye = Vector3.new(eye.X, gy + 1.2, eye.Z)
+	end
+	-- наклон вниз: зверь встаёт в центр свободной полосы над карточкой
+	local tilt = math.atan(ndcCenter * tanV)
+	return CFrame.lookAt(eye, center) * CFrame.Angles(-tilt, 0, 0)
+end
+
+-- Держать кадр каждый кадр, пока открыта карточка: толчки камеры (Fx.shake) накладываются поверх и не уводят его.
+-- Снимается сам, как только раскрытие закончилось (в том числе после ошибки).
+local holdToken = 0
+local function holdCamera(target: CFrame, dur: number): () -> ()
+	holdToken += 1
+	local token = holdToken
+	local name = "RevealHold" .. tostring(token)
+	local start = camera.CFrame
+	local t0 = os.clock()
+	local function stop()
+		pcall(RunService.UnbindFromRenderStep, RunService, name)
+	end
+	RunService:BindToRenderStep(name, Enum.RenderPriority.Camera.Value + 1, function()
+		if token ~= holdToken or not Reveal.active then
+			stop()
+			return
+		end
+		camera.CameraType = Enum.CameraType.Scriptable
+		local k = math.min(1, (os.clock() - t0) / math.max(dur, 0.01))
+		local e = 1 - (1 - k) ^ 3
+		camera.CFrame = start:Lerp(target, e)
+	end)
+	return stop
+end
+
+-- Срыв — отдельная короткая сцена неудачи, без гачи, животного и награды.
+function Reveal.playCrash(_res: any, pos: Vector3, o: any)
+	local opts = o or {}
+	Reveal.active = true
+	Backend.hold(true)
+	local prevMode = Hud.mode
+	Hud.setMode("cinematic")
+	Occlusion.begin(pos, 1.5)
+	local from = opts.from or camera.CFrame.Position
+	if not opts.noCam then
+		task.spawn(moveCam, camShot(pos, 1.5, from), 0.35)
+	end
+	Fx.ring(pos + Vector3.new(0, 0.2, 0), Theme.C.red, 7, 0.5)
+	Fx.burst(pos + Vector3.new(0, 0.6, 0), { tex = "smoke", color = Color3.fromRGB(190, 180, 165), n = 14, speed = NumberRange.new(3, 8), size = 1.4, size2 = 2.6, life = 0.9, light = 0, accel = Vector3.new(0, 3, 0), transp = 0.25 })
+	Fx.text(pos + Vector3.new(0, 4, 0), "💨 MISS · THE SPEAR SLIPPED", Theme.C.red, 28, 1.8)
+	UI.pop("SLIP · NO CATCH", Theme.C.red, nil, 42)
+	UI.toast("Missed throw: no catch or reward", "warn", 2.4)
+	Sfx.note(-5, 0.45)
+	task.delay(0.18, function()
+		Sfx.note(-9, 0.4)
+	end)
+	FxEv:FireServer({ k = "crash", pos = pos })
+	task.wait(1.25)
+	Hud.setMode(prevMode == "cinematic" and "normal" or prevMode)
+	Backend.hold(false)
+	Reveal.active = false
+	Occlusion.finish()
+end
+
+-- Нижняя карточка результата
+local STAMP_POS = { { 0.86, 10 }, { 0.14, 10 }, { 0.86, 200 } }
+local function resultPanel(res: any, sp: any, rar: any, fast: boolean, sz: number): (Frame, () -> ())
+	local item = res.item
+	local escaped = res.escaped == true
+	local col = escaped and Theme.C.red or rar.color
+	local panel = UI.panel({ Color = Theme.C.panel, Size = UDim2.fromOffset(600, 250), AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -24), Radius = 24, LineThick = 4, ZIndex = 20, Parent = UI.reveal })
+	local sc = Instance.new("UIScale")
+	sc.Scale = 0.3
+	sc.Parent = panel
+	UI.tween(sc, 0.35, { Scale = 1 }, Enum.EasingStyle.Back)
+	local rays = UI.rays(panel, col, 12, 560, 18) -- V65: было 900, лучи закрывали зверя
+	rays.ZIndex = 19
+	-- шапка с редкостью
+	local head = UI.panel({ Color = col, Size = UDim2.new(0, 10, 0, 44), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0, 0), Radius = 14, ZIndex = 24, Parent = panel })
+	head.AutomaticSize = Enum.AutomaticSize.X
+	UI.pad(18, 0).Parent = head
+	local rname = escaped and "ESCAPED!" or string.upper(rar.name)
+	local giant = not escaped and Fauna150.IsGiant(sz)
+	if giant then
+		rname = "GIANT · " .. rname
+	end
+	if item and item.mut then
+		rname = (item.mut == "gold" and "✨ GOLDEN · " or "🌈 RAINBOW · ") .. rname
+	end
+	UI.label({ Text = rname, TextSize = 28, Size = UDim2.new(0, 10, 1, 0), AutoX = true, ZIndex = 26, Parent = head })
+	UI.shine(head, 0.9)
+	UI.label({ Text = (sp and sp.icon or "") .. " " .. (sp and sp.name or "?"), TextSize = 52, Size = UDim2.new(1, -40, 0, 60), Position = UDim2.fromOffset(20, 30), ZIndex = 24, Gradient = { Color3.new(1, 1, 1), col }, Parent = panel })
+	local finished = false
+	local stats = Instance.new("Frame")
+	stats.BackgroundTransparency = 1
+	stats.Size = UDim2.new(1, -40, 0, 70)
+	stats.Position = UDim2.fromOffset(20, 96)
+	stats.ZIndex = 24
+	stats.Parent = panel
+	UI.list(Enum.FillDirection.Horizontal, 12, Enum.HorizontalAlignment.Center).Parent = stats
+	local function stat(icon: string, color: Color3, order: number): TextLabel
+		local b = UI.panel({ Color = Theme.C.panel2, Size = UDim2.fromOffset(176, 64), Radius = 14, ZIndex = 25, LayoutOrder = order, Parent = stats })
+		UI.label({ Text = icon, TextSize = 30, Size = UDim2.fromOffset(40, 64), Position = UDim2.fromOffset(6, 0), ZIndex = 27, Stroke = 2, Parent = b })
+		return UI.label({ Text = "0", TextSize = 30, Color = color, Size = UDim2.new(1, -52, 1, 0), Position = UDim2.fromOffset(46, 0), XAlign = Enum.TextXAlignment.Left, ZIndex = 27, Parent = b })
+	end
+	local tierInfo = Config.TIERS[math.max(1, res.tier or 1)]
+	if escaped then
+		UI.label({ Text = "This spear cannot pierce its hide!", TextSize = 26, Color = Theme.C.dim, Size = UDim2.new(1, -40, 0, 30), Position = UDim2.fromOffset(20, 104), ZIndex = 24, Parent = panel })
+		UI.label({ Text = "Requires: " .. tostring(res.need or "a better spear") .. " 🔱", TextSize = 30, Color = Theme.C.gold, Size = UDim2.new(1, -40, 0, 36), Position = UDim2.fromOffset(20, 138), ZIndex = 24, Parent = panel })
+	else
+		local wl = stat("⚖️", Theme.C.text, 1)
+		local pl = stat("💰", Theme.C.gold, 2)
+		local ml = stat("🔥", tierInfo.color, 3)
+		local w, price, m = item and item.w or 0, item and item.price or 0, res.m or 1
+		if fast then
+			wl.Text = Num.weight(w)
+			pl.Text = Num.short(price)
+			ml.Text = Num.mult(m)
+		else
+			task.spawn(function()
+				UI.countUp(wl, 0, w, 0.6, Num.weight, true)
+				UI.countUp(pl, 0, price, 0.8, Num.short, true)
+				UI.countUp(ml, 1, m, 0.5, Num.mult, false)
+			end)
+		end
+		local zone = Config.ZONES[res.zone or (sp and sp.zone) or 1]
+		UI.label({ Text = zone.icon .. " " .. zone.name .. (res.dist and res.dist > 0 and ("  ·  " .. math.floor(res.dist) .. " m") or "") .. (res.xp and res.xp > 0 and ("  ·  +" .. res.xp .. " XP") or "") .. (sz > 1.05 and string.format("  ·  size x%.1f", sz) or ""), TextSize = 22, Color = Theme.C.dim, Size = UDim2.new(1, -40, 0, 26), Position = UDim2.fromOffset(20, 168), ZIndex = 24, Stroke = 2, Parent = panel })
+	end
+	-- штампы
+	local stamps = {}
+	if res.isNew and not escaped then
+		table.insert(stamps, { "NEW SPECIES!", Theme.C.gold, -16 })
+	end
+	if res.isRecord and not escaped then
+		table.insert(stamps, { "NEW RECORD!", Theme.C.pink, 12 })
+	end
+	if giant then
+		table.insert(stamps, { "GIANT!", Theme.C.orange, -8 })
+	end
+	task.spawn(function()
+		if not fast then
+			task.wait(0.9)
+		end
+		for i, s in stamps do
+			local st = UI.label({ Text = s[1], TextSize = 40, Color = s[2], Size = UDim2.fromOffset(240, 50), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(STAMP_POS[i][1], 0, 0, STAMP_POS[i][2]), Rotation = s[3], ZIndex = 30, Parent = panel })
+			local ss = Instance.new("UIScale")
+			ss.Scale = 3
+			ss.Parent = st
+			UI.tween(ss, 0.22, { Scale = 1 }, Enum.EasingStyle.Back)
+			Sfx.play("stamp")
+			UI.punch(panel, 0.04)
+			task.wait(0.3)
+		end
+	end)
+	local btn = UI.button({ Text = escaped and "Oh well…" or "Collect!", TextSize = 30, Color = escaped and Theme.C.orange or Theme.C.green, Size = UDim2.fromOffset(220, 58), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 1, -8), ZIndex = 28, Shine = true }, function()
+		finished = true
+	end)
+	btn.Parent = panel
+	local function waitDone()
+		local t0 = os.clock()
+		local auto = fast and 1.6 or 6
+		local conn = UserInputService.InputBegan:Connect(function(i, gp)
+			if not gp and (i.KeyCode == Enum.KeyCode.Space or i.KeyCode == Enum.KeyCode.Return or i.KeyCode == Enum.KeyCode.E) then
+				finished = true
+			end
+		end)
+		while not finished and os.clock() - t0 < auto do
+			task.wait()
+		end
+		conn:Disconnect()
+	end
+	return panel, waitDone
+end
+
+export type RevealOpts = { from: Vector3?, fake: boolean?, noCam: boolean?, pedestal: boolean? }
+
+-- Производные размеры и план сцены: общий код для prepare и play, чтобы заготовка не расходилась с показом
+local function derive(res: any, pos: Vector3, from: Vector3): any
+	local sp, rar = rarityOf(res.sp)
+	local sz = if res.item then Fauna150.SizeFromWeight(res.sp, res.item.w) else 1
+	local worldScale = Fauna150.WorldScale(res.sp, sz)
+	local h = sp and Fauna150.Attr(sp.id, "Height") or 2
+	h = (h or 2) * worldScale
+	local zoneId = res.zone or (sp and sp.zone) or 1
+	local coverSpec = assert(CoverFactoryV15.Get(string.format("spawn_cover_%02d",math.clamp(zoneId,1,25))))
+	local visualAnimal = CoverStageV15.ScaleAnimal(FaunaFactoryV15.Get(res.sp), worldScale)
+	if visualAnimal then h=visualAnimal.h end
+	local coverScale = CoverStageV15.CoverScale(coverSpec, visualAnimal)
+	local plan = CoverStageV15.Plan(pos,from,coverSpec,visualAnimal,coverScale)
+	return { sp = sp, rar = rar, sz = sz, worldScale = worldScale, h = h, zoneId = zoneId, visualAnimal = visualAnimal, coverScale = coverScale, plan = plan }
+end
+
+local function animalFrame(plan: any): CFrame
+	return CFrame.lookAt(plan.Start,plan.Start+plan.Direction)
+end
+
+-- Заготовка раскрытия, пока копьё ещё летит: куст, модель зверя и список для Occlusion собираются заранее.
+-- pending: текущая заготовка; claimed = true, когда play её забрал или она сброшена (поздно дособранное уничтожается).
+local pending: any = nil
+
+local function releasePrep(pr: any)
+	pr.claimed = true
+	if pr.cover then
+		pr.cover:Destroy()
+		pr.cover = nil
+	end
+	if pr.animal then
+		pr.animal:Destroy()
+		pr.animal = nil
+	end
+	if pr.occ then
+		Occlusion.discard(pr.occ)
+		pr.occ = nil
+	end
+end
+
+function Reveal.discard()
+	local pr = pending
+	pending = nil
+	if pr then
+		releasePrep(pr)
+	end
+end
+
+-- Вызывается сразу после запуска копья с тем же res и точкой посадки pos (SpearFx flight.to) и opts.from, что дальше
+-- получит Reveal.play. Без совпадения res/pos/from заготовка выбрасывается.
+function Reveal.prepare(res: any, pos: Vector3, o: RevealOpts?)
+	Reveal.discard()
+	local from = o and o.from
+	if type(res) ~= "table" or res.failed == true or type(res.sp) ~= "string" or not from then
+		return
+	end
+	local pr: any = { res = res, pos = pos, from = from, claimed = false }
+	pending = pr
+	task.spawn(function()
+		local ok, err = pcall(function()
+			local d = derive(res, pos, from)
+			pr.occ = Occlusion.prepare(d.plan.Focus, math.max(d.h, d.plan.Height))
+			task.wait()
+			if pr.claimed then
+				return
+			end
+			-- Yield: фабрика сама отдаёт кадр каждые 192 клетки
+			local cover = CoverFactoryV15.CreateCover(d.zoneId, d.plan.Frame, nil, { Scale = d.plan.CoverScale, Yield = true })
+			if pr.claimed then
+				if cover then
+					cover:Destroy()
+				end
+				return
+			end
+			pr.cover = cover
+			task.wait()
+			if pr.claimed then
+				return
+			end
+			local animal = AnimalRig.build(res.sp, animalFrame(d.plan), res.item and res.item.mut or nil, d.worldScale)
+			if pr.claimed then
+				if animal then
+					animal:Destroy()
+				end
+				return
+			end
+			pr.animal = animal
+		end)
+		if not ok then
+			warn("[Reveal] prepare: " .. tostring(err))
+		end
+	end)
+	-- страховка: заготовка, до которой не дошёл play, не висит вечно
+	task.delay(25, function()
+		if pending == pr then
+			Reveal.discard()
+		end
+	end)
+end
+
+-- Забрать заготовку для этого показа; несовпавшую уничтожает
+local function claimPrep(res: any, pos: Vector3, o: RevealOpts?): any
+	local pr = pending
+	if not pr then
+		return nil
+	end
+	pending = nil
+	local from = o and o.from
+	if pr.res == res and from and (pr.pos - pos).Magnitude < 0.05 and (pr.from - from).Magnitude < 0.05 then
+		pr.claimed = true
+		return pr
+	end
+	releasePrep(pr)
+	return nil
+end
+
+-- Главное: res — ответ Throw (или Demo fake), pos — точка на земле. Блокирует до конца.
+local function playScene(res: any, pos: Vector3, o: RevealOpts?, prep: any?)
+	local opts: RevealOpts = o or {}
+	local tPlay0 = os.clock()
+	local buildMs = 0
+	-- A tension bust still produces a normal hunt with reduced luck.
+	if res.failed == true then
+		Reveal.playCrash(res, pos, opts)
+		return
+	end
+	local sp, rar = rarityOf(res.sp)
+	local r = sp and sp.rarity or 1
+	local escaped = res.escaped == true
+	Reveal.active = true
+	Backend.hold(true)
+	Reveal.count += 1
+	local settings = Backend.data and Backend.data.settings
+	local fast = Reveal.count > 1 and settings ~= nil and settings.skip == true
+	skipFlag = false
+	local skipBtn: Frame? = nil
+	local skipConn: RBXScriptConnection? = nil
+	if Reveal.count > 1 and not fast then
+		local sb = UI.button({ Text = "Skip ⏩", TextSize = 24, Color = Theme.C.blue, Size = UDim2.fromOffset(210, 52), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -20, 0, 90), ZIndex = 40 }, function()
+			skipFlag = true
+		end)
+		sb.Parent = UI.reveal
+		skipBtn = sb
+		-- ПК: Пробел / E / Enter тоже пропускают
+		skipConn = UserInputService.InputBegan:Connect(function(i, gp)
+			if not gp and (i.KeyCode == Enum.KeyCode.Space or i.KeyCode == Enum.KeyCode.Return or i.KeyCode == Enum.KeyCode.E) then
+				skipFlag = true
+			end
+		end)
+	end
+	local prevMode = Hud.mode
+	Hud.setMode("cinematic")
+	-- V61: размер особи по весу (крупные тяжелее) и настоящий размер вида рядом с игроком
+	local from = opts.from or camera.CFrame.Position
+	local d = derive(res, pos, from)
+	local sz, worldScale, h, zoneId, visualAnimal, coverScale, plan = d.sz, d.worldScale, d.h, d.zoneId, d.visualAnimal, d.coverScale, d.plan
+	local spec = CoverStageV15.Spec(res.sp)
+	local effectPos = plan.Center
+	local bush, shake, openCover, cleanupCover, coverColor, coverColor2
+	local function buildBush()
+		local tb = os.clock()
+		debug.profilebegin("Reveal.bush")
+		bush, shake, openCover, cleanupCover, coverColor, coverColor2 = makeBush(plan, zoneId, if prep then prep.cover else nil)
+		debug.profileend()
+		buildMs = (os.clock() - tb) * 1000
+	end
+	-- готовый куст ставим в мир до Occlusion.begin: иначе begin слушает DescendantAdded и ловит каждую клетку куста
+	local usedCover = prep ~= nil and prep.cover ~= nil
+	if usedCover then
+		buildBush()
+		prep.cover = nil
+		activeCoverCleanup = cleanupCover -- куст уже в мире: при ошибке дальше его уберёт обёртка Reveal.play
+	end
+	local usedOcc = prep ~= nil and prep.occ ~= nil
+	local pre = if prep then prep.occ else nil
+	if prep then
+		prep.occ = nil
+	end
+	debug.profilebegin("Reveal.occlusion")
+	Occlusion.begin(plan.Focus, math.max(h,plan.Height), pre)
+	debug.profileend()
+	local prepMs = (os.clock() - tPlay0) * 1000 - buildMs
+	if not opts.noCam then
+		task.spawn(moveCam, camShot(plan.Focus,plan.Height,from), fast and 0.3 or 0.7)
+	end
+	local bushSize = math.clamp(h * 0.55, 1.6, 5 * coverScale)
+	if not usedCover then
+		buildBush()
+	end
+	local shakeConn: RBXScriptConnection? = nil
+	local emergingRig: any = nil
+	local emergenceDone = false
+	local function cleanupScene()
+		if shakeConn then shakeConn:Disconnect();shakeConn=nil end
+		cleanupCover()
+		if not emergenceDone and emergingRig and emergingRig.alive then emergingRig:destroy() end
+	end
+	activeCoverCleanup = cleanupScene
+	activeSkipCleanup = function()
+		if skipBtn then
+			skipBtn:Destroy()
+			skipBtn = nil
+		end
+		if skipConn then
+			skipConn:Disconnect()
+			skipConn = nil
+		end
+	end
+	local glowLight = Fx.light(effectPos + Vector3.new(0, 2, 0), Color3.new(1, 1, 1), 16, 0, 60)
+	local bb, q = questionMark(effectPos + Vector3.new(0, bushSize + 2.5, 0))
+	bb.Enabled = false
+	local amp = 0.4
+	local alive = true
+	shakeConn = RunService.RenderStepped:Connect(function()
+		if alive then
+			shake(amp)
+		end
+	end)
+	Sfx.at(effectPos, "rustle", 1, 0.9)
+	Fx.burst(effectPos + Vector3.new(0, bushSize * 0.6, 0), { tex = "square", color = coverColor, n = 10, speed = NumberRange.new(4, 9), size = 0.35, life = 1.2, rot = true, accel = Vector3.new(0, -14, 0), light = 0 })
+	wait(fast and 0.15 or 0.55)
+	-- «?» и рост редкости
+	bb.Enabled = true
+	Sfx.play("pop")
+	local qs = Instance.new("UIScale")
+	qs.Scale = 0.2
+	qs.Parent = q
+	UI.tween(qs, 0.25, { Scale = 1 }, Enum.EasingStyle.Back)
+	local steps = escaped and math.min(r, 3) or r
+	if not fast then
+		wait(0.25)
+		for i = 1, steps do
+			if skipFlag then
+				break
+			end
+			local rc = Config.RARITIES[i]
+			q.TextColor3 = rc.color
+			glowLight.Color = rc.color
+			glowLight.Brightness = 1 + i * 1.2
+			amp = 0.4 + i * 0.35
+			Sfx.rise(i, 0.6)
+			UI.punch(q, 0.25)
+			Fx.burst(effectPos + Vector3.new(0, bushSize, 0), { tex = "sparkle", color = rc.color, n = 6 + i * 3, speed = NumberRange.new(4, 10), size = 0.6 + i * 0.1, life = 0.8, accel = Vector3.new(0, 4, 0) })
+			if i >= 4 and i == 4 then
+				-- эпик+: небо темнеет, столб света, сердце
+				UI.tween(cc, 0.6, { Brightness = -0.32, Contrast = 0.25, Saturation = -0.25, TintColor = Theme.lerp(Color3.new(1, 1, 1), rar.color, 0.35) })
+				Fx.pillar(effectPos, rar.color, 160, 4.5, 2.4 + r * 0.6)
+				Sfx.play("thunder", 0.8, 0.7)
+				task.spawn(function()
+					for _ = 1, 4 do
+						if skipFlag or not alive then
+							break
+						end
+						Sfx.play("heart", 1, 0.9)
+						task.wait(0.5)
+					end
+				end)
+			end
+			if i >= 5 then
+				Fx.lightning(effectPos + Vector3.new(math.random(-8, 8), 80, math.random(-8, 8)), effectPos, rc.color, 10, 0.6)
+				Fx.shake(0.25, 0.4)
+			end
+			wait(i >= 4 and 0.62 or 0.38)
+		end
+		if r >= 4 and not escaped then
+			wait(0.5)
+		end
+	end
+	-- взрыв
+	alive = false
+	if shakeConn then shakeConn:Disconnect();shakeConn=nil end
+	bb:Destroy()
+	-- V61: затишье: куст замирает, свет гаснет, секунда тишины, и только потом испуг
+	if not (fast or skipFlag) then
+		glowLight.Brightness = 0
+		wait(spec.hold)
+	end
+	local col = escaped and Theme.C.red or rar.color
+	Fx.burst(effectPos + Vector3.new(0, bushSize * 0.5, 0), { tex = "square", color = coverColor, color2 = coverColor2, n = 30, speed = NumberRange.new(10, 22), size = 0.5 * math.min(coverScale, 2.5), life = 1.4, rot = true, accel = Vector3.new(0, -30, 0), light = 0 })
+	Fx.burst(effectPos + Vector3.new(0, bushSize * 0.5, 0), { tex = "star", color = col, n = 12 + r * 6, speed = NumberRange.new(12, 26), size = 1 + r * 0.15, life = 1.2, rot = true, accel = Vector3.new(0, -6, 0) })
+	Fx.sphere(effectPos + Vector3.new(0, h * 0.5, 0), col, 3 + h * 0.6, 0.35)
+	Fx.ring(effectPos + Vector3.new(0, 0.2, 0), col, 8 + r * 2, 0.6)
+	startle(spec.scare, effectPos + Vector3.new(0, bushSize + 1.5, 0))
+	openCover(spec.open)
+	glowLight.Brightness = 0
+	UI.flash(col, 0.35, r >= 4 and 0.15 or 0.45)
+	if r >= 3 and not escaped then
+		UI.confetti(30 + r * 15, { rar.color, Theme.C.gold, Color3.new(1, 1, 1) })
+	end
+	Sfx.play(r >= 4 and "boom" or "pop", 1, 0.9)
+	if r >= 4 and not escaped then
+		Sfx.play("win", 1, 0.6)
+	end
+	UI.tween(cc, 0.8, { Brightness = 0, Contrast = 0, Saturation = 0, TintColor = Color3.new(1, 1, 1) })
+	-- Open enough before any animal geometry is created. Skip shortens rarity
+	-- anticipation, never the physical curtain clearance.
+	local openStarted=os.clock()
+	local lead = math.max(spec.lead, spec.open * 0.55)
+	while os.clock()-openStarted<lead and bush.Parent do RunService.RenderStepped:Wait() end
+	local look = Vector3.new(from.X,pos.Y,from.Z)
+	if (look-pos).Magnitude<.1 then look=pos+Vector3.zAxis end
+	local usedAnimal = prep ~= nil and prep.animal ~= nil
+	local prebuiltAnimal = if prep then prep.animal else nil
+	if prep then
+		prep.animal = nil
+	end
+	local tRig = os.clock()
+	debug.profilebegin("Reveal.rig")
+	local rig = AnimalRig.spawn(res.sp,animalFrame(plan),Fx.folder,res.item and res.item.mut or nil,worldScale,prebuiltAnimal)
+	debug.profileend()
+	if IS_STUDIO then
+		local rigMs = (os.clock() - tRig) * 1000
+		print(string.format("[Perf] reveal prep=%.1f build=%.1f rig=%.1f total=%.1f ms used=%s", prepMs, buildMs, rigMs, prepMs + buildMs + rigMs, if prep then string.format("cover:%s,rig:%s,occ:%s", tostring(usedCover), tostring(usedAnimal), tostring(usedOcc)) else "none"))
+	end
+	emergingRig=rig
+	if rig then
+		local hooks = {
+			fast = fast or skipFlag,
+			noFlourish = escaped,
+			fx = function(kind: string, at: Vector3, strength: number)
+				sceneFx(kind, at, strength, h, coverColor, coverColor2)
+			end,
+		}
+		CoverStageV15.Emerge(rig, plan, spec, hooks)
+	end
+	emergenceDone=true
+	-- V63: светящийся круг под зверем цвета редкости и надпись GIANT у крупных особей
+	local glyph: Part? = nil
+	if rig and not escaped then
+		local g = Instance.new("Part")
+		g.Name = "RevealGlyph"
+		g.Anchored = true
+		g.CanCollide = false
+		g.CanQuery = false
+		g.CanTouch = false
+		g.CastShadow = false
+		g.Shape = Enum.PartType.Cylinder
+		g.Material = Enum.Material.Neon
+		g.Color = col
+		g.Transparency = 1
+		-- V65: круг по следу зверя (раньше не меньше 8 стадов: у мелких зверей он закрывал их золотым куполом)
+		local foot = 1.2
+		if visualAnimal then
+			foot = tonumber(visualAnimal.w) or foot
+			local b = visualAnimal.bounds
+			if type(b) == "table" and type(b[1]) == "table" and type(b[2]) == "table" then
+				foot = math.max(foot, math.abs((b[2][3] or 0) - (b[1][3] or 0)))
+			end
+		end
+		local gr = math.clamp(foot * 0.6 + 0.3, 0.8, 20)
+		g.Size = Vector3.new(0.08, 1, 1)
+		local gp = rig.cf.Position
+		g.CFrame = CFrame.new(gp.X, effectPos.Y + 0.15, gp.Z) * CFrame.Angles(0, 0, math.pi / 2)
+		g.Parent = Fx.folder
+		game:GetService("Debris"):AddItem(g, 60)
+		Fx.tween(g, 0.5, { Transparency = 0.78, Size = Vector3.new(0.08, gr * 2, gr * 2) }, Enum.EasingStyle.Back)
+		glyph = g
+		task.spawn(function()
+			local t0 = os.clock()
+			while g.Parent and not g:GetAttribute("Fading") do
+				if os.clock() - t0 > 0.55 then
+					g.Transparency = 0.8 + 0.08 * math.sin((os.clock() - t0) * 4)
+				end
+				RunService.RenderStepped:Wait()
+			end
+		end)
+		if Fauna150.IsGiant(sz) then
+			Fx.text(gp + Vector3.new(0, math.max(2, h * 1.15 + 1), 0), "GIANT!", Theme.C.gold, 44, 2.2)
+			Fx.shake(0.4, 0.5)
+			Sfx.play("boom", 0.9, 0.7)
+		end
+	end
+	cleanupScene()
+	if activeCoverCleanup==cleanupScene then activeCoverCleanup=nil end
+	-- V65: зверь всегда в кадре: над карточкой результата, размер по виду
+	local stopHold: (() -> ())? = nil
+	if rig and not opts.noCam then
+		local okShot, shot = pcall(framedShot, plan, visualAnimal, h)
+		if okShot then
+			stopHold = holdCamera(shot, if fast or skipFlag then 0.3 else 0.65)
+			pcall(Occlusion.setFocus, plan.Finish, math.max(h, 1))
+		else
+			warn("[Reveal] framing: " .. tostring(shot))
+		end
+	end
+	-- чужим игрокам
+	FxEv:FireServer({ k = "reveal", sp = res.sp, rarity = r, mut = res.item and res.item.mut or nil, pos = pos, escaped = escaped, sz = sz })
+	if skipBtn then
+		skipBtn:Destroy()
+		skipBtn = nil
+	end
+	if skipConn then
+		skipConn:Disconnect()
+		skipConn = nil
+	end
+	local panel, waitDone = resultPanel(res, sp, rar, fast or skipFlag, sz)
+	if escaped then
+		task.delay(0.9, function()
+			if rig and rig.model.Parent then
+				rig:play("flee", 1.4)
+				local start = rig.cf
+				local dir = (pos - look).Unit
+				local t0 = os.clock()
+				rig.onUpdate = function(self, _dt)
+					local k = os.clock() - t0
+					self.cf = CFrame.lookAt(start.Position + dir * k * 24, start.Position + dir * (k * 24 + 1))
+				end
+			end
+			Sfx.note(-5, 0.6)
+			task.wait(0.25)
+			Sfx.note(-9, 0.6)
+		end)
+	end
+	waitDone()
+	if stopHold then
+		stopHold()
+	end
+	if glyph then
+		local gl = glyph
+		gl:SetAttribute("Fading", true)
+		Fx.tween(gl, 0.4, { Transparency = 1 })
+		task.delay(0.45, function()
+			gl:Destroy()
+		end)
+	end
+	-- карточка улетает в сумку
+	local center = UI.screenPos(panel)
+	local sc = panel:FindFirstChildOfClass("UIScale")
+	if sc then
+		UI.tween(sc, 0.25, { Scale = 0 }, Enum.EasingStyle.Back, Enum.EasingDirection.In)
+	end
+	if not escaped and not opts.fake then
+		Hud.fly(sp and sp.icon or "🐾", center, Hud.bagPos(), 3, function()
+			Sfx.play("coin", 1.2, 0.6)
+		end)
+	end
+	task.delay(0.3, function()
+		panel:Destroy()
+	end)
+	if rig then
+		local m = rig.model
+		task.delay(opts.pedestal and 6 or 1.2, function()
+			if m.Parent then
+				Fx.burst(rig.cf.Position + Vector3.new(0, h * 0.5, 0), { tex = "smoke", color = Color3.new(1, 1, 1), n = 10, speed = NumberRange.new(3, 7), size = 2, size2 = 3, life = 0.8, light = 0, accel = Vector3.zero, transp = 0.3 })
+				rig:destroy()
+			end
+		end)
+	end
+	Hud.setMode(prevMode == "cinematic" and "normal" or prevMode)
+	Backend.hold(false)
+	Reveal.active = false
+	Occlusion.finish()
+end
+
+-- Always restore local visibility if a reveal is interrupted by a script error.
+function Reveal.play(res: any, pos: Vector3, opts: RevealOpts?)
+	local prep = claimPrep(res, pos, opts)
+	local ok, problem = xpcall(playScene, debug.traceback, res, pos, opts, prep)
+	if prep then
+		releasePrep(prep) -- что сцена не забрала (ошибка до использования), уничтожаем
+	end
+	if activeCoverCleanup then local cleanup=activeCoverCleanup;activeCoverCleanup=nil;cleanup() end
+	if activeSkipCleanup then local cleanup=activeSkipCleanup;activeSkipCleanup=nil;cleanup() end
+	Occlusion.finish()
+	if not ok then
+		Backend.hold(false)
+		Reveal.active = false
+		Hud.setMode("normal")
+		error(problem, 0)
+	end
+end
+
+-- Чужие раскрытия: короткая версия без интерфейса
+FxEv.OnClientEvent:Connect(function(pl: any)
+	if type(pl) ~= "table" or pl.k ~= "reveal" or typeof(pl.pos) ~= "Vector3" or type(pl.sp) ~= "string" then
+		return
+	end
+	local sp, rar = rarityOf(pl.sp)
+	if not sp then
+		return
+	end
+	local pos = pl.pos :: Vector3
+	if (camera.CFrame.Position - pos).Magnitude > 300 then
+		return
+	end
+	local col = pl.escaped and Theme.C.red or rar.color
+	Fx.sphere(pos + Vector3.new(0, 1.5, 0), col, 4, 0.35)
+	Fx.burst(pos + Vector3.new(0, 1.5, 0), { tex = "star", color = col, n = 16, speed = NumberRange.new(8, 18), size = 1, life = 1, rot = true })
+	if sp.rarity >= 4 then
+		Fx.pillar(pos, rar.color, 140, 3, 3)
+	end
+	local theirSize = if type(pl.sz) == "number" then math.clamp(pl.sz, 0.5, 2) else 1
+	local rig = AnimalRig.spawn(pl.sp, CFrame.new(pos) * CFrame.Angles(0, math.random() * 6, 0), Fx.folder, pl.mut, Fauna150.WorldScale(pl.sp, theirSize))
+	if rig then
+		rig:play(pl.escaped and "flee" or "happy")
+	end
+	local who = Players:GetPlayerByUserId(pl.by or 0)
+	Fx.text(pos + Vector3.new(0, math.max(5, (rig and rig.h or 2) + 3), 0), (who and who.DisplayName .. ": " or "") .. (Fauna150.IsGiant(theirSize) and "GIANT " or "") .. sp.icon .. " " .. sp.name, col, 30, 2.4)
+	task.delay(2.6, function()
+		if rig then
+			rig:destroy()
+		end
+	end)
+end)
+
+return Reveal
+
+
